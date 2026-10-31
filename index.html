@@ -22,8 +22,8 @@ textarea{resize:vertical;min-height:80px}
 .btn-g{background:#4285F4;font-size:16px;padding:12px 20px}.btn-g:hover{background:#3367D6}
 #searchInput{flex:1;max-width:300px;min-width:140px}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 5px}
-.fb{background:#2a2a2a;color:#fff;border:1px solid #444;padding:6px 12px;border-radius:20px;cursor:pointer}
-.fb.on{background:var(--ac);border-color:var(--ac)}
+.fb,.kb{background:#2a2a2a;color:#fff;border:1px solid #444;padding:6px 12px;border-radius:20px;cursor:pointer}
+.fb.on,.kb.on{background:var(--ac);border-color:var(--ac)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:20px;margin-top:20px}
 .msg{color:#777;grid-column:1/-1}
 .card{background:var(--card);border-radius:8px;overflow:hidden;box-shadow:0 4px 8px rgba(0,0,0,.5);display:flex;flex-direction:column;cursor:pointer;transition:transform .2s;border:1px solid transparent}
@@ -95,9 +95,10 @@ textarea{resize:vertical;min-height:80px}
   <div class="filters" id="catFilters">
     <button class="fb on" data-c="Всё">Всё</button><button class="fb" data-c="Фильм">Фильмы</button>
     <button class="fb" data-c="Сериал">Сериалы</button><button class="fb" data-c="Аниме">Аниме</button>
-    <button class="fb" data-c="Манга">Манга</button><button class="fb" data-c="Манхва">Манхва</button>
+    <button class="fb" data-c="Манга">Манга</button>
     <button class="fb" data-c="Ранобэ">Ранобэ</button><button class="fb" data-c="Мультфильм">Мультфильмы</button>
   </div>
+  <div class="filters" id="kindFilters" style="display:none;margin-top:8px"><button class="kb on" data-k="Все">Все виды</button><button class="kb" data-k="Манга">Манга</button><button class="kb" data-k="Манхва">Манхва</button><button class="kb" data-k="Маньхуа">Маньхуа</button><button class="kb" data-k="Комикс">Комикс</button></div>
   <div class="grid" id="itemsGrid"></div>
 </div>
 
@@ -106,9 +107,10 @@ textarea{resize:vertical;min-height:80px}
   <h3 id="formTitle" style="margin:0">Добавить тайтл</h3>
   <input type="hidden" id="editId">
   <div class="row2">
-    <select id="inputCategory"><option>Фильм</option><option>Сериал</option><option>Аниме</option><option>Манга</option><option>Манхва</option><option>Ранобэ</option><option>Мультфильм</option></select>
+    <select id="inputCategory"><option>Фильм</option><option>Сериал</option><option>Аниме</option><option>Манга</option><option>Ранобэ</option><option>Мультфильм</option></select>
     <select id="inputStatus"><option>В планах</option><option>Смотрю/Читаю</option><option>Просмотрено/Прочитано</option><option>Любимое</option><option>Пересматриваю</option><option>Брошено</option></select>
   </div>
+  <select id="inputKind" style="display:none"><option>Манга</option><option>Манхва</option><option>Маньхуа</option><option>Комикс</option></select>
   <div class="af">
     <div class="row"><input id="afQuery" placeholder="Автозаполнение: введи название..." style="flex:1"><button class="btn btn-s" id="afBtn" type="button">Найти</button></div>
     <div class="meta" id="afHint" style="margin:0"></div>
@@ -174,11 +176,13 @@ const auth = getAuth(app), db = getFirestore(app), provider = new GoogleAuthProv
 
 const $ = id => document.getElementById(id);
 const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
-const CATS = ['Фильм','Сериал','Аниме','Манга','Манхва','Ранобэ','Мультфильм'];
+const CATS = ['Фильм','Сериал','Аниме','Манга','Ранобэ','Мультфильм'];
+const fix = i => { if (i.category === 'Манхва') { i.category = 'Манга'; i.kind = 'Манхва'; } else if (i.category === 'Манга' && !i.kind) i.kind = 'Манга'; return i; };
+const catLabel = i => i.category === 'Манга' && i.kind && i.kind !== 'Манга' ? i.kind : i.category;
 const STATS = ['В планах','Смотрю/Читаю','Просмотрено/Прочитано','Любимое','Пересматриваю','Брошено'];
 const FALL = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280"><rect width="200" height="280" fill="%232c2c2c"/><text x="50%" y="50%" fill="%23777" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" dominant-baseline="middle">Нет постера</text></svg>';
 
-let user = null, items = [], loaded = false, cat = 'Всё', curId = null, unsub = null, posterValue = '';
+let user = null, items = [], loaded = false, cat = 'Всё', kind = 'Все', curId = null, unsub = null, posterValue = '';
 const grid = $('itemsGrid');
 
 // ---------- Вход ----------
@@ -196,7 +200,7 @@ onAuthStateChanged(auth, u => {
     loaded = false; render();
     // Живая синхронизация: изменения с другого устройства появляются сами
     unsub = onSnapshot(query(collection(db, 'items'), where('userId', '==', u.uid)),
-      snap => { items = snap.docs.map(d => d.data()); loaded = true; refresh(); },
+      snap => { items = snap.docs.map(d => fix(d.data())); loaded = true; refresh(); },
       err => alert('Не удалось загрузить данные: ' + err.message));
   } else {
     if (unsub) unsub(); unsub = null; items = []; loaded = false;
@@ -226,7 +230,7 @@ function render() {
   if (!items.length) return grid.append(el('div', 'msg', 'Коллекция пуста. Нажми «+ Добавить».'));
   const q = $('searchInput').value.toLowerCase().trim(), st = $('statusFilter').value, tg = $('tagFilter').value, so = $('sortSelect').value;
   const list = items.filter(i =>
-    (!q || names(i).includes(q)) && (cat === 'Всё' || i.category === cat) && (st === 'Все' || i.status === st) &&
+    (!q || names(i).includes(q)) && (cat === 'Всё' || i.category === cat) && (cat !== 'Манга' || kind === 'Все' || i.kind === kind) && (st === 'Все' || i.status === st) &&
     (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg))
   ).sort((a, b) => {
     if (so === 'dateAsc') return a.id - b.id;
@@ -243,7 +247,7 @@ function render() {
     pc.append(img);
     const info = el('div', 'ci');
     info.append(el('div', 'status', i.status), el('h3', 'title', i.title),
-      el('div', 'meta', `${i.category} • ${i.year || 'Год не указан'}`),
+      el('div', 'meta', `${catLabel(i)} • ${i.year || 'Год не указан'}`),
       el('div', 'ratings', `★ Моя: ${i.rating ? i.rating + '/10' : '-'}${i.extRating ? ' | Внешняя: ' + i.extRating : ''}`));
     card.append(pc, info); card.onclick = () => openDetail(i.id); grid.append(card);
   });
@@ -251,8 +255,10 @@ function render() {
 ['input'].forEach(ev => $('searchInput').addEventListener(ev, render));
 ['statusFilter', 'tagFilter', 'sortSelect'].forEach(id => $(id).addEventListener('change', render));
 document.querySelectorAll('.fb').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.fb').forEach(x => x.classList.remove('on')); b.classList.add('on'); cat = b.dataset.c; render();
+  document.querySelectorAll('.fb').forEach(x => x.classList.remove('on')); b.classList.add('on'); cat = b.dataset.c; kind = 'Все'; $('kindFilters').style.display = cat === 'Манга' ? 'flex' : 'none'; document.querySelectorAll('.kb').forEach(x => x.classList.toggle('on', x.dataset.k === 'Все')); render();
 });
+
+document.querySelectorAll('.kb').forEach(b => b.onclick = () => { kind = b.dataset.k; document.querySelectorAll('.kb').forEach(x => x.classList.toggle('on', x === b)); render(); });
 
 // ---------- Окна ----------
 const closeAll = () => ['addModal', 'detailModal', 'statsModal'].forEach(id => $(id).style.display = 'none');
@@ -283,6 +289,7 @@ $('inputPosterFile').onchange = e => {
 const parseTags = s => { const seen = new Set(); return s.split(',').map(t => t.trim()).filter(t => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase())); };
 
 function afHint() {
+  $('inputKind').style.display = $('inputCategory').value === 'Манга' ? '' : 'none';
   const c = $('inputCategory').value;
   $('afHint').textContent = c === 'Аниме' || ['Манга', 'Манхва', 'Ранобэ'].includes(c)
     ? 'Ищет в AniList: вводи английское или японское (ромадзи) название.'
@@ -297,7 +304,7 @@ function openAdd(item) {
   $('inputYear').value = i.year || ''; $('inputRating').value = i.rating || ''; $('inputExtRating').value = i.extRating || '';
   $('inputDescription').value = i.description || ''; $('inputTitleEn').value = i.titleEn || ''; $('inputTitleOrig').value = i.titleOrig || '';
   $('inputAlt').value = i.alt || ''; $('inputTags').value = (i.tags || []).join(', ');
-  $('afQuery').value = ''; $('afResults').replaceChildren(); setPoster(i.poster); afHint();
+  $('inputKind').value = i.kind || 'Манга'; $('afQuery').value = ''; $('afResults').replaceChildren(); setPoster(i.poster); afHint();
   $('addModal').style.display = 'flex';
 }
 $('openModalBtn').onclick = () => openAdd(null);
@@ -310,7 +317,7 @@ $('saveItemBtn').onclick = () => {
   if (!editId && items.some(i => i.title.toLowerCase() === title.toLowerCase() && i.category === category) &&
       !confirm('Такой тайтл уже есть в коллекции. Всё равно добавить?')) return;
   const it = {
-    id: editId ? Number(editId) : Date.now(), title, category, status: $('inputStatus').value, poster: posterValue, year,
+    id: editId ? Number(editId) : Date.now(), title, category, kind: category === 'Манга' ? $('inputKind').value : '', status: $('inputStatus').value, poster: posterValue, year,
     rating: $('inputRating').value, extRating: $('inputExtRating').value, description: $('inputDescription').value.trim(),
     titleEn: $('inputTitleEn').value.trim(), titleOrig: $('inputTitleOrig').value.trim(), alt: $('inputAlt').value.trim(),
     tags: parseTags($('inputTags').value)
@@ -324,7 +331,7 @@ $('saveItemBtn').onclick = () => {
 function openDetail(id) {
   const i = items.find(x => x.id === id); if (!i) return; curId = id;
   $('detailPoster').src = i.poster || FALL; $('detailTitle').textContent = i.title; $('detailStatus').textContent = i.status;
-  $('detailMeta').textContent = `${i.category} • ${i.year || 'Год не указан'}`;
+  $('detailMeta').textContent = `${catLabel(i)} • ${i.year || 'Год не указан'}`;
   $('detailNames').textContent = [i.titleEn, i.titleOrig, i.alt].filter(Boolean).join(' / ');
   $('detailRating').textContent = `★ Моя оценка: ${i.rating ? i.rating + '/10' : '-/10'}${i.extRating ? ' | Внешняя оценка: ' + i.extRating : ''}`;
   const tg = $('detailTags'); tg.replaceChildren();
@@ -355,7 +362,8 @@ async function anilist(search, type) {
       title: main, en: t.english || '', orig: t.native || '', alt, poster: m.coverImage.large, year: m.startDate.year || '',
       ext: m.averageScore ? (m.averageScore / 10).toFixed(1) : '', tags: (m.genres || []).map(g => RU[g] || g),
       desc: m.description ? decode(m.description.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim() : '',
-      category: type === 'ANIME' ? 'Аниме' : m.format === 'NOVEL' ? 'Ранобэ' : ['KR', 'CN'].includes(m.countryOfOrigin) ? 'Манхва' : 'Манга'
+      category: type === 'ANIME' ? 'Аниме' : m.format === 'NOVEL' ? 'Ранобэ' : 'Манга',
+      kind: {KR: 'Манхва', CN: 'Маньхуа', TW: 'Маньхуа', JP: 'Манга'}[m.countryOfOrigin] || 'Комикс'
     };
   });
 }
@@ -385,7 +393,7 @@ async function tmdb(search) {
 function fillForm(r) {
   if (!$('inputTitle').value.trim()) $('inputTitle').value = r.title;
   $('inputTitleEn').value = r.en; $('inputTitleOrig').value = r.orig; $('inputAlt').value = r.alt;
-  $('inputCategory').value = r.category; $('inputYear').value = r.year; $('inputExtRating').value = r.ext;
+  $('inputCategory').value = r.category; $('inputKind').value = r.kind || 'Манга'; $('inputYear').value = r.year; $('inputExtRating').value = r.ext;
   $('inputDescription').value = r.desc; $('inputTags').value = parseTags($('inputTags').value + ',' + r.tags.join(',')).join(', ');
   setPoster(r.poster); afHint();
 }
@@ -442,7 +450,7 @@ window.importData = e => {
       arr.forEach((x, n) => {
         const it = {
           id: Number(x.id) || Date.now() + n, title: String(x.title || '').trim(),
-          category: x.category === 'Кино' ? 'Фильм' : CATS.includes(x.category) ? x.category : 'Фильм',
+          category: x.category === 'Кино' ? 'Фильм' : x.category === 'Манхва' ? 'Манга' : CATS.includes(x.category) ? x.category : 'Фильм', kind: x.category === 'Манхва' ? 'Манхва' : (x.kind || ''),
           status: STATS.includes(x.status) ? x.status : 'В планах', poster: x.poster || '', year: x.year || '', rating: x.rating || '',
           extRating: x.extRating || '', description: x.description || '', titleEn: x.titleEn || '', titleOrig: x.titleOrig || '',
           alt: x.alt || '', tags: Array.isArray(x.tags) ? x.tags : []

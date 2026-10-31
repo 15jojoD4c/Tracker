@@ -25,6 +25,21 @@
             padding: 20px;
         }
 
+        /* Экраны авторизации */
+        #authScreen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 80vh;
+            text-align: center;
+            gap: 20px;
+        }
+
+        #appScreen {
+            display: none;
+        }
+
         /* Шапка и контролы */
         header {
             display: flex;
@@ -41,6 +56,7 @@
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
+            align-items: center;
         }
 
         .controls-row {
@@ -76,6 +92,8 @@
         .btn-secondary:hover { background: #444; }
         .btn-danger { background: #cf6679; color: #000; }
         .btn-danger:hover { background: #ff758c; }
+        .btn-google { background: #4285F4; display: flex; align-items: center; gap: 10px; font-size: 16px; padding: 12px 20px; }
+        .btn-google:hover { background: #3367D6; }
 
         .filters { display: flex; gap: 8px; flex-wrap: wrap; }
         .filter-btn {
@@ -108,7 +126,7 @@
         }
         .card:hover { transform: scale(1.02); border-color: var(--accent); }
         
-        .poster-container { position: relative; width: 100%; padding-top: 140%; /* Пропорция постера */ background: #2c2c2c; }
+        .poster-container { position: relative; width: 100%; padding-top: 140%; background: #2c2c2c; }
         .poster { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
         
         .card-info { padding: 12px; display: flex; flex-direction: column; flex-grow: 1; }
@@ -136,7 +154,7 @@
             justify-content: center;
             align-items: center;
             z-index: 1000;
-            padding: 10px; /* Для отступа на мобильных */
+            padding: 10px;
             box-sizing: border-box;
         }
         .modal-content {
@@ -158,7 +176,6 @@
         #detailPoster { width: 100%; height: auto; max-height: 400px; object-fit: contain; background: #111; border-radius: 4px; }
         #detailDescription { font-size: 14px; line-height: 1.5; color: #ccc; background: #222; padding: 12px; border-radius: 4px; margin-top: 10px;}
 
-        /* Скрытый инпут для импорта */
         #importFile { display: none; }
         
         @media (max-width: 600px) {
@@ -169,53 +186,69 @@
 </head>
 <body>
 
-    <header>
-        <h1 style="margin: 0; font-size: 24px;">Моя Коллекция</h1>
-        <div class="header-actions">
-            <button class="btn btn-secondary" onclick="exportData()">⬇ Скачать бэкап</button>
-            <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">⬆ Загрузить бэкап</button>
-            <input type="file" id="importFile" accept=".json" onchange="importData(event)">
-            <button class="btn" id="openModalBtn">+ Добавить тайтл</button>
+    <!-- ЭКРАН ВХОДА -->
+    <div id="authScreen">
+        <h1>Мой Медиа Трекер</h1>
+        <p style="color: var(--text-muted);">Войдите под своим аккаунтом Google, чтобы синхронизировать коллекцию</p>
+        <button class="btn btn-google" id="loginBtn">
+            <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.49h4.84c-.21 1.12-.86 2.07-1.82 2.71v2.26h2.94c1.72-1.58 2.78-3.9 2.78-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.94-2.26c-.81.54-1.84.86-3.02.86-2.32 0-4.29-1.57-5-3.68H1v2.33C2.53 15.96 5.51 18 9 18z"/><path fill="#FBBC05" d="M4 10.74c-.19-.57-.3-1.18-.3-1.74s.11-1.17.3-1.74V4.93H1.04C.38 6.25 0 7.76 0 9.37s.38 3.12 1.04 4.44l2.96-2.31z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.59C13.47.89 11.43 0 9 0 5.51 0 2.53 2.04 1 4.93l2.96 2.33c.71-2.11 2.68-3.68 5.04-3.68z"/></svg>
+            Войти через Google
+        </button>
+    </div>
+
+    <!-- ОСНОВНОЙ ИНТЕРФЕЙС ТРЕКЕРА -->
+    <div id="appScreen">
+        <header>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <h1 style="margin: 0; font-size: 24px;">Моя Коллекция</h1>
+                <span id="userEmail" style="font-size: 13px; color: var(--text-muted);"></span>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="exportData()">⬇ Бэкап</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">⬆ Загрузить</button>
+                <input type="file" id="importFile" accept=".json" onchange="importData(event)">
+                <button class="btn" id="openModalBtn">+ Добавить</button>
+                <button class="btn btn-danger" id="logoutBtn" style="padding: 9px 10px;" title="Выйти">Выход</button>
+            </div>
+        </header>
+
+        <div class="controls-row">
+            <input type="text" id="searchInput" class="search-bar" placeholder="Поиск по названию...">
+            
+            <select id="statusFilter">
+                <option value="Все">Все статусы</option>
+                <option value="В планах">В планах</option>
+                <option value="Смотрю/Читаю">Смотрю/Читаю</option>
+                <option value="Просмотрено/Прочитано">Просмотрено/Прочитано</option>
+                <option value="Любимое">Любимое</option>
+                <option value="Пересматриваю">Пересматриваю</option>
+                <option value="Брошено">Брошено</option>
+            </select>
+
+            <select id="sortSelect">
+                <option value="dateDesc">По дате добавления (новые)</option>
+                <option value="dateAsc">По дате добавления (старые)</option>
+                <option value="titleAsc">По алфавиту (А-Я)</option>
+                <option value="ratingDesc">По моей оценке (сначала высокие)</option>
+                <option value="yearDesc">По году (новые)</option>
+            </select>
         </div>
-    </header>
 
-    <div class="controls-row">
-        <input type="text" id="searchInput" class="search-bar" placeholder="Поиск по названию...">
-        
-        <select id="statusFilter">
-            <option value="Все">Все статусы</option>
-            <option value="В планах">В планах</option>
-            <option value="Смотрю/Читаю">Смотрю/Читаю</option>
-            <option value="Просмотрено/Прочитано">Просмотрено/Прочитано</option>
-            <option value="Любимое">Любимое</option>
-            <option value="Пересматриваю">Пересматриваю</option>
-            <option value="Брошено">Брошено</option>
-        </select>
+        <div class="filters" id="categoryFilters">
+            <button class="filter-btn active" data-category="Всё">Всё</button>
+            <button class="filter-btn" data-category="Фильм">Фильмы</button>
+            <button class="filter-btn" data-category="Сериал">Сериалы</button>
+            <button class="filter-btn" data-category="Аниме">Аниме</button>
+            <button class="filter-btn" data-category="Манга">Манга</button>
+            <button class="filter-btn" data-category="Манхва">Манхва</button>
+            <button class="filter-btn" data-category="Ранобэ">Ранобэ</button>
+            <button class="filter-btn" data-category="Мультфильм">Мультфильмы</button>
+        </div>
 
-        <select id="sortSelect">
-            <option value="dateDesc">По дате добавления (новые)</option>
-            <option value="dateAsc">По дате добавления (старые)</option>
-            <option value="titleAsc">По алфавиту (А-Я)</option>
-            <option value="ratingDesc">По моей оценке (сначала высокие)</option>
-            <option value="yearDesc">По году (новые)</option>
-        </select>
+        <div class="grid" id="itemsGrid" style="margin-top: 20px;"></div>
     </div>
 
-    <div class="filters" id="categoryFilters">
-        <button class="filter-btn active" data-category="Всё">Всё</button>
-        <button class="filter-btn" data-category="Фильм">Фильмы</button>
-        <button class="filter-btn" data-category="Сериал">Сериалы</button>
-        <button class="filter-btn" data-category="Аниме">Аниме</button>
-        <button class="filter-btn" data-category="Манга">Манга</button>
-        <button class="filter-btn" data-category="Манхва">Манхва</button>
-        <button class="filter-btn" data-category="Ранобэ">Ранобэ</button>
-        <button class="filter-btn" data-category="Мультфильм">Мультфильмы</button>
-    </div>
-
-    <!-- Сетка для карточек -->
-    <div class="grid" id="itemsGrid" style="margin-top: 20px;"></div>
-
-    <!-- Всплывающее окно добавления / редактирования -->
+    <!-- МОДАЛКА ДОБАВЛЕНИЯ / РЕДАКТИРОВАНИЯ -->
     <div class="modal" id="addModal">
         <div class="modal-content">
             <h3 id="modalFormTitle" style="margin: 0;">Добавить тайтл</h3>
@@ -261,10 +294,10 @@
         </div>
     </div>
 
-    <!-- Всплывающее окно подробностей тайтла -->
+    <!-- МОДАЛКА ПОДРОБНОСТЕЙ -->
     <div class="modal" id="detailModal">
         <div class="modal-content">
-            <img id="detailPoster" src="" alt="Постер" onerror="this.src=fallbackSvg">
+            <img id="detailPoster" src="" alt="Постер">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
                 <div class="status" id="detailStatus" style="margin: 0;"></div>
                 <div class="meta" id="detailMeta" style="margin: 0;"></div>
@@ -283,18 +316,41 @@
         </div>
     </div>
 
-    <script>
-        // --- База Данных ---
-        let collection = JSON.parse(localStorage.getItem('myTrackerData')) || [];
-        
-        // Встроенная SVG-заглушка на случай битой или пустой картинки
-        const fallbackSvg = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280"><rect width="200" height="280" fill="%232c2c2c"/><text x="50%" y="50%" fill="%23777" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" dominant-baseline="middle">Нет постера</text></svg>';
+    <!-- СКРИПТЫ FIREBASE И ЛОГИКА -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // --- Состояния фильтров ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
+            authDomain: "mymediatracker-6e179.firebaseapp.com",
+            projectId: "mymediatracker-6e179",
+            storageBucket: "mymediatracker-6e179.firebasestorage.app",
+            messagingSenderId: "642718397694",
+            appId: "1:642718397694:web:7a4e175ed593cc364961af",
+            measurementId: "G-NKNYFSP981"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const provider = new GoogleAuthProvider();
+
+        let currentUser = null;
+        let collectionData = [];
         let activeCategory = 'Всё';
         let currentDetailId = null;
 
-        // --- Элементы DOM ---
+        const fallbackSvg = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280"><rect width="200" height="280" fill="%232c2c2c"/><text x="50%" y="50%" fill="%23777" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" dominant-baseline="middle">Нет постера</text></svg>';
+
+        // DOM элементы
+        const authScreen = document.getElementById('authScreen');
+        const appScreen = document.getElementById('appScreen');
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const userEmailSpan = document.getElementById('userEmail');
+        
         const grid = document.getElementById('itemsGrid');
         const searchInput = document.getElementById('searchInput');
         const statusFilter = document.getElementById('statusFilter');
@@ -304,22 +360,83 @@
         const addModal = document.getElementById('addModal');
         const detailModal = document.getElementById('detailModal');
 
-        // --- Отрисовка карточек с безопасным textContent ---
+        // Авторизация
+        loginBtn.onclick = () => {
+            signInWithPopup(auth, provider).catch((error) => {
+                alert("Ошибка входа: " + error.message);
+            });
+        };
+
+        logoutBtn.onclick = () => {
+            signOut(auth);
+        };
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUser = user;
+                authScreen.style.display = 'none';
+                appScreen.style.display = 'block';
+                userEmailSpan.textContent = user.email;
+                await loadUserData();
+            } else {
+                currentUser = null;
+                appScreen.style.display = 'none';
+                authScreen.style.display = 'flex';
+                collectionData = [];
+            }
+        });
+
+        // Загрузка данных из Firestore
+        async function loadUserData() {
+            try {
+                const q = query(collection(db, "items"), where("userId", "==", currentUser.uid));
+                const querySnapshot = await getDocs(q);
+                collectionData = [];
+                querySnapshot.forEach((docSnap) => {
+                    collectionData.push(docSnap.data());
+                });
+                renderCards();
+            } catch (err) {
+                console.error("Ошибка загрузки данных:", err);
+            }
+        }
+
+        // Сохранение элемента в Firestore
+        async function saveItemToCloud(item) {
+            try {
+                await setDoc(doc(db, "items", String(item.id)), {
+                    ...item,
+                    userId: currentUser.uid
+                });
+            } catch (err) {
+                console.error("Ошибка сохранения:", err);
+                alert("Не удалось сохранить в облако.");
+            }
+        }
+
+        // Удаление элемента из Firestore
+        async function deleteItemFromCloud(id) {
+            try {
+                await deleteDoc(doc(db, "items", String(id)));
+            } catch (err) {
+                console.error("Ошибка удаления:", err);
+            }
+        }
+
+        // Отрисовка
         function renderCards() {
             grid.innerHTML = '';
             const searchTerm = searchInput.value.toLowerCase();
             const activeStatus = statusFilter.value;
             const sortMethod = sortSelect.value;
 
-            // 1. Фильтрация
-            let filtered = collection.filter(item => {
+            let filtered = collectionData.filter(item => {
                 const matchSearch = item.title.toLowerCase().includes(searchTerm);
                 const matchCat = activeCategory === 'Всё' || item.category === activeCategory;
                 const matchStatus = activeStatus === 'Все' || item.status === activeStatus;
                 return matchSearch && matchCat && matchStatus;
             });
 
-            // 2. Сортировка
             filtered.sort((a, b) => {
                 if (sortMethod === 'dateDesc') return b.id - a.id;
                 if (sortMethod === 'dateAsc') return a.id - b.id;
@@ -329,7 +446,6 @@
                 return 0;
             });
 
-            // 3. Вывод
             if (filtered.length === 0) {
                 grid.innerHTML = '<div style="color: #777; grid-column: 1 / -1;">Ничего не найдено.</div>';
                 return;
@@ -344,7 +460,6 @@
                 const myRate = item.rating ? `${item.rating}/10` : '-';
                 const extRate = item.extRating ? ` | Внешняя: ${item.extRating}` : '';
 
-                // Используем создание элементов, чтобы избежать XSS-уязвимостей
                 const posterCont = document.createElement('div');
                 posterCont.className = 'poster-container';
                 const img = document.createElement('img');
@@ -378,7 +493,6 @@
             });
         }
 
-        // --- Обработчики фильтров и поиска ---
         searchInput.addEventListener('input', renderCards);
         statusFilter.addEventListener('change', renderCards);
         sortSelect.addEventListener('change', renderCards);
@@ -392,7 +506,7 @@
             };
         });
 
-        // --- Логика модалок (Открытие / Закрытие / Esc) ---
+        // Модалки
         function openAddModal(isEdit = false, item = null) {
             document.getElementById('modalFormTitle').textContent = isEdit ? 'Редактировать тайтл' : 'Добавить тайтл';
             if (isEdit && item) {
@@ -426,7 +540,6 @@
         document.getElementById('closeAddBtn').onclick = closeModals;
         document.getElementById('closeDetailBtn').onclick = closeModals;
 
-        // Закрытие по клику вне окна и по Esc
         window.onclick = (e) => {
             if (e.target === addModal || e.target === detailModal) closeModals();
         };
@@ -434,24 +547,17 @@
             if (e.key === 'Escape') closeModals();
         };
 
-        // --- Сохранение (Добавление / Редактирование) ---
-        document.getElementById('saveItemBtn').onclick = () => {
+        // Сохранение
+        document.getElementById('saveItemBtn').onclick = async () => {
             const titleVal = document.getElementById('inputTitle').value.trim();
             const yearVal = document.getElementById('inputYear').value;
             const editId = document.getElementById('editId').value;
 
-            // Валидация
             if (!titleVal) return alert("Название обязательно!");
             if (yearVal && (yearVal < 1900 || yearVal > 2100)) return alert("Год должен быть между 1900 и 2100");
-            
-            // Проверка на дубликат (если это не редактирование того же самого тайтла)
-            const isDuplicate = collection.some(i => i.title.toLowerCase() === titleVal.toLowerCase() && String(i.id) !== editId);
-            if (isDuplicate) {
-                if(!confirm("Тайтл с таким названием уже есть. Всё равно сохранить?")) return;
-            }
 
             const itemData = {
-                id: editId ? Number(editId) : Date.now(), // Уникальный ID на основе времени
+                id: editId ? Number(editId) : Date.now(),
                 title: titleVal,
                 category: document.getElementById('inputCategory').value,
                 status: document.getElementById('inputStatus').value,
@@ -463,21 +569,20 @@
             };
 
             if (editId) {
-                const index = collection.findIndex(i => i.id === Number(editId));
-                if (index > -1) collection[index] = itemData;
+                const index = collectionData.findIndex(i => i.id === Number(editId));
+                if (index > -1) collectionData[index] = itemData;
             } else {
-                collection.push(itemData);
+                collectionData.push(itemData);
             }
 
-            localStorage.setItem('myTrackerData', JSON.stringify(collection));
+            await saveItemToCloud(itemData);
             renderCards();
             closeModals();
-            if(editId) openDetailModal(itemData.id); // Возвращаемся в детали, если редактировали
+            if(editId) openDetailModal(itemData.id);
         };
 
-        // --- Окно подробностей и удаление ---
         function openDetailModal(id) {
-            const item = collection.find(i => i.id === id);
+            const item = collectionData.find(i => i.id === id);
             if (!item) return;
             currentDetailId = id;
 
@@ -491,31 +596,30 @@
             document.getElementById('detailRating').textContent = `★ Моя оценка: ${myRate}${extRate}`;
             
             document.getElementById('detailDescription').textContent = item.description || 'Описание отсутствует.';
-            
             detailModal.style.display = 'flex';
         }
 
         document.getElementById('editItemBtn').onclick = () => {
-            const item = collection.find(i => i.id === currentDetailId);
+            const item = collectionData.find(i => i.id === currentDetailId);
             if (item) {
                 closeModals();
                 openAddModal(true, item);
             }
         };
 
-        document.getElementById('deleteItemBtn').onclick = () => {
+        document.getElementById('deleteItemBtn').onclick = async () => {
             if (confirm('Точно удалить этот тайтл из коллекции?')) {
-                collection = collection.filter(i => i.id !== currentDetailId);
-                localStorage.setItem('myTrackerData', JSON.stringify(collection));
+                await deleteItemFromCloud(currentDetailId);
+                collectionData = collectionData.filter(i => i.id !== currentDetailId);
                 closeModals();
                 renderCards();
             }
         };
 
-        // --- Бэкапы (Экспорт / Импорт) ---
-        function exportData() {
-            if (collection.length === 0) return alert("Коллекция пуста, нечего скачивать.");
-            const dataStr = JSON.stringify(collection, null, 2);
+        // Бэкапы
+        window.exportData = function() {
+            if (collectionData.length === 0) return alert("Коллекция пуста, нечего скачивать.");
+            const dataStr = JSON.stringify(collectionData, null, 2);
             const blob = new Blob([dataStr], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             
@@ -526,32 +630,31 @@
             URL.revokeObjectURL(url);
         }
 
-        function importData(event) {
+        window.importData = async function(event) {
             const file = event.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 try {
                     const importedData = JSON.parse(e.target.result);
                     if (Array.isArray(importedData)) {
-                        collection = importedData;
-                        localStorage.setItem('myTrackerData', JSON.stringify(collection));
+                        for (let item of importedData) {
+                            collectionData.push(item);
+                            await saveItemToCloud(item);
+                        }
                         renderCards();
-                        alert("Бэкап успешно загружен!");
+                        alert("Бэкап успешно загружен и сохранен в облако!");
                     } else {
                         alert("Ошибка: файл имеет неверный формат.");
                     }
                 } catch (err) {
                     alert("Ошибка чтения файла JSON.");
                 }
-                event.target.value = ''; // Сброс инпута
+                event.target.value = '';
             };
             reader.readAsText(file);
         }
-
-        // --- Инициализация ---
-        renderCards();
     </script>
 </body>
 </html>

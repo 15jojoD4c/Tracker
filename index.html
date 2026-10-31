@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мой Медиа Трекер</title>
+    <style>
+        :root {
+            --bg-main: #121212;
+            --bg-card: #1e1e1e;
+            --bg-input: #222;
+            --border-color: #333;
+            --accent: #6200ea;
+            --accent-hover: #7c4dff;
+            --text-main: #ffffff;
+            --text-muted: #aaa;
+            --status-bg: #03dac6;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+
+        /* Шапка и контролы */
+        header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+            gap: 15px;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .controls-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        input, select, textarea {
+            padding: 9px;
+            background: var(--bg-input);
+            border: 1px solid #444;
+            color: white;
+            border-radius: 4px;
+            font-family: inherit;
+        }
+
+        .search-bar { width: 100%; max-width: 300px; }
+        
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 9px 15px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .btn:hover { background: var(--accent-hover); }
+        .btn-secondary { background: #333; }
+        .btn-secondary:hover { background: #444; }
+        .btn-danger { background: #cf6679; color: #000; }
+        .btn-danger:hover { background: #ff758c; }
+
+        .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+        .filter-btn {
+            background: #2a2a2a;
+            color: white;
+            border: 1px solid #444;
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+        .filter-btn.active { background: var(--accent); border-color: var(--accent); }
+
+        /* Сетка карточек */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            transition: transform 0.2s, border 0.2s;
+            border: 1px solid transparent;
+        }
+        .card:hover { transform: scale(1.02); border-color: var(--accent); }
+        
+        .poster-container { position: relative; width: 100%; padding-top: 140%; /* Пропорция постера */ background: #2c2c2c; }
+        .poster { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+        
+        .card-info { padding: 12px; display: flex; flex-direction: column; flex-grow: 1; }
+        .title { font-size: 16px; font-weight: bold; margin: 0 0 5px 0; line-height: 1.2; }
+        .meta { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+        .status {
+            align-self: flex-start;
+            background: var(--status-bg);
+            color: #000;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .ratings { font-size: 13px; color: #ff9800; margin-top: auto; line-height: 1.5; }
+
+        /* Всплывающие окна */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            padding: 10px; /* Для отступа на мобильных */
+            box-sizing: border-box;
+        }
+        .modal-content {
+            background: var(--bg-card);
+            padding: 20px;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 400px;
+            max-height: 90vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            border: 1px solid var(--border-color);
+        }
+        .modal-content textarea { resize: vertical; min-height: 80px; }
+        .modal-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+        
+        #detailPoster { width: 100%; height: auto; max-height: 400px; object-fit: contain; background: #111; border-radius: 4px; }
+        #detailDescription { font-size: 14px; line-height: 1.5; color: #ccc; background: #222; padding: 12px; border-radius: 4px; margin-top: 10px;}
+
+        /* Скрытый инпут для импорта */
+        #importFile { display: none; }
+        
+        @media (max-width: 600px) {
+            .search-bar { max-width: 100%; }
+            .header-actions { width: 100%; justify-content: space-between; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1 style="margin: 0; font-size: 24px;">Моя Коллекция</h1>
+        <div class="header-actions">
+            <button class="btn btn-secondary" onclick="exportData()">⬇ Скачать бэкап</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">⬆ Загрузить бэкап</button>
+            <input type="file" id="importFile" accept=".json" onchange="importData(event)">
+            <button class="btn" id="openModalBtn">+ Добавить тайтл</button>
+        </div>
+    </header>
+
+    <div class="controls-row">
+        <input type="text" id="searchInput" class="search-bar" placeholder="Поиск по названию...">
+        
+        <select id="statusFilter">
+            <option value="Все">Все статусы</option>
+            <option value="В планах">В планах</option>
+            <option value="Смотрю/Читаю">Смотрю/Читаю</option>
+            <option value="Просмотрено/Прочитано">Просмотрено/Прочитано</option>
+            <option value="Любимое">Любимое</option>
+            <option value="Пересматриваю">Пересматриваю</option>
+            <option value="Брошено">Брошено</option>
+        </select>
+
+        <select id="sortSelect">
+            <option value="dateDesc">По дате добавления (новые)</option>
+            <option value="dateAsc">По дате добавления (старые)</option>
+            <option value="titleAsc">По алфавиту (А-Я)</option>
+            <option value="ratingDesc">По моей оценке (сначала высокие)</option>
+            <option value="yearDesc">По году (новые)</option>
+        </select>
+    </div>
+
+    <div class="filters" id="categoryFilters">
+        <button class="filter-btn active" data-category="Всё">Всё</button>
+        <button class="filter-btn" data-category="Фильм">Фильмы</button>
+        <button class="filter-btn" data-category="Сериал">Сериалы</button>
+        <button class="filter-btn" data-category="Аниме">Аниме</button>
+        <button class="filter-btn" data-category="Манга">Манга</button>
+        <button class="filter-btn" data-category="Манхва">Манхва</button>
+        <button class="filter-btn" data-category="Ранобэ">Ранобэ</button>
+        <button class="filter-btn" data-category="Мультфильм">Мультфильмы</button>
+    </div>
+
+    <!-- Сетка для карточек -->
+    <div class="grid" id="itemsGrid" style="margin-top: 20px;"></div>
+
+    <!-- Всплывающее окно добавления / редактирования -->
+    <div class="modal" id="addModal">
+        <div class="modal-content">
+            <h3 id="modalFormTitle" style="margin: 0;">Добавить тайтл</h3>
+            <input type="hidden" id="editId">
+            
+            <input type="text" id="inputTitle" placeholder="Название (обязательно)*">
+            
+            <div style="display: flex; gap: 10px;">
+                <select id="inputCategory" style="flex: 1;">
+                    <option value="Фильм">Фильм</option>
+                    <option value="Сериал">Сериал</option>
+                    <option value="Аниме">Аниме</option>
+                    <option value="Манга">Манга</option>
+                    <option value="Манхва">Манхва</option>
+                    <option value="Ранобэ">Ранобэ</option>
+                    <option value="Мультфильм">Мультфильм</option>
+                </select>
+                
+                <select id="inputStatus" style="flex: 1;">
+                    <option value="В планах">В планах</option>
+                    <option value="Смотрю/Читаю">Смотрю/Читаю</option>
+                    <option value="Просмотрено/Прочитано">Просмотрено/Прочитано</option>
+                    <option value="Любимое">Любимое</option>
+                    <option value="Пересматриваю">Пересматриваю</option>
+                    <option value="Брошено">Брошено</option>
+                </select>
+            </div>
+            
+            <input type="text" id="inputPoster" placeholder="Ссылка на постер (URL)">
+            
+            <div style="display: flex; gap: 10px;">
+                <input type="number" id="inputYear" placeholder="Год (1900-2100)" min="1900" max="2100" style="flex: 1;">
+                <input type="number" id="inputRating" placeholder="Моя оценка (1-10)" min="1" max="10" step="1" style="flex: 1;">
+            </div>
+            
+            <input type="number" id="inputExtRating" placeholder="Оценка Shikimori/IMDb (напр. 8.54)" min="0" max="10" step="0.01">
+            <textarea id="inputDescription" placeholder="Синопсис / Описание..."></textarea>
+            
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" id="closeAddBtn" type="button">Отмена</button>
+                <button class="btn" id="saveItemBtn" type="button">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Всплывающее окно подробностей тайтла -->
+    <div class="modal" id="detailModal">
+        <div class="modal-content">
+            <img id="detailPoster" src="" alt="Постер" onerror="this.src=fallbackSvg">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <div class="status" id="detailStatus" style="margin: 0;"></div>
+                <div class="meta" id="detailMeta" style="margin: 0;"></div>
+            </div>
+            <h2 id="detailTitle" style="margin: 10px 0;"></h2>
+            <div class="ratings" id="detailRating" style="font-size: 15px;"></div>
+            <div id="detailDescription"></div>
+            
+            <div class="modal-buttons" style="justify-content: space-between; margin-top: 15px;">
+                <button class="btn btn-danger" id="deleteItemBtn">Удалить</button>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn" id="editItemBtn">Редактировать</button>
+                    <button class="btn btn-secondary" id="closeDetailBtn">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- База Данных ---
+        let collection = JSON.parse(localStorage.getItem('myTrackerData')) || [];
+        
+        // Встроенная SVG-заглушка на случай битой или пустой картинки
+        const fallbackSvg = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280"><rect width="200" height="280" fill="%232c2c2c"/><text x="50%" y="50%" fill="%23777" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" dominant-baseline="middle">Нет постера</text></svg>';
+
+        // --- Состояния фильтров ---
+        let activeCategory = 'Всё';
+        let currentDetailId = null;
+
+        // --- Элементы DOM ---
+        const grid = document.getElementById('itemsGrid');
+        const searchInput = document.getElementById('searchInput');
+        const statusFilter = document.getElementById('statusFilter');
+        const sortSelect = document.getElementById('sortSelect');
+        const filterBtns = document.querySelectorAll('.filter-btn');
+        
+        const addModal = document.getElementById('addModal');
+        const detailModal = document.getElementById('detailModal');
+
+        // --- Отрисовка карточек с безопасным textContent ---
+        function renderCards() {
+            grid.innerHTML = '';
+            const searchTerm = searchInput.value.toLowerCase();
+            const activeStatus = statusFilter.value;
+            const sortMethod = sortSelect.value;
+
+            // 1. Фильтрация
+            let filtered = collection.filter(item => {
+                const matchSearch = item.title.toLowerCase().includes(searchTerm);
+                const matchCat = activeCategory === 'Всё' || item.category === activeCategory;
+                const matchStatus = activeStatus === 'Все' || item.status === activeStatus;
+                return matchSearch && matchCat && matchStatus;
+            });
+
+            // 2. Сортировка
+            filtered.sort((a, b) => {
+                if (sortMethod === 'dateDesc') return b.id - a.id;
+                if (sortMethod === 'dateAsc') return a.id - b.id;
+                if (sortMethod === 'titleAsc') return a.title.localeCompare(b.title);
+                if (sortMethod === 'yearDesc') return (b.year || 0) - (a.year || 0);
+                if (sortMethod === 'ratingDesc') return (b.rating || 0) - (a.rating || 0);
+                return 0;
+            });
+
+            // 3. Вывод
+            if (filtered.length === 0) {
+                grid.innerHTML = '<div style="color: #777; grid-column: 1 / -1;">Ничего не найдено.</div>';
+                return;
+            }
+
+            filtered.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.onclick = () => openDetailModal(item.id);
+
+                const finalImg = item.poster ? item.poster : fallbackSvg;
+                const myRate = item.rating ? `${item.rating}/10` : '-';
+                const extRate = item.extRating ? ` | Внешняя: ${item.extRating}` : '';
+
+                // Используем создание элементов, чтобы избежать XSS-уязвимостей
+                const posterCont = document.createElement('div');
+                posterCont.className = 'poster-container';
+                const img = document.createElement('img');
+                img.className = 'poster';
+                img.src = finalImg;
+                img.onerror = function() { this.src = fallbackSvg; };
+                posterCont.appendChild(img);
+
+                const info = document.createElement('div');
+                info.className = 'card-info';
+
+                const statusDiv = document.createElement('div');
+                statusDiv.className = 'status';
+                statusDiv.textContent = item.status;
+
+                const titleH3 = document.createElement('h3');
+                titleH3.className = 'title';
+                titleH3.textContent = item.title;
+
+                const metaDiv = document.createElement('div');
+                metaDiv.className = 'meta';
+                metaDiv.textContent = `${item.category} • ${item.year || 'Год не указан'}`;
+
+                const ratingDiv = document.createElement('div');
+                ratingDiv.className = 'ratings';
+                ratingDiv.textContent = `★ Моя: ${myRate}${extRate}`;
+
+                info.append(statusDiv, titleH3, metaDiv, ratingDiv);
+                card.append(posterCont, info);
+                grid.appendChild(card);
+            });
+        }
+
+        // --- Обработчики фильтров и поиска ---
+        searchInput.addEventListener('input', renderCards);
+        statusFilter.addEventListener('change', renderCards);
+        sortSelect.addEventListener('change', renderCards);
+
+        filterBtns.forEach(btn => {
+            btn.onclick = () => {
+                filterBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                activeCategory = btn.dataset.category;
+                renderCards();
+            };
+        });
+
+        // --- Логика модалок (Открытие / Закрытие / Esc) ---
+        function openAddModal(isEdit = false, item = null) {
+            document.getElementById('modalFormTitle').textContent = isEdit ? 'Редактировать тайтл' : 'Добавить тайтл';
+            if (isEdit && item) {
+                document.getElementById('editId').value = item.id;
+                document.getElementById('inputTitle').value = item.title;
+                document.getElementById('inputCategory').value = item.category;
+                document.getElementById('inputStatus').value = item.status;
+                document.getElementById('inputPoster').value = item.poster;
+                document.getElementById('inputYear').value = item.year;
+                document.getElementById('inputRating').value = item.rating;
+                document.getElementById('inputExtRating').value = item.extRating || '';
+                document.getElementById('inputDescription').value = item.description;
+            } else {
+                document.getElementById('editId').value = '';
+                document.getElementById('inputTitle').value = '';
+                document.getElementById('inputPoster').value = '';
+                document.getElementById('inputYear').value = '';
+                document.getElementById('inputRating').value = '';
+                document.getElementById('inputExtRating').value = '';
+                document.getElementById('inputDescription').value = '';
+            }
+            addModal.style.display = 'flex';
+        }
+
+        function closeModals() {
+            addModal.style.display = 'none';
+            detailModal.style.display = 'none';
+        }
+
+        document.getElementById('openModalBtn').onclick = () => openAddModal(false);
+        document.getElementById('closeAddBtn').onclick = closeModals;
+        document.getElementById('closeDetailBtn').onclick = closeModals;
+
+        // Закрытие по клику вне окна и по Esc
+        window.onclick = (e) => {
+            if (e.target === addModal || e.target === detailModal) closeModals();
+        };
+        window.onkeydown = (e) => {
+            if (e.key === 'Escape') closeModals();
+        };
+
+        // --- Сохранение (Добавление / Редактирование) ---
+        document.getElementById('saveItemBtn').onclick = () => {
+            const titleVal = document.getElementById('inputTitle').value.trim();
+            const yearVal = document.getElementById('inputYear').value;
+            const editId = document.getElementById('editId').value;
+
+            // Валидация
+            if (!titleVal) return alert("Название обязательно!");
+            if (yearVal && (yearVal < 1900 || yearVal > 2100)) return alert("Год должен быть между 1900 и 2100");
+            
+            // Проверка на дубликат (если это не редактирование того же самого тайтла)
+            const isDuplicate = collection.some(i => i.title.toLowerCase() === titleVal.toLowerCase() && String(i.id) !== editId);
+            if (isDuplicate) {
+                if(!confirm("Тайтл с таким названием уже есть. Всё равно сохранить?")) return;
+            }
+
+            const itemData = {
+                id: editId ? Number(editId) : Date.now(), // Уникальный ID на основе времени
+                title: titleVal,
+                category: document.getElementById('inputCategory').value,
+                status: document.getElementById('inputStatus').value,
+                poster: document.getElementById('inputPoster').value.trim(),
+                year: yearVal,
+                rating: document.getElementById('inputRating').value,
+                extRating: document.getElementById('inputExtRating').value,
+                description: document.getElementById('inputDescription').value.trim()
+            };
+
+            if (editId) {
+                const index = collection.findIndex(i => i.id === Number(editId));
+                if (index > -1) collection[index] = itemData;
+            } else {
+                collection.push(itemData);
+            }
+
+            localStorage.setItem('myTrackerData', JSON.stringify(collection));
+            renderCards();
+            closeModals();
+            if(editId) openDetailModal(itemData.id); // Возвращаемся в детали, если редактировали
+        };
+
+        // --- Окно подробностей и удаление ---
+        function openDetailModal(id) {
+            const item = collection.find(i => i.id === id);
+            if (!item) return;
+            currentDetailId = id;
+
+            document.getElementById('detailPoster').src = item.poster ? item.poster : fallbackSvg;
+            document.getElementById('detailTitle').textContent = item.title;
+            document.getElementById('detailStatus').textContent = item.status;
+            document.getElementById('detailMeta').textContent = `${item.category} • ${item.year || 'Год не указан'}`;
+            
+            const myRate = item.rating ? `${item.rating}/10` : '-/10';
+            const extRate = item.extRating ? ` | Внешняя оценка: ${item.extRating}` : '';
+            document.getElementById('detailRating').textContent = `★ Моя оценка: ${myRate}${extRate}`;
+            
+            document.getElementById('detailDescription').textContent = item.description || 'Описание отсутствует.';
+            
+            detailModal.style.display = 'flex';
+        }
+
+        document.getElementById('editItemBtn').onclick = () => {
+            const item = collection.find(i => i.id === currentDetailId);
+            if (item) {
+                closeModals();
+                openAddModal(true, item);
+            }
+        };
+
+        document.getElementById('deleteItemBtn').onclick = () => {
+            if (confirm('Точно удалить этот тайтл из коллекции?')) {
+                collection = collection.filter(i => i.id !== currentDetailId);
+                localStorage.setItem('myTrackerData', JSON.stringify(collection));
+                closeModals();
+                renderCards();
+            }
+        };
+
+        // --- Бэкапы (Экспорт / Импорт) ---
+        function exportData() {
+            if (collection.length === 0) return alert("Коллекция пуста, нечего скачивать.");
+            const dataStr = JSON.stringify(collection, null, 2);
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `MediaTracker_Backup_${new Date().toLocaleDateString()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (Array.isArray(importedData)) {
+                        collection = importedData;
+                        localStorage.setItem('myTrackerData', JSON.stringify(collection));
+                        renderCards();
+                        alert("Бэкап успешно загружен!");
+                    } else {
+                        alert("Ошибка: файл имеет неверный формат.");
+                    }
+                } catch (err) {
+                    alert("Ошибка чтения файла JSON.");
+                }
+                event.target.value = ''; // Сброс инпута
+            };
+            reader.readAsText(file);
+        }
+
+        // --- Инициализация ---
+        renderCards();
+    </script>
+</body>
+</html>

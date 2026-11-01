@@ -5,53 +5,78 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Мой Медиа Трекер</title>
 <style>
-:root{--bg:#121212;--card:#1e1e1e;--inp:#222;--bd:#333;--ac:#6200ea;--ach:#7c4dff;--mu:#aaa}
+:root{--bg:#0d0f14;--card:#171a22;--inp:#1b1e27;--bd:#262a36;--ac:#7c5cff;--ach:#9478ff;--mu:#9aa0b4}
 *{box-sizing:border-box}
 body{background:var(--bg);color:#fff;font-family:Arial,sans-serif;margin:0;padding:20px}
 #authScreen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;text-align:center;gap:20px}
 #appScreen{display:none}
-header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:15px;border-bottom:1px solid var(--bd);padding-bottom:15px;margin-bottom:15px}
+header{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:15px;background:rgba(13,15,20,.88);backdrop-filter:blur(10px);margin:-20px -20px 16px;padding:14px 20px;border-bottom:1px solid var(--bd)}
+.logo{background:linear-gradient(90deg,#fff,#a893ff);-webkit-background-clip:text;background-clip:text;color:transparent}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .row2{display:flex;gap:10px}.row2>*{flex:1}
-input,select,textarea{padding:9px;background:var(--inp);border:1px solid #444;color:#fff;border-radius:4px;font-family:inherit;min-width:0}
+input,select,textarea{padding:10px;background:var(--inp);border:1px solid #333847;color:#fff;border-radius:10px;font-family:inherit;min-width:0;transition:.15s}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--ac);box-shadow:0 0 0 3px rgba(124,92,255,.25)}
 textarea{resize:vertical;min-height:80px}
-.btn{background:var(--ac);color:#fff;border:0;padding:9px 15px;cursor:pointer;border-radius:4px;font-weight:bold}
-.btn:hover{background:var(--ach)}
-.btn-s{background:#333}.btn-s:hover{background:#444}
+.btn{background:var(--ac);color:#fff;border:0;padding:10px 16px;cursor:pointer;border-radius:10px;font-weight:bold;transition:.15s}
+.btn:hover{background:var(--ach)}.btn:active{transform:scale(.97)}
+.btn-s{background:#262a36}.btn-s:hover{background:#333847}
 .btn-d{background:#cf6679;color:#000}.btn-d:hover{background:#ff758c}
 .btn-g{background:#4285F4;font-size:16px;padding:12px 20px}.btn-g:hover{background:#3367D6}
 #searchInput{flex:1;max-width:300px;min-width:140px}
-.filters{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 5px}
-.fb,.kb{background:#2a2a2a;color:#fff;border:1px solid #444;padding:6px 12px;border-radius:20px;cursor:pointer}
-.fb.on,.kb.on{background:var(--ac);border-color:var(--ac)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:20px;margin-top:20px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 5px;align-items:center}
+.fb,.kb{background:#1b1e27;color:#cfd3e2;border:1px solid #2c3040;padding:7px 14px;border-radius:999px;cursor:pointer;transition:.15s}
+.fb:hover,.kb:hover{border-color:var(--ac)}
+.fb.on,.kb.on{background:var(--ac);border-color:var(--ac);color:#fff;box-shadow:0 0 14px rgba(124,92,255,.45)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:28px 20px;margin-top:22px}
 .msg{color:#777;grid-column:1/-1}
-.card{background:var(--card);border-radius:8px;overflow:hidden;box-shadow:0 4px 8px rgba(0,0,0,.5);display:flex;flex-direction:column;cursor:pointer;transition:transform .2s;border:1px solid transparent}
-.card:hover{transform:scale(1.02);border-color:var(--ac)}
-.pc{position:relative;width:100%;padding-top:140%;background:#2c2c2c}
-.pc img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.ci{padding:12px;display:flex;flex-direction:column;flex-grow:1}
-.title{font-size:16px;font-weight:bold;margin:0 0 5px;line-height:1.2}
+.card{cursor:pointer;animation:fin .3s ease both}
+@keyframes fin{from{opacity:0;transform:translateY(10px)}}
+.pc{position:relative;width:100%;padding-top:150%;border-radius:14px;overflow:hidden;background:#222633;transition:transform .15s ease-out,box-shadow .3s}
+.pc img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .5s ease}
+.card:hover .pc{box-shadow:0 14px 34px rgba(124,92,255,.38)}
+.card:hover .pc img{transform:scale(1.1)}
+.ov{position:absolute;inset:0;z-index:1;display:flex;align-items:flex-end;padding:12px;opacity:0;transition:opacity .25s;background:linear-gradient(to top,rgba(8,9,14,.97) 0%,rgba(8,9,14,.78) 55%,rgba(8,9,14,.1) 100%)}
+.card:hover .ov{opacity:1}
+.ov p{margin:0;font-size:12px;line-height:1.45;color:#ddd;display:-webkit-box;-webkit-line-clamp:7;-webkit-box-orient:vertical;overflow:hidden}
+.status{display:inline-block;background:#1db57a;color:#fff;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700}
+.status[data-s="В планах"]{background:#5b6b8c}
+.status[data-s="Смотрю/Читаю"]{background:#2f8fe8}
+.status[data-s="Любимое"]{background:#e0457b}
+.status[data-s="Пересматриваю"]{background:#8a5cf0}
+.status[data-s="Брошено"]{background:#c2543e}
+.pc .status{position:absolute;top:10px;left:10px;z-index:2;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.mine{position:absolute;right:10px;bottom:10px;z-index:2;background:rgba(124,92,255,.92);padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;transition:opacity .25s}
+.card:hover .mine{opacity:0}
+.title{font-size:14px;font-weight:700;margin:10px 0 6px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cm{display:flex;justify-content:space-between;gap:6px;font-size:12px;color:var(--mu)}
+.star{display:inline-block;color:#fff;font-weight:700}
+.star::first-letter{color:#ffc107}
+.tg{font-size:11px;color:#6f7590;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .meta{font-size:12px;color:var(--mu);margin-bottom:8px}
-.status{align-self:flex-start;background:#03dac6;color:#000;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:bold;margin-bottom:8px}
-.ratings{font-size:13px;color:#ff9800;margin-top:auto;line-height:1.5}
-.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);justify-content:center;align-items:center;z-index:1000;padding:10px}
-.mc{background:var(--card);padding:20px;border-radius:8px;width:100%;max-width:420px;max-height:92vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;border:1px solid var(--bd)}
+.ratings{font-size:14px;color:#ffb74d;line-height:1.5}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(4px);justify-content:center;align-items:center;z-index:1000;padding:10px}
+.mc{background:var(--card);padding:22px;border-radius:16px;width:100%;max-width:420px;max-height:92vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;border:1px solid var(--bd);animation:pop .2s ease}
+@keyframes pop{from{opacity:0;transform:scale(.96)}}
 .mb{display:flex;justify-content:space-between;gap:10px;margin-top:10px}
-#detailPoster{width:100%;max-height:400px;object-fit:contain;background:#111;border-radius:4px}
-#detailDescription{font-size:14px;line-height:1.5;color:#ccc;background:#222;padding:12px;border-radius:4px;white-space:pre-wrap}
+#detailModal .mc{max-width:780px;display:grid;grid-template-columns:230px 1fr;gap:12px 22px;align-content:start}
+#detailModal .mc>*{grid-column:2;min-width:0}
+#detailModal #detailPoster{grid-column:1;grid-row:1/9;width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:12px;align-self:start;background:#222633}
+#detailDescription{font-size:14px;line-height:1.55;color:#ccc;background:#12141b;padding:12px;border-radius:10px;white-space:pre-wrap}
+@media(max-width:640px){#detailModal .mc{grid-template-columns:1fr}#detailModal .mc>*,#detailModal #detailPoster{grid-column:1;grid-row:auto}#detailModal #detailPoster{max-width:220px;margin:auto}}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
-.chip{background:#2a2a2a;border:1px solid #444;color:#ddd;border-radius:12px;padding:3px 10px;font-size:12px;cursor:pointer}
-.af{background:#191919;border:1px dashed #444;border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.chip{background:#222633;border:1px solid #333847;color:#ddd;border-radius:12px;padding:3px 10px;font-size:12px;cursor:pointer}
+.chip:hover{border-color:var(--ac)}
+.af{background:#12141b;border:1px dashed #333847;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
 #afResults{max-height:230px;overflow-y:auto}
-.afr{display:flex;gap:10px;align-items:center;padding:6px;border-radius:4px;cursor:pointer}
-.afr:hover{background:#2a2a2a}
-.afr img{width:40px;height:56px;object-fit:cover;border-radius:3px;background:#2c2c2c}
-#posterPreview{height:70px;border-radius:4px;background:#2c2c2c}
+.afr{display:flex;gap:10px;align-items:center;padding:6px;border-radius:8px;cursor:pointer}
+.afr:hover{background:#222633}
+.afr img{width:40px;height:56px;object-fit:cover;border-radius:4px;background:#222633}
+#posterPreview{height:70px;border-radius:6px;background:#222633}
 .bar{height:8px;background:var(--ac);border-radius:4px}
 .sr{display:grid;grid-template-columns:1fr 90px 40px;gap:8px;align-items:center;font-size:13px;margin:4px 0}
 #importFile{display:none}
-@media(max-width:600px){.hdr-actions{width:100%;justify-content:space-between}}
+@media(max-width:600px){.hdr-actions{width:100%;justify-content:space-between}.grid{grid-template-columns:repeat(2,1fr);gap:20px 12px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
@@ -64,7 +89,7 @@ textarea{resize:vertical;min-height:80px}
 
 <div id="appScreen">
   <header>
-    <div class="row"><h1 style="margin:0;font-size:24px">Моя Коллекция</h1><span id="userEmail" class="meta" style="margin:0"></span></div>
+    <div class="row"><h1 class="logo" style="margin:0;font-size:24px">Моя Коллекция</h1><span id="userEmail" class="meta" style="margin:0"></span></div>
     <div class="row hdr-actions">
       <button class="btn btn-s" id="statsBtn">📊 Статистика</button>
       <button class="btn btn-s" onclick="exportData()">⬇ Бэкап</button>
@@ -96,7 +121,7 @@ textarea{resize:vertical;min-height:80px}
     <button class="fb on" data-c="Всё">Всё</button><button class="fb" data-c="Фильм">Фильмы</button>
     <button class="fb" data-c="Сериал">Сериалы</button><button class="fb" data-c="Аниме">Аниме</button>
     <button class="fb" data-c="Манга">Манга</button>
-    <button class="fb" data-c="Ранобэ">Ранобэ</button><button class="fb" data-c="Мультфильм">Мультфильмы</button>
+    <button class="fb" data-c="Ранобэ">Ранобэ</button><button class="fb" data-c="Мультфильм">Мультфильмы</button><span id="countInfo" style="margin-left:auto;font-size:12px;color:#7d839a"></span>
   </div>
   <div class="filters" id="kindFilters" style="display:none;margin-top:8px"><button class="kb on" data-k="Все">Все виды</button><button class="kb" data-k="Манга">Манга</button><button class="kb" data-k="Манхва">Манхва</button><button class="kb" data-k="Маньхуа">Маньхуа</button><button class="kb" data-k="Комикс">Комикс</button></div>
   <div class="grid" id="itemsGrid"></div>
@@ -241,15 +266,22 @@ function render() {
     return b.id - a.id;
   });
   if (!list.length) return grid.append(el('div', 'msg', 'Ничего не найдено.'));
+  $('countInfo').textContent = `Показано: ${list.length} из ${items.length}`;
+  const SHORT = {'Просмотрено/Прочитано': 'Завершено', 'Смотрю/Читаю': 'В процессе'};
   list.forEach(i => {
-    const card = el('div', 'card'), pc = el('div', 'pc'), img = el('img');
+    const card = el('div', 'card'), pc = el('div', 'pc'), img = el('img'), st = el('div', 'status', SHORT[i.status] || i.status);
+    st.dataset.s = i.status;
     img.loading = 'lazy'; img.src = i.poster || FALL; img.onerror = () => { img.onerror = null; img.src = FALL; };
-    pc.append(img);
-    const info = el('div', 'ci');
-    info.append(el('div', 'status', i.status), el('h3', 'title', i.title),
-      el('div', 'meta', `${catLabel(i)} • ${i.year || 'Год не указан'}`),
-      el('div', 'ratings', `★ Моя: ${i.rating ? i.rating + '/10' : '-'}${i.extRating ? ' | Внешняя: ' + i.extRating : ''}`));
-    card.append(pc, info); card.onclick = () => openDetail(i.id); grid.append(card);
+    const ov = el('div', 'ov'); ov.append(el('p', null, i.description || 'Описание отсутствует.'));
+    pc.append(img, ov, st);
+    if (i.rating) pc.append(el('div', 'mine', '★ ' + i.rating));
+    const info = el('div', 'ci'), row = el('div', 'cm');
+    row.append(el('span', null, [i.year, catLabel(i)].filter(Boolean).join('  |  ')), el('span', 'star', i.extRating ? '★ ' + i.extRating : ''));
+    info.append(el('h3', 'title', i.title), row, el('div', 'tg', (i.tags || []).slice(0, 3).join(', ')));
+    card.append(pc, info); card.onclick = () => openDetail(i.id);
+    card.onmousemove = e => { const r = pc.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5; pc.style.transform = `perspective(700px) rotateY(${x * 10}deg) rotateX(${-y * 10}deg) translateY(-6px)`; };
+    card.onmouseleave = () => { pc.style.transform = ''; };
+    grid.append(card);
   });
 }
 ['input'].forEach(ev => $('searchInput').addEventListener(ev, render));
@@ -330,7 +362,7 @@ $('saveItemBtn').onclick = () => {
 
 function openDetail(id) {
   const i = items.find(x => x.id === id); if (!i) return; curId = id;
-  $('detailPoster').src = i.poster || FALL; $('detailTitle').textContent = i.title; $('detailStatus').textContent = i.status;
+  $('detailPoster').src = i.poster || FALL; $('detailTitle').textContent = i.title; $('detailStatus').textContent = i.status; $('detailStatus').dataset.s = i.status;
   $('detailMeta').textContent = `${catLabel(i)} • ${i.year || 'Год не указан'}`;
   $('detailNames').textContent = [i.titleEn, i.titleOrig, i.alt].filter(Boolean).join(' / ');
   $('detailRating').textContent = `★ Моя оценка: ${i.rating ? i.rating + '/10' : '-/10'}${i.extRating ? ' | Внешняя оценка: ' + i.extRating : ''}`;

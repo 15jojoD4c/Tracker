@@ -27,7 +27,7 @@ textarea{resize:vertical;min-height:80px}
 .fb,.kb,.tb{background:#1b1e27;color:#cfd3e2;border:1px solid #2c3040;padding:7px 14px;border-radius:999px;cursor:pointer;transition:.15s}
 .fb:hover,.kb:hover,.tb:hover{border-color:var(--ac)}
 .fb.on,.kb.on,.tb.on{background:var(--ac);border-color:var(--ac);color:#fff;box-shadow:0 0 14px rgba(124,92,255,.45)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:28px 20px;margin-top:22px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cw,190px),1fr));gap:28px 20px;margin-top:22px}
 .msg{color:#777;grid-column:1/-1}
 .card{cursor:pointer;animation:fin .3s ease both}
 @keyframes fin{from{opacity:0;transform:translateY(10px)}}
@@ -111,6 +111,12 @@ textarea{resize:vertical;min-height:80px}
 .sk{aspect-ratio:2/3;border-radius:14px;background:linear-gradient(90deg,#1b1e27 25%,#242836 50%,#1b1e27 75%);background-size:200% 100%;animation:shim 1.2s infinite}
 @keyframes shim{to{background-position:-200% 0}}
 .card:focus-visible{outline:2px solid var(--ac);outline-offset:4px;border-radius:14px}
+.sec{margin:14px 0 8px;font-size:15px}
+.strip{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}
+.mini{flex:none;width:96px;cursor:pointer}
+.mini img{width:96px;height:144px;object-fit:cover;border-radius:10px;display:block;background:#222633;transition:transform .2s}
+.mini:hover img{transform:translateY(-4px)}
+.mini span{display:block;font-size:11px;margin-top:5px;color:#cfd3e2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -128,6 +134,7 @@ textarea{resize:vertical;min-height:80px}
       <button class="btn btn-s" onclick="exportData()">⬇ Бэкап</button>
       <button class="btn btn-s" onclick="importFile.click()">⬆ Загрузить</button>
       <input type="file" id="importFile" accept=".json" onchange="importData(event)">
+      <select id="sizeSel" title="Размер карточек"><option value="150">Карточки: мелкие</option><option value="190">Карточки: средние</option><option value="240">Карточки: крупные</option></select>
       <button class="btn" id="openModalBtn">+ Добавить</button>
       <button class="btn btn-d" id="logoutBtn">Выход</button>
     </div>
@@ -140,9 +147,12 @@ textarea{resize:vertical;min-height:80px}
     </div>
     <div class="row" style="margin-top:12px">
       <input id="cgSearch" placeholder="Найти в каталоге (Enter)..." style="flex:1;max-width:340px">
-      <select id="cgMode"><option value="pop">Популярное</option><option value="top">Топ рейтинга</option><option value="new">Новинки / онгоинги</option></select>
+      <select id="cgMode"><option value="pop">Популярное</option><option value="top">Топ рейтинга</option><option value="new">Новинки / онгоинги</option><option value="soon">Скоро выйдет</option></select>
       <select id="cgKind" style="display:none"><option value="">Все виды</option><option value="JP">Манга</option><option value="KR">Манхва</option><option value="CN">Маньхуа</option></select>
+      <select id="cgGenre"></select>
+      <input type="number" id="cgYear" placeholder="Год" min="1900" max="2100" style="width:88px">
       <button class="tb" id="cgHide">Скрыть добавленные</button>
+      <button class="tb" id="cgReset">Сбросить</button>
       <button class="btn" id="cgRand">🎲 Случайное</button>
     </div>
     <div class="grid" id="cgGrid"></div>
@@ -156,6 +166,8 @@ textarea{resize:vertical;min-height:80px}
       <button class="btn btn-s" id="statsBtn" style="margin-left:auto">📊 Подробная статистика</button>
     </div>
     <div class="tiles" id="profStats"></div>
+    <div id="profStrips"></div>
+    <details style="margin-bottom:14px"><summary style="cursor:pointer;font-weight:700;margin-bottom:10px">📊 Статистика коллекции</summary><div id="profCharts" style="background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:6px 16px 12px"></div></details>
 
   <div class="row">
     <input type="text" id="searchInput" placeholder="Поиск: название, автор, студия, год...">
@@ -230,6 +242,7 @@ textarea{resize:vertical;min-height:80px}
   <div class="credits" id="detailCredits"></div>
   <div class="ratings" id="detailRating" style="font-size:15px"></div>
   <div class="chips" id="detailTags"></div>
+  <select id="detailStatusSel" style="max-width:240px"></select>
   <div id="detailDescription"></div>
   <div class="mb">
     <button class="btn btn-d" id="deleteItemBtn">Удалить</button>
@@ -397,6 +410,8 @@ document.querySelectorAll('.kb').forEach(b => b.onclick = () => { kind = b.datas
 $('viewBtn').onclick = () => { view = view === 'list' ? 'grid' : 'list'; localStorage.setItem('view', view); render(); };
 $('ongBtn').onclick = e => { ongOnly = !ongOnly; e.currentTarget.classList.toggle('on', ongOnly); render(); };
 $('xfBtn').onclick = () => { xf = null; render(); };
+const setSize = v => { document.documentElement.style.setProperty('--cw', v + 'px'); try { localStorage.setItem('cw', v); } catch (e) {} };
+$('sizeSel').value = localStorage.getItem('cw') || '190'; setSize($('sizeSel').value || '190'); $('sizeSel').onchange = e => setSize(e.target.value);
 
 // ---------- Окна ----------
 const closeAll = () => ['addModal', 'detailModal', 'statsModal', 'rndModal'].forEach(id => $(id).style.display = 'none');
@@ -483,6 +498,8 @@ function openDetail(id) {
   const tg = $('detailTags'); tg.replaceChildren();
   (i.tags || []).forEach(t => { const c = el('button', 'chip', t); c.onclick = () => { closeAll(); $('tagFilter').value = t.toLowerCase(); render(); }; tg.append(c); });
   $('detailDescription').textContent = i.description || 'Описание отсутствует.';
+  const ds = $('detailStatusSel'); ds.replaceChildren(...STATS.map(x => new Option(x, x))); ds.value = i.status;
+  ds.onchange = () => { i.status = ds.value; $('detailStatus').textContent = i.status; $('detailStatus').dataset.s = i.status; cloudSave(i); refresh(); toast('Статус изменён: ' + i.status); };
   $('detailModal').style.display = 'flex';
 }
 $('editItemBtn').onclick = () => { const i = items.find(x => x.id === curId); if (i) { closeAll(); openAdd(i); } };
@@ -499,8 +516,8 @@ const RU = {Action:'Экшен',Adventure:'Приключения',Comedy:'Ко�
 const TG = {28:'Боевик',12:'Приключения',16:'Мультфильм',35:'Комедия',80:'Криминал',99:'Документальный',18:'Драма',10751:'Семейный',14:'Фэнтези',36:'История',27:'Ужасы',10402:'Музыка',9648:'Детектив',10749:'Мелодрама',878:'Фантастика',53:'Триллер',10752:'Военный',37:'Вестерн',10759:'Боевик и приключения',10765:'Фантастика и фэнтези',10768:'Война и политика'};
 
 async function anilist(search, type, o = {}) {
-  const gql = 'query($s:String,$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int){Page(page:$p,perPage:$pp){media(search:$s,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg){format siteUrl countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore genres status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
-  const r = await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'}, body: JSON.stringify({query: gql, variables: {s: search, t: type, p: o.page || 1, pp: o.per || 10, so: o.sort || ['SEARCH_MATCH'], st: o.status, f: o.format, fn: o.fn, c: o.country, ad: o.ad, pg: o.pg}})});
+  const gql = 'query($s:String,$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int,$g:[String],$sg:FuzzyDateInt,$sl:FuzzyDateInt){Page(page:$p,perPage:$pp){media(search:$s,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg,genre_in:$g,startDate_greater:$sg,startDate_lesser:$sl){format siteUrl countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore genres status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
+  const r = await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'}, body: JSON.stringify({query: gql, variables: {s: search, t: type, p: o.page || 1, pp: o.per || 10, so: o.sort || ['SEARCH_MATCH'], st: o.status, f: o.format, fn: o.fn, c: o.country, ad: o.ad, pg: o.pg, g: o.genre, sg: o.sg, sl: o.sl}})});
   const j = await r.json(); if (j.errors) throw new Error(j.errors[0].message);
   return j.data.Page.media.map(m => {
     const t = m.title, main = t.english || t.romaji || t.native;
@@ -574,8 +591,8 @@ $('afBtn').onclick = async () => {
 $('afQuery').onkeydown = e => { if (e.key === 'Enter') $('afBtn').click(); };
 
 // ---------- Статистика (по внешним оценкам) ----------
-$('statsBtn').onclick = () => {
-  const b = $('statsBody'); b.replaceChildren();
+function buildStats(b) {
+  b.replaceChildren();
   const avg = a => { a = a.filter(i => num(i.extRating)); return a.length ? (a.reduce((s, i) => s + num(i.extRating), 0) / a.length).toFixed(2) : '—'; };
   const block = (title, rows) => {
     b.append(el('h4', null, title)); const max = Math.max(1, ...rows.map(r => r[1]));
@@ -587,8 +604,13 @@ $('statsBtn').onclick = () => {
   const tc = {}; items.forEach(i => (i.tags || []).forEach(t => tc[t] = (tc[t] || 0) + 1));
   block('Частые жанры и теги', Object.entries(tc).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([t, c]) => [t, c, '']));
   block('Топ по внешней оценке', items.filter(i => num(i.extRating)).sort((a, b) => num(b.extRating) - num(a.extRating)).slice(0, 5).map(i => [i.title, num(i.extRating), i.extRating]));
-  $('statsModal').style.display = 'flex';
-};
+  const cnt = f => { const c = {}; items.forEach(i => f(i).forEach(x => c[x] = (c[x] || 0) + 1)); return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([t, n]) => [t, n, '']); };
+  const sp = v => (v || '').split(',').map(x => x.trim()).filter(Boolean);
+  block('По десятилетиям', cnt(i => i.year ? [Math.floor(i.year / 10) * 10 + '-е'] : []).sort((a, b) => parseInt(a[0]) - parseInt(b[0])));
+  block('Топ студий', cnt(i => sp(i.studio)));
+  block('Топ авторов и режиссёров', cnt(i => sp(i.author)));
+}
+$('statsBtn').onclick = () => { buildStats($('statsBody')); $('statsModal').style.display = 'flex'; };
 
 // ---------- Профиль ----------
 function profStats() {
@@ -597,6 +619,20 @@ function profStats() {
     const t = el('button', 'tile'); t.append(el('b', null, n), el('span', null, l)); t.onclick = () => { $('statusFilter').value = st; render(); }; box.append(t);
   });
   const t = el('div', 'tile'); t.style.cursor = 'default'; t.append(el('b', null, e.length ? (e.reduce((a, i) => a + num(i.extRating), 0) / e.length).toFixed(1) : '—'), el('span', null, 'Ср. внешняя оценка')); box.append(t);
+  profStrips(); buildStats($('profCharts'));
+}
+function profStrips() {
+  const box = $('profStrips'); box.replaceChildren();
+  const strip = (title, list) => {
+    if (!list.length) return; box.append(el('h4', 'sec', title));
+    const w = el('div', 'strip');
+    list.forEach(i => { const m = el('div', 'mini'), im = el('img'); im.loading = 'lazy'; im.src = i.poster || FALL; im.onerror = () => { im.onerror = null; im.src = FALL; }; m.append(im, el('span', null, i.title)); m.onclick = () => openDetail(i.id); w.append(m); });
+    box.append(w);
+  };
+  const by = (f, d) => items.filter(f).sort(d).slice(0, 12), ex = (a, b) => num(b.extRating) - num(a.extRating);
+  strip('🕒 Недавно добавлено', by(() => true, (a, b) => b.id - a.id));
+  strip('❤ Любимое', by(i => i.status === 'Любимое', ex));
+  strip('📌 Следующие в планах', by(i => i.status === 'В планах', ex));
 }
 $('rndBtn').onclick = () => {
   if (!lastList.length) return toast('В текущем списке пусто. Попробуй сбросить фильтры.');
@@ -613,14 +649,21 @@ const cg = {g: 'Аниме', page: 1, q: '', t: 0, hide: false}, cgGrid = $('cgG
 const has = r => items.some(i => same(i, r));
 
 async function cgFetch(page, per, q, mode) {
-  const g = cg.g;
+  const g = cg.g, gen = $('cgGenre').value, yr = parseInt($('cgYear').value) || 0;
   if (g === 'Фильм' || g === 'Сериал') {
-    const m = g === 'Фильм' ? 'movie' : 'tv';
-    return tmdb(null, q ? `/search/${m}?query=${encodeURIComponent(q)}` : mode === 'top' ? `/${m}/top_rated` : mode === 'new' ? (m === 'movie' ? '/movie/now_playing' : '/tv/on_the_air') : `/${m}/popular`, m, page);
+    const m = g === 'Фильм' ? 'movie' : 'tv', mv = m === 'movie', dk = mv ? 'primary_release_date' : 'first_air_date', yk = mv ? 'primary_release_year' : 'first_air_date_year', today = new Date().toISOString().slice(0, 10);
+    let path;
+    if (q) path = `/search/${m}?query=${encodeURIComponent(q)}${yr ? '&' + (mv ? 'year' : yk) + '=' + yr : ''}`;
+    else if (gen || yr || mode === 'soon') path = `/discover/${m}?sort_by=${mode === 'top' ? 'vote_average.desc&vote_count.gte=300' : mode === 'new' ? dk + '.desc&' + dk + '.lte=' + today + '&vote_count.gte=20' : 'popularity.desc'}${gen ? '&with_genres=' + gen : ''}${yr ? '&' + yk + '=' + yr : ''}${mode === 'soon' ? '&' + dk + '.gte=' + today : ''}`;
+    else path = mode === 'top' ? `/${m}/top_rated` : mode === 'new' ? (mv ? '/movie/now_playing' : '/tv/on_the_air') : `/${m}/popular`;
+    return tmdb(null, path, m, page);
   }
   const o = {page, per, sort: [q ? 'SEARCH_MATCH' : mode === 'top' ? 'SCORE_DESC' : 'POPULARITY_DESC'], ad: false};
   if (!q && mode === 'top') o.pg = 3000;
   if (!q && mode === 'new') o.status = 'RELEASING';
+  if (!q && mode === 'soon') o.status = 'NOT_YET_RELEASED';
+  if (gen) o.genre = [gen];
+  if (yr) { o.sg = yr * 10000 - 1; o.sl = (yr + 1) * 10000; }
   if (g === 'Ранобэ') o.format = 'NOVEL';
   if (g === 'Манга') { o.fn = 'NOVEL'; if ($('cgKind').value) o.country = $('cgKind').value; }
   return anilist(q || null, g === 'Аниме' ? 'ANIME' : 'MANGA', o);
@@ -667,14 +710,21 @@ async function cgLoad(reset) {
 }
 document.querySelectorAll('#cgCats .tb').forEach(b => b.onclick = () => {
   document.querySelectorAll('#cgCats .tb').forEach(x => x.classList.toggle('on', x === b)); cg.g = b.dataset.g;
-  $('cgKind').style.display = cg.g === 'Манга' ? '' : 'none'; cgLoad(true);
+  $('cgKind').style.display = cg.g === 'Манга' ? '' : 'none'; cgGenres(); cgLoad(true);
 });
-['cgMode', 'cgKind'].forEach(id => $(id).onchange = () => cgLoad(true));
+['cgMode', 'cgKind', 'cgGenre'].forEach(id => $(id).onchange = () => cgLoad(true));
 let cgT; const cgGo = () => { clearTimeout(cgT); cg.q = $('cgSearch').value.trim(); cgLoad(true); };
 $('cgSearch').oninput = () => { clearTimeout(cgT); cgT = setTimeout(cgGo, 450); };
 $('cgSearch').onkeydown = e => { if (e.key === 'Enter') cgGo(); };
 $('cgHide').onclick = e => { cg.hide = !cg.hide; e.currentTarget.classList.toggle('on', cg.hide); cgLoad(true); };
+let cgY; $('cgYear').oninput = () => { clearTimeout(cgY); cgY = setTimeout(() => cgLoad(true), 600); };
+$('cgReset').onclick = () => { $('cgSearch').value = ''; cg.q = ''; $('cgGenre').value = ''; $('cgYear').value = ''; $('cgKind').value = ''; $('cgMode').value = 'pop'; cg.hide = false; $('cgHide').classList.remove('on'); cgLoad(true); };
 $('cgMore').onclick = () => cgLoad(false);
+function cgGenres() {
+  const sel = $('cgGenre'), tm = cg.g === 'Фильм' || cg.g === 'Сериал'; sel.replaceChildren(new Option('Все жанры', ''));
+  Object.entries(tm ? TG : RU).filter(([k]) => !tm || (cg.g === 'Фильм' ? !['10759', '10765', '10768'].includes(k) : k !== '10770')).forEach(([k, v]) => sel.add(new Option(v, k)));
+}
+cgGenres();
 
 // Случайное из каталога: берём случайную страницу популярного и случайный тайтл с неё
 let rndR = null;
@@ -695,7 +745,7 @@ async function cgRandom() {
   const b = $('cgRand'); b.disabled = true;
   try {
     const md = $('cgMode').value, q = cg.q;
-    const res = await cgFetch(q ? 1 : 1 + Math.floor(Math.random() * (md === 'new' ? 3 : md === 'top' ? 10 : 20)), 24, q, md);
+    const rp = q ? 1 : 1 + Math.floor(Math.random() * (md === 'new' || md === 'soon' ? 3 : md === 'top' ? 10 : 20)); let res = await cgFetch(rp, 24, q, md); if (!res.length && rp > 1) res = await cgFetch(1, 24, q, md);
     const fresh = res.filter(r => !has(r)), pool = fresh.length ? fresh : res;
     if (!pool.length) throw new Error('ничего не пришло');
     showPreview(pool[Math.floor(Math.random() * pool.length)], true);

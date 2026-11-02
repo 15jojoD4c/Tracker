@@ -95,6 +95,14 @@ textarea{resize:vertical;min-height:80px}
 .list .mine,.list .card:hover .mine{right:4px;bottom:4px;font-size:10px;padding:2px 6px;opacity:1}
 .list .title{margin:0 0 4px;-webkit-line-clamp:1}
 .list .bd2{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.tabs{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--bd)}
+.tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--mu);padding:10px 16px;cursor:pointer;font-size:15px;font-weight:700;font-family:inherit}
+.tab.on{color:#fff;border-color:var(--ac)}
+.qa{position:absolute;right:10px;bottom:10px;z-index:3;width:36px;height:36px;border-radius:50%;border:0;background:var(--ac);color:#fff;font-size:18px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4);transition:transform .15s}
+.qa:hover{transform:scale(1.12)}.qa.done{background:#1db57a}
+.tiles{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.tile{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px 16px;min-width:104px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;color:#fff;cursor:pointer;font-family:inherit}
+.tile b{font-size:22px}.tile span{font-size:12px;color:var(--mu)}.tile:hover{border-color:var(--ac)}
 </style>
 </head>
 <body>
@@ -109,8 +117,6 @@ textarea{resize:vertical;min-height:80px}
   <header>
     <div class="row"><h1 class="logo" style="margin:0;font-size:24px">Моя Коллекция</h1><span id="userEmail" class="meta" style="margin:0"></span></div>
     <div class="row hdr-actions">
-      <button class="btn btn-s" id="viewBtn">☰ Список</button>
-      <button class="btn btn-s" id="statsBtn">📊 Статистика</button>
       <button class="btn btn-s" onclick="exportData()">⬇ Бэкап</button>
       <button class="btn btn-s" onclick="importFile.click()">⬆ Загрузить</button>
       <input type="file" id="importFile" accept=".json" onchange="importData(event)">
@@ -118,9 +124,34 @@ textarea{resize:vertical;min-height:80px}
       <button class="btn btn-d" id="logoutBtn">Выход</button>
     </div>
   </header>
+  <div class="tabs"><button class="tab on" data-v="catalog">🌐 Каталог</button><button class="tab" data-v="profile">👤 Мой профиль</button></div>
+
+  <div id="catalogView">
+    <div class="filters" id="cgCats">
+      <button class="tb on" data-g="Аниме">Аниме</button><button class="tb" data-g="Манга">Манга</button><button class="tb" data-g="Ранобэ">Ранобэ</button><button class="tb" data-g="Фильм">Фильмы</button><button class="tb" data-g="Сериал">Сериалы</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <input id="cgSearch" placeholder="Найти в каталоге (Enter)..." style="flex:1;max-width:340px">
+      <select id="cgMode"><option value="pop">Популярное</option><option value="top">Топ рейтинга</option><option value="new">Новинки / онгоинги</option></select>
+      <select id="cgKind" style="display:none"><option value="">Все виды</option><option value="JP">Манга</option><option value="KR">Манхва</option><option value="CN">Маньхуа</option></select>
+      <button class="btn" id="cgRand">🎲 Случайное</button>
+    </div>
+    <div class="grid" id="cgGrid"></div>
+    <div style="text-align:center;margin:24px"><button class="btn btn-s" id="cgMore" style="display:none">Показать ещё</button></div>
+  </div>
+
+  <div id="profileView" style="display:none">
+    <div class="row" style="margin-bottom:14px">
+      <img id="avatar" referrerpolicy="no-referrer" alt="" style="width:46px;height:46px;border-radius:50%;background:#222633">
+      <div><b id="profName"></b><div class="meta" id="profMail" style="margin:0"></div></div>
+      <button class="btn btn-s" id="statsBtn" style="margin-left:auto">📊 Подробная статистика</button>
+    </div>
+    <div class="tiles" id="profStats"></div>
 
   <div class="row">
     <input type="text" id="searchInput" placeholder="Поиск: название, автор, студия, год...">
+    <button class="btn btn-s" id="rndBtn">🎲 Случайный</button>
+    <button class="btn btn-s" id="viewBtn">☰ Список</button>
     <select id="statusFilter">
       <option value="Все">Все статусы</option><option>В планах</option><option>Смотрю/Читаю</option>
       <option>Просмотрено/Прочитано</option><option>Любимое</option><option>Пересматриваю</option><option>Брошено</option>
@@ -145,6 +176,7 @@ textarea{resize:vertical;min-height:80px}
   </div>
   <div class="filters" id="kindFilters" style="display:none;margin-top:8px"><button class="kb on" data-k="Все">Все виды</button><button class="kb" data-k="Манга">Манга</button><button class="kb" data-k="Манхва">Манхва</button><button class="kb" data-k="Маньхуа">Маньхуа</button><button class="kb" data-k="Комикс">Комикс</button></div>
   <div class="grid" id="itemsGrid"></div>
+  </div>
 </div>
 
 <!-- Добавление / редактирование -->
@@ -196,6 +228,14 @@ textarea{resize:vertical;min-height:80px}
   </div>
 </div></div>
 
+<!-- Случайный тайтл -->
+<div class="modal" id="rndModal"><div class="mc" style="align-items:center;text-align:center">
+  <img id="rndPoster" alt="" style="width:180px;aspect-ratio:2/3;object-fit:cover;border-radius:12px;background:#222633">
+  <h3 id="rndTitle" style="margin:0"></h3><div class="meta" id="rndMeta" style="margin:0"></div>
+  <p id="rndDesc" style="font-size:13px;color:#ccc;line-height:1.5;max-height:130px;overflow:auto;margin:0"></p>
+  <div class="row" style="justify-content:center"><button class="btn" id="rndAdd">＋ В планы</button><button class="btn btn-s" id="rndMore">🎲 Ещё</button><button class="btn btn-s" id="rndClose">Закрыть</button></div>
+</div></div>
+
 <!-- Статистика -->
 <div class="modal" id="statsModal"><div class="mc">
   <h3 style="margin:0">Статистика (по внешним оценкам)</h3>
@@ -230,7 +270,7 @@ const catLabel = i => i.category === 'Манга' && i.kind && i.kind !== 'Ма�
 const STATS = ['В планах','Смотрю/Читаю','Просмотрено/Прочитано','Любимое','Пересматриваю','Брошено'];
 const FALL = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280"><rect width="200" height="280" fill="%232c2c2c"/><text x="50%" y="50%" fill="%23777" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" dominant-baseline="middle">Нет постера</text></svg>';
 
-let user = null, items = [], loaded = false, cat = 'Всё', kind = 'Все', curId = null, unsub = null, posterValue = '', view = localStorage.getItem('view') || 'grid', ongOnly = false, xf = null;
+let user = null, items = [], loaded = false, cat = 'Всё', kind = 'Все', curId = null, unsub = null, posterValue = '', view = localStorage.getItem('view') || 'grid', ongOnly = false, xf = null, lastList = [];
 const grid = $('itemsGrid');
 
 // ---------- Вход ----------
@@ -244,8 +284,8 @@ $('logoutBtn').onclick = () => signOut(auth);
 onAuthStateChanged(auth, u => {
   user = u;
   if (u) {
-    $('authScreen').style.display = 'none'; $('appScreen').style.display = 'block'; $('userEmail').textContent = u.email;
-    loaded = false; render();
+    $('authScreen').style.display = 'none'; $('appScreen').style.display = 'block'; $('userEmail').textContent = u.email; $('profName').textContent = u.displayName || u.email; $('profMail').textContent = u.email; $('avatar').src = u.photoURL || '';
+    loaded = false; render(); if (!cgGrid.children.length) cgLoad(true);
     // Живая синхронизация: изменения с другого устройства появляются сами
     unsub = onSnapshot(query(collection(db, 'items'), where('userId', '==', u.uid)),
       snap => { items = snap.docs.map(d => fix(d.data())); loaded = true; refresh(); },
@@ -263,7 +303,7 @@ const names = i => [i.title, i.titleEn, i.titleOrig, i.alt, i.author, i.studio, 
 const xmatch = i => xf.k === 'source' ? i.source === xf.v : (i[xf.k] || '').split(',').some(x => x.trim().toLowerCase() === xf.v.toLowerCase());
 const num = v => parseFloat(v) || 0;
 
-function refresh() { refreshTags(); render(); }
+function refresh() { refreshTags(); render(); profStats(); cgMarks(); }
 
 function refreshTags() {
   const sel = $('tagFilter'), old = sel.value, map = new Map();
@@ -275,7 +315,7 @@ function refreshTags() {
 
 function render() {
   grid.replaceChildren();
-  grid.className = 'grid' + (view === 'list' ? ' list' : ''); $('viewBtn').textContent = view === 'list' ? '▦ Сетка' : '☰ Список';
+  lastList = []; grid.className = 'grid' + (view === 'list' ? ' list' : ''); $('viewBtn').textContent = view === 'list' ? '▦ Сетка' : '☰ Список';
   if (!loaded) return grid.append(el('div', 'msg', 'Загрузка...'));
   if (!items.length) return grid.append(el('div', 'msg', 'Коллекция пуста. Нажми «+ Добавить».'));
   const q = $('searchInput').value.toLowerCase().trim(), st = $('statusFilter').value, tg = $('tagFilter').value, so = $('sortSelect').value;
@@ -291,7 +331,7 @@ function render() {
     if (so === 'yearAsc') return (num(a.year) || 9999) - (num(b.year) || 9999);
     return b.id - a.id;
   });
-  $('countInfo').textContent = `Показано: ${list.length} из ${items.length}`;
+  lastList = list; $('countInfo').textContent = `Показано: ${list.length} из ${items.length}`;
   const xb = $('xfBtn'); xb.style.display = xf ? '' : 'none'; if (xf) xb.textContent = `${{author: 'Автор', studio: 'Студия', source: 'Источник'}[xf.k]}: ${xf.v} ✕`;
   if (!list.length) return grid.append(el('div', 'msg', 'Ничего не найдено.'));
   const SHORT = {'Просмотрено/Прочитано': 'Завершено', 'Смотрю/Читаю': 'В процессе'};
@@ -326,8 +366,8 @@ $('ongBtn').onclick = e => { ongOnly = !ongOnly; e.currentTarget.classList.toggl
 $('xfBtn').onclick = () => { xf = null; render(); };
 
 // ---------- Окна ----------
-const closeAll = () => ['addModal', 'detailModal', 'statsModal'].forEach(id => $(id).style.display = 'none');
-['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn'].forEach(id => $(id).onclick = closeAll);
+const closeAll = () => ['addModal', 'detailModal', 'statsModal', 'rndModal'].forEach(id => $(id).style.display = 'none');
+['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'rndClose'].forEach(id => $(id).onclick = closeAll);
 window.onclick = e => { if (e.target.classList.contains('modal')) closeAll(); };
 window.onkeydown = e => { if (e.key === 'Escape') closeAll(); };
 
@@ -425,9 +465,9 @@ const SRC = {ORIGINAL: 'Оригинал', MANGA: 'Манга', LIGHT_NOVEL: 'Р
 const RU = {Action:'Экшен',Adventure:'Приключения',Comedy:'Комедия',Drama:'Драма',Ecchi:'Эччи',Fantasy:'Фэнтези',Horror:'Ужасы','Mahou Shoujo':'Махо-сёдзё',Mecha:'Меха',Music:'Музыка',Mystery:'Детектив',Psychological:'Психология',Romance:'Романтика','Sci-Fi':'Научная фантастика','Slice of Life':'Повседневность',Sports:'Спорт',Supernatural:'Сверхъестественное',Thriller:'Триллер'};
 const TG = {28:'Боевик',12:'Приключения',16:'Мультфильм',35:'Комедия',80:'Криминал',99:'Документальный',18:'Драма',10751:'Семейный',14:'Фэнтези',36:'История',27:'Ужасы',10402:'Музыка',9648:'Детектив',10749:'Мелодрама',878:'Фантастика',53:'Триллер',10752:'Военный',37:'Вестерн',10759:'Боевик и приключения',10765:'Фантастика и фэнтези',10768:'Война и политика'};
 
-async function anilist(search, type) {
-  const gql = 'query($s:String,$t:MediaType){Page(perPage:10){media(search:$s,type:$t,sort:SEARCH_MATCH){format countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore genres status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
-  const r = await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'}, body: JSON.stringify({query: gql, variables: {s: search, t: type}})});
+async function anilist(search, type, o = {}) {
+  const gql = 'query($s:String,$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int){Page(page:$p,perPage:$pp){media(search:$s,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg){format countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore genres status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
+  const r = await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'}, body: JSON.stringify({query: gql, variables: {s: search, t: type, p: o.page || 1, pp: o.per || 10, so: o.sort || ['SEARCH_MATCH'], st: o.status, f: o.format, fn: o.fn, c: o.country, ad: o.ad, pg: o.pg}})});
   const j = await r.json(); if (j.errors) throw new Error(j.errors[0].message);
   return j.data.Page.media.map(m => {
     const t = m.title, main = t.english || t.romaji || t.native;
@@ -445,17 +485,17 @@ async function anilist(search, type) {
   });
 }
 
-async function tmdb(search) {
+async function tmdb(search, path, media, page = 1) {
   let k = TMDB_KEY || localStorage.getItem('tmdbKey');
   if (!k) {
     k = (prompt('Для поиска фильмов нужен бесплатный ключ TMDB (API Key v3). Вставь его — он сохранится на этом устройстве:') || '').trim();
     if (!k) throw new Error('нужен ключ TMDB');
     localStorage.setItem('tmdbKey', k);
   }
-  const r = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${encodeURIComponent(k)}&language=ru-RU&include_adult=false&query=${encodeURIComponent(search)}`);
+  const r = await fetch(path ? `https://api.themoviedb.org/3${path}${path.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(k)}&language=ru-RU&page=${page}` : `https://api.themoviedb.org/3/search/multi?api_key=${encodeURIComponent(k)}&language=ru-RU&include_adult=false&query=${encodeURIComponent(search)}`);
   if (r.status === 401) { localStorage.removeItem('tmdbKey'); throw new Error('ключ TMDB не подошёл, попробуй ещё раз'); }
   const j = await r.json();
-  return (j.results || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv').slice(0, 10).map(x => {
+  return (j.results || []).map(x => ({...x, media_type: x.media_type || media})).filter(x => x.media_type === 'movie' || x.media_type === 'tv').slice(0, path ? 20 : 10).map(x => {
     const orig = x.original_title || x.original_name || '', ids = x.genre_ids || [];
     return {
       title: x.title || x.name, en: x.original_language === 'en' ? orig : '', orig, alt: '',
@@ -467,14 +507,13 @@ async function tmdb(search) {
   });
 }
 
-async function tmdbExtra(r) {
+async function tmdbInfo(r) {
   const k = TMDB_KEY || localStorage.getItem('tmdbKey');
   const d = await (await fetch(`https://api.themoviedb.org/3/${r.tmdb}?api_key=${encodeURIComponent(k)}&language=ru-RU&append_to_response=credits`)).json();
   const dir = (d.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name), by = (d.created_by || []).map(c => c.name);
-  $('inputAuthor').value = [...new Set([...by, ...dir])].slice(0, 2).join(', ');
-  $('inputStudio').value = (d.production_companies || []).slice(0, 2).map(c => c.name).join(', ');
-  $('inputOngoing').checked = d.status === 'Returning Series';
+  return {author: [...new Set([...by, ...dir])].slice(0, 2).join(', '), studio: (d.production_companies || []).slice(0, 2).map(c => c.name).join(', '), ongoing: d.status === 'Returning Series'};
 }
+async function tmdbExtra(r) { const x = await tmdbInfo(r); $('inputAuthor').value = x.author; $('inputStudio').value = x.studio; $('inputOngoing').checked = x.ongoing; }
 
 function fillForm(r) {
   if (!$('inputTitle').value.trim()) $('inputTitle').value = r.title;
@@ -517,6 +556,107 @@ $('statsBtn').onclick = () => {
   block('Топ по внешней оценке', items.filter(i => num(i.extRating)).sort((a, b) => num(b.extRating) - num(a.extRating)).slice(0, 5).map(i => [i.title, num(i.extRating), i.extRating]));
   $('statsModal').style.display = 'flex';
 };
+
+// ---------- Профиль ----------
+function profStats() {
+  const c = st => items.filter(i => i.status === st).length, e = items.filter(i => num(i.extRating)), box = $('profStats'); box.replaceChildren();
+  [['Всего', items.length, 'Все'], ['Завершено', c('Просмотрено/Прочитано'), 'Просмотрено/Прочитано'], ['В процессе', c('Смотрю/Читаю'), 'Смотрю/Читаю'], ['В планах', c('В планах'), 'В планах'], ['Любимое', c('Любимое'), 'Любимое']].forEach(([l, n, st]) => {
+    const t = el('button', 'tile'); t.append(el('b', null, n), el('span', null, l)); t.onclick = () => { $('statusFilter').value = st; render(); }; box.append(t);
+  });
+  const t = el('div', 'tile'); t.style.cursor = 'default'; t.append(el('b', null, e.length ? (e.reduce((a, i) => a + num(i.extRating), 0) / e.length).toFixed(1) : '—'), el('span', null, 'Ср. внешняя оценка')); box.append(t);
+}
+$('rndBtn').onclick = () => {
+  if (!lastList.length) return alert('В текущем списке пусто. Попробуй сбросить фильтры.');
+  openDetail(lastList[Math.floor(Math.random() * lastList.length)].id);
+};
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
+  const pf = b.dataset.v === 'profile'; $('profileView').style.display = pf ? '' : 'none'; $('catalogView').style.display = pf ? 'none' : '';
+  if (!pf) cgMarks();
+});
+
+// ---------- Каталог (популярное из AniList и TMDB) ----------
+const cg = {g: 'Аниме', page: 1, q: '', t: 0}, cgGrid = $('cgGrid');
+const has = r => { const n = [r.title, r.en, r.orig].filter(Boolean).map(x => x.toLowerCase()); return items.some(i => [i.title, i.titleEn, i.titleOrig].filter(Boolean).some(x => n.includes(x.toLowerCase()))); };
+
+async function cgFetch(page, per, q, mode) {
+  const g = cg.g;
+  if (g === 'Фильм' || g === 'Сериал') {
+    const m = g === 'Фильм' ? 'movie' : 'tv';
+    return tmdb(null, q ? `/search/${m}?query=${encodeURIComponent(q)}` : mode === 'top' ? `/${m}/top_rated` : mode === 'new' ? (m === 'movie' ? '/movie/now_playing' : '/tv/on_the_air') : `/${m}/popular`, m, page);
+  }
+  const o = {page, per, sort: [q ? 'SEARCH_MATCH' : mode === 'top' ? 'SCORE_DESC' : 'POPULARITY_DESC'], ad: false};
+  if (!q && mode === 'top') o.pg = 3000;
+  if (!q && mode === 'new') o.status = 'RELEASING';
+  if (g === 'Ранобэ') o.format = 'NOVEL';
+  if (g === 'Манга') { o.fn = 'NOVEL'; if ($('cgKind').value) o.country = $('cgKind').value; }
+  return anilist(q || null, g === 'Аниме' ? 'ANIME' : 'MANGA', o);
+}
+
+async function quickAdd(r) {
+  const it = {id: Date.now(), title: r.title, category: r.category, kind: r.category === 'Манга' ? (r.kind || 'Манга') : '', status: 'В планах', poster: r.poster || '', year: r.year || '', rating: '', extRating: r.ext || '', description: r.desc || '', titleEn: r.en || '', titleOrig: r.orig || '', alt: r.alt || '', tags: r.tags || [], author: r.author || '', studio: r.studio || '', source: r.source || '', ongoing: !!r.ongoing};
+  if (r.tmdb) { try { Object.assign(it, await tmdbInfo(r)); } catch (e) {} }
+  items.push(it); refresh(); cloudSave(it);
+}
+
+function cgMarks() {
+  [...cgGrid.children].forEach(c => { if (!c._r) return; const b = c.querySelector('.qa'), d = has(c._r); b.textContent = d ? '✓' : '＋'; b.classList.toggle('done', d); });
+}
+
+function cgCard(r) {
+  const card = el('div', 'card'), pc = el('div', 'pc'), img = el('img'), ov = el('div', 'ov'), add = el('button', 'qa');
+  card._r = r; img.loading = 'lazy'; img.src = r.poster || FALL; img.onerror = () => { img.onerror = null; img.src = FALL; };
+  ov.append(el('p', null, r.desc || 'Описание отсутствует.')); add.title = 'Добавить в «В планах»';
+  add.onclick = async e => { e.stopPropagation(); if (add.classList.contains('done')) return; add.textContent = '…'; await quickAdd(r); };
+  pc.append(img, ov, add);
+  const info = el('div', 'ci'), row = el('div', 'cm');
+  row.append(el('span', null, [r.year, r.category].filter(Boolean).join('  |  ')), el('span', 'star', r.ext ? '★ ' + r.ext : ''));
+  info.append(el('h3', 'title', r.title), row, el('div', 'tg', r.tags.slice(0, 3).join(', ')));
+  card.append(pc, info); card.onclick = () => { openAdd(null); fillForm(r); if (r.tmdb) tmdbExtra(r).catch(() => {}); };
+  cgGrid.append(card); cgMarks();
+}
+
+async function cgLoad(reset) {
+  const t = ++cg.t;
+  if (reset) { cg.page = 1; cgGrid.replaceChildren(el('div', 'msg', 'Загрузка...')); $('cgMore').style.display = 'none'; }
+  try {
+    const res = await cgFetch(cg.page, 24, cg.q, $('cgMode').value);
+    if (t !== cg.t) return;
+    if (reset) cgGrid.replaceChildren();
+    if (reset && !res.length) cgGrid.append(el('div', 'msg', 'Ничего не найдено.'));
+    res.forEach(cgCard); cg.page++; $('cgMore').style.display = res.length ? '' : 'none';
+  } catch (e) {
+    if (t !== cg.t) return;
+    if (reset) cgGrid.replaceChildren(el('div', 'msg', 'Ошибка загрузки: ' + e.message)); else alert('Ошибка загрузки: ' + e.message);
+  }
+}
+document.querySelectorAll('#cgCats .tb').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#cgCats .tb').forEach(x => x.classList.toggle('on', x === b)); cg.g = b.dataset.g;
+  $('cgKind').style.display = cg.g === 'Манга' ? '' : 'none'; cgLoad(true);
+});
+['cgMode', 'cgKind'].forEach(id => $(id).onchange = () => cgLoad(true));
+$('cgSearch').onkeydown = e => { if (e.key === 'Enter') { cg.q = e.target.value.trim(); cgLoad(true); } };
+$('cgMore').onclick = () => cgLoad(false);
+
+// Случайное из каталога: берём случайную страницу популярного и случайный тайтл с неё
+let rndR = null;
+async function cgRandom() {
+  const b = $('cgRand'); b.disabled = true;
+  try {
+    const mode = $('cgMode').value === 'new' ? 'new' : 'pop';
+    const res = await cgFetch(1 + Math.floor(Math.random() * (mode === 'new' ? 3 : 20)), 24, '', mode);
+    if (!res.length) throw new Error('ничего не пришло');
+    const r = rndR = res[Math.floor(Math.random() * res.length)], a = $('rndAdd'), d = has(r);
+    $('rndPoster').src = r.poster || FALL; $('rndTitle').textContent = r.title;
+    $('rndMeta').textContent = [r.year, r.category, r.ext ? '★ ' + r.ext : ''].filter(Boolean).join(' | ');
+    $('rndDesc').textContent = r.desc || 'Описание отсутствует.';
+    a.disabled = d; a.textContent = d ? '✓ Уже в коллекции' : '＋ В планы';
+    $('rndModal').style.display = 'flex';
+  } catch (e) { alert('Не удалось получить случайный тайтл: ' + e.message); }
+  b.disabled = false;
+}
+$('cgRand').onclick = cgRandom; $('rndMore').onclick = cgRandom;
+$('rndAdd').onclick = async e => { const a = e.currentTarget; a.disabled = true; a.textContent = '...'; await quickAdd(rndR); a.textContent = '✓ Добавлено'; };
 
 // ---------- Бэкап ----------
 window.exportData = () => {

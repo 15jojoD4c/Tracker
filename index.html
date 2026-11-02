@@ -24,9 +24,9 @@ textarea{resize:vertical;min-height:80px}
 .btn-g{background:#4285F4;font-size:16px;padding:12px 20px}.btn-g:hover{background:#3367D6}
 #searchInput{flex:1;max-width:300px;min-width:140px}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 5px;align-items:center}
-.fb,.kb{background:#1b1e27;color:#cfd3e2;border:1px solid #2c3040;padding:7px 14px;border-radius:999px;cursor:pointer;transition:.15s}
-.fb:hover,.kb:hover{border-color:var(--ac)}
-.fb.on,.kb.on{background:var(--ac);border-color:var(--ac);color:#fff;box-shadow:0 0 14px rgba(124,92,255,.45)}
+.fb,.kb,.tb{background:#1b1e27;color:#cfd3e2;border:1px solid #2c3040;padding:7px 14px;border-radius:999px;cursor:pointer;transition:.15s}
+.fb:hover,.kb:hover,.tb:hover{border-color:var(--ac)}
+.fb.on,.kb.on,.tb.on{background:var(--ac);border-color:var(--ac);color:#fff;box-shadow:0 0 14px rgba(124,92,255,.45)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:28px 20px;margin-top:22px}
 .msg{color:#777;grid-column:1/-1}
 .card{cursor:pointer;animation:fin .3s ease both}
@@ -77,6 +77,24 @@ textarea{resize:vertical;min-height:80px}
 #importFile{display:none}
 @media(max-width:600px){.hdr-actions{width:100%;justify-content:space-between}.grid{grid-template-columns:repeat(2,1fr);gap:20px 12px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.ong{display:inline-block;background:#ff9800;color:#000;font-size:10px;font-weight:800;padding:3px 8px;border-radius:999px;letter-spacing:.3px}
+.ong::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#000;margin-right:5px;animation:pl 1.2s infinite}
+@keyframes pl{50%{opacity:.2}}
+.pc .ong{position:absolute;top:10px;right:10px;z-index:2}
+.bd2{display:none}
+.credits{display:flex;flex-direction:column;gap:6px}
+.cr{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.cr .meta{margin:0;min-width:64px}
+.grid.list{grid-template-columns:1fr;gap:10px}
+.list .card{display:grid;grid-template-columns:64px 1fr;gap:14px;align-items:center;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:8px 12px;transition:border-color .15s}
+.list .card:hover{border-color:var(--ac)}
+.list .pc{border-radius:8px}
+.list .pc .status,.list .pc .ong,.list .ov{display:none}
+.list .card:hover .pc{box-shadow:none}
+.list .card:hover .pc img{transform:none}
+.list .mine,.list .card:hover .mine{right:4px;bottom:4px;font-size:10px;padding:2px 6px;opacity:1}
+.list .title{margin:0 0 4px;-webkit-line-clamp:1}
+.list .bd2{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -91,6 +109,7 @@ textarea{resize:vertical;min-height:80px}
   <header>
     <div class="row"><h1 class="logo" style="margin:0;font-size:24px">Моя Коллекция</h1><span id="userEmail" class="meta" style="margin:0"></span></div>
     <div class="row hdr-actions">
+      <button class="btn btn-s" id="viewBtn">☰ Список</button>
       <button class="btn btn-s" id="statsBtn">📊 Статистика</button>
       <button class="btn btn-s" onclick="exportData()">⬇ Бэкап</button>
       <button class="btn btn-s" onclick="importFile.click()">⬆ Загрузить</button>
@@ -101,7 +120,7 @@ textarea{resize:vertical;min-height:80px}
   </header>
 
   <div class="row">
-    <input type="text" id="searchInput" placeholder="Поиск по любому названию...">
+    <input type="text" id="searchInput" placeholder="Поиск: название, автор, студия, год...">
     <select id="statusFilter">
       <option value="Все">Все статусы</option><option>В планах</option><option>Смотрю/Читаю</option>
       <option>Просмотрено/Прочитано</option><option>Любимое</option><option>Пересматриваю</option><option>Брошено</option>
@@ -114,6 +133,7 @@ textarea{resize:vertical;min-height:80px}
       <option value="ratingDesc">По моей оценке</option>
       <option value="extDesc">По внешней оценке</option>
       <option value="yearDesc">По году (новые)</option>
+      <option value="yearAsc">По году (старые)</option>
     </select>
   </div>
 
@@ -121,7 +141,7 @@ textarea{resize:vertical;min-height:80px}
     <button class="fb on" data-c="Всё">Всё</button><button class="fb" data-c="Фильм">Фильмы</button>
     <button class="fb" data-c="Сериал">Сериалы</button><button class="fb" data-c="Аниме">Аниме</button>
     <button class="fb" data-c="Манга">Манга</button>
-    <button class="fb" data-c="Ранобэ">Ранобэ</button><button class="fb" data-c="Мультфильм">Мультфильмы</button><span id="countInfo" style="margin-left:auto;font-size:12px;color:#7d839a"></span>
+    <button class="fb" data-c="Ранобэ">Ранобэ</button><button class="fb" data-c="Мультфильм">Мультфильмы</button><button class="tb" id="ongBtn">● Онгоинг</button><button class="tb on" id="xfBtn" style="display:none"></button><span id="countInfo" style="margin-left:auto;font-size:12px;color:#7d839a"></span>
   </div>
   <div class="filters" id="kindFilters" style="display:none;margin-top:8px"><button class="kb on" data-k="Все">Все виды</button><button class="kb" data-k="Манга">Манга</button><button class="kb" data-k="Манхва">Манхва</button><button class="kb" data-k="Маньхуа">Маньхуа</button><button class="kb" data-k="Комикс">Комикс</button></div>
   <div class="grid" id="itemsGrid"></div>
@@ -150,6 +170,8 @@ textarea{resize:vertical;min-height:80px}
   </div></div>
   <div class="row2"><input type="number" id="inputYear" placeholder="Год" min="1900" max="2100"><input type="number" id="inputRating" placeholder="Моя оценка (1-10)" min="1" max="10"></div>
   <input type="number" id="inputExtRating" placeholder="Оценка Shikimori/IMDb (напр. 8.54)" min="0" max="10" step="0.01">
+  <div class="row2"><input id="inputAuthor" placeholder="Автор / режиссёр"><input id="inputStudio" placeholder="Студия"></div>
+  <div class="row2"><select id="inputSource"><option value="">Источник: не указан</option><option>Оригинал</option><option>Манга</option><option>Ранобэ</option><option>Визуальная новелла</option><option>Игра</option><option>Книга</option><option>Комикс</option><option>Другое</option></select><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" id="inputOngoing" style="flex:none;width:18px;height:18px;padding:0"> Онгоинг (выходит сейчас)</label></div>
   <input id="inputTags" placeholder="Жанры и теги (через запятую)">
   <textarea id="inputDescription" placeholder="Синопсис / Описание..."></textarea>
   <div class="mb" style="justify-content:flex-end">
@@ -164,6 +186,7 @@ textarea{resize:vertical;min-height:80px}
   <div class="mb" style="margin:0;align-items:center"><div class="status" id="detailStatus" style="margin:0"></div><div class="meta" id="detailMeta" style="margin:0"></div></div>
   <h2 id="detailTitle" style="margin:6px 0 0"></h2>
   <div class="meta" id="detailNames" style="margin:0"></div>
+  <div class="credits" id="detailCredits"></div>
   <div class="ratings" id="detailRating" style="font-size:15px"></div>
   <div class="chips" id="detailTags"></div>
   <div id="detailDescription"></div>
@@ -207,7 +230,7 @@ const catLabel = i => i.category === 'Манга' && i.kind && i.kind !== 'Ма�
 const STATS = ['В планах','Смотрю/Читаю','Просмотрено/Прочитано','Любимое','Пересматриваю','Брошено'];
 const FALL = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280"><rect width="200" height="280" fill="%232c2c2c"/><text x="50%" y="50%" fill="%23777" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" dominant-baseline="middle">Нет постера</text></svg>';
 
-let user = null, items = [], loaded = false, cat = 'Всё', kind = 'Все', curId = null, unsub = null, posterValue = '';
+let user = null, items = [], loaded = false, cat = 'Всё', kind = 'Все', curId = null, unsub = null, posterValue = '', view = localStorage.getItem('view') || 'grid', ongOnly = false, xf = null;
 const grid = $('itemsGrid');
 
 // ---------- Вход ----------
@@ -236,7 +259,8 @@ onAuthStateChanged(auth, u => {
 const cloudSave = it => setDoc(doc(db, 'items', String(it.id)), {...it, userId: user.uid}).catch(e => alert('Не удалось сохранить в облако: ' + e.message));
 
 // ---------- Отрисовка ----------
-const names = i => [i.title, i.titleEn, i.titleOrig, i.alt].join(' ').toLowerCase();
+const names = i => [i.title, i.titleEn, i.titleOrig, i.alt, i.author, i.studio, i.source, i.year, (i.tags || []).join(' ')].join(' ').toLowerCase();
+const xmatch = i => xf.k === 'source' ? i.source === xf.v : (i[xf.k] || '').split(',').some(x => x.trim().toLowerCase() === xf.v.toLowerCase());
 const num = v => parseFloat(v) || 0;
 
 function refresh() { refreshTags(); render(); }
@@ -251,11 +275,12 @@ function refreshTags() {
 
 function render() {
   grid.replaceChildren();
+  grid.className = 'grid' + (view === 'list' ? ' list' : ''); $('viewBtn').textContent = view === 'list' ? '▦ Сетка' : '☰ Список';
   if (!loaded) return grid.append(el('div', 'msg', 'Загрузка...'));
   if (!items.length) return grid.append(el('div', 'msg', 'Коллекция пуста. Нажми «+ Добавить».'));
   const q = $('searchInput').value.toLowerCase().trim(), st = $('statusFilter').value, tg = $('tagFilter').value, so = $('sortSelect').value;
   const list = items.filter(i =>
-    (!q || names(i).includes(q)) && (cat === 'Всё' || i.category === cat) && (cat !== 'Манга' || kind === 'Все' || i.kind === kind) && (st === 'Все' || i.status === st) &&
+    (!q || names(i).includes(q)) && (cat === 'Всё' || i.category === cat) && (cat !== 'Манга' || kind === 'Все' || i.kind === kind) && (!ongOnly || i.ongoing) && (!xf || xmatch(i)) && (st === 'Все' || i.status === st) &&
     (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg))
   ).sort((a, b) => {
     if (so === 'dateAsc') return a.id - b.id;
@@ -263,10 +288,12 @@ function render() {
     if (so === 'ratingDesc') return num(b.rating) - num(a.rating);
     if (so === 'extDesc') return num(b.extRating) - num(a.extRating);
     if (so === 'yearDesc') return num(b.year) - num(a.year);
+    if (so === 'yearAsc') return (num(a.year) || 9999) - (num(b.year) || 9999);
     return b.id - a.id;
   });
-  if (!list.length) return grid.append(el('div', 'msg', 'Ничего не найдено.'));
   $('countInfo').textContent = `Показано: ${list.length} из ${items.length}`;
+  const xb = $('xfBtn'); xb.style.display = xf ? '' : 'none'; if (xf) xb.textContent = `${{author: 'Автор', studio: 'Студия', source: 'Источник'}[xf.k]}: ${xf.v} ✕`;
+  if (!list.length) return grid.append(el('div', 'msg', 'Ничего не найдено.'));
   const SHORT = {'Просмотрено/Прочитано': 'Завершено', 'Смотрю/Читаю': 'В процессе'};
   list.forEach(i => {
     const card = el('div', 'card'), pc = el('div', 'pc'), img = el('img'), st = el('div', 'status', SHORT[i.status] || i.status);
@@ -274,12 +301,14 @@ function render() {
     img.loading = 'lazy'; img.src = i.poster || FALL; img.onerror = () => { img.onerror = null; img.src = FALL; };
     const ov = el('div', 'ov'); ov.append(el('p', null, i.description || 'Описание отсутствует.'));
     pc.append(img, ov, st);
+    if (i.ongoing) pc.append(el('div', 'ong', 'ОНГОИНГ'));
     if (i.rating) pc.append(el('div', 'mine', '★ ' + i.rating));
     const info = el('div', 'ci'), row = el('div', 'cm');
     row.append(el('span', null, [i.year, catLabel(i)].filter(Boolean).join('  |  ')), el('span', 'star', i.extRating ? '★ ' + i.extRating : ''));
-    info.append(el('h3', 'title', i.title), row, el('div', 'tg', (i.tags || []).slice(0, 3).join(', ')));
+    const bd = el('div', 'bd2'), st2 = el('div', 'status', SHORT[i.status] || i.status); st2.dataset.s = i.status; bd.append(st2); if (i.ongoing) bd.append(el('div', 'ong', 'ОНГОИНГ'));
+    info.append(el('h3', 'title', i.title), row, el('div', 'tg', (i.tags || []).slice(0, 3).join(', ')), bd);
     card.append(pc, info); card.onclick = () => openDetail(i.id);
-    card.onmousemove = e => { const r = pc.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5; pc.style.transform = `perspective(700px) rotateY(${x * 10}deg) rotateX(${-y * 10}deg) translateY(-6px)`; };
+    card.onmousemove = e => { if (view === 'list') return; const r = pc.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5; pc.style.transform = `perspective(700px) rotateY(${x * 10}deg) rotateX(${-y * 10}deg) translateY(-6px)`; };
     card.onmouseleave = () => { pc.style.transform = ''; };
     grid.append(card);
   });
@@ -291,6 +320,10 @@ document.querySelectorAll('.fb').forEach(b => b.onclick = () => {
 });
 
 document.querySelectorAll('.kb').forEach(b => b.onclick = () => { kind = b.dataset.k; document.querySelectorAll('.kb').forEach(x => x.classList.toggle('on', x === b)); render(); });
+
+$('viewBtn').onclick = () => { view = view === 'list' ? 'grid' : 'list'; localStorage.setItem('view', view); render(); };
+$('ongBtn').onclick = e => { ongOnly = !ongOnly; e.currentTarget.classList.toggle('on', ongOnly); render(); };
+$('xfBtn').onclick = () => { xf = null; render(); };
 
 // ---------- Окна ----------
 const closeAll = () => ['addModal', 'detailModal', 'statsModal'].forEach(id => $(id).style.display = 'none');
@@ -331,11 +364,12 @@ $('inputCategory').onchange = afHint;
 
 function openAdd(item) {
   $('formTitle').textContent = item ? 'Редактировать тайтл' : 'Добавить тайтл';
-  const i = item || {id: '', title: '', category: 'Фильм', status: 'В планах', year: '', rating: '', extRating: '', description: '', titleEn: '', titleOrig: '', alt: '', tags: []};
+  const i = item || {id: '', title: '', category: 'Фильм', status: 'В планах', year: '', rating: '', extRating: '', description: '', titleEn: '', titleOrig: '', alt: '', tags: [], author: '', studio: '', source: '', ongoing: false};
   $('editId').value = i.id; $('inputTitle').value = i.title; $('inputCategory').value = i.category; $('inputStatus').value = i.status;
   $('inputYear').value = i.year || ''; $('inputRating').value = i.rating || ''; $('inputExtRating').value = i.extRating || '';
   $('inputDescription').value = i.description || ''; $('inputTitleEn').value = i.titleEn || ''; $('inputTitleOrig').value = i.titleOrig || '';
   $('inputAlt').value = i.alt || ''; $('inputTags').value = (i.tags || []).join(', ');
+  $('inputAuthor').value = i.author || ''; $('inputStudio').value = i.studio || ''; $('inputSource').value = i.source || ''; $('inputOngoing').checked = !!i.ongoing;
   $('inputKind').value = i.kind || 'Манга'; $('afQuery').value = ''; $('afResults').replaceChildren(); setPoster(i.poster); afHint();
   $('addModal').style.display = 'flex';
 }
@@ -351,7 +385,7 @@ $('saveItemBtn').onclick = () => {
   const it = {
     id: editId ? Number(editId) : Date.now(), title, category, kind: category === 'Манга' ? $('inputKind').value : '', status: $('inputStatus').value, poster: posterValue, year,
     rating: $('inputRating').value, extRating: $('inputExtRating').value, description: $('inputDescription').value.trim(),
-    titleEn: $('inputTitleEn').value.trim(), titleOrig: $('inputTitleOrig').value.trim(), alt: $('inputAlt').value.trim(),
+    titleEn: $('inputTitleEn').value.trim(), titleOrig: $('inputTitleOrig').value.trim(), alt: $('inputAlt').value.trim(), author: $('inputAuthor').value.trim(), studio: $('inputStudio').value.trim(), source: $('inputSource').value, ongoing: $('inputOngoing').checked,
     tags: parseTags($('inputTags').value)
   };
   const k = items.findIndex(x => x.id === it.id);
@@ -363,8 +397,15 @@ $('saveItemBtn').onclick = () => {
 function openDetail(id) {
   const i = items.find(x => x.id === id); if (!i) return; curId = id;
   $('detailPoster').src = i.poster || FALL; $('detailTitle').textContent = i.title; $('detailStatus').textContent = i.status; $('detailStatus').dataset.s = i.status;
-  $('detailMeta').textContent = `${catLabel(i)} • ${i.year || 'Год не указан'}`;
+  $('detailMeta').textContent = `${catLabel(i)} • ${i.year || 'Год не указан'}${i.ongoing ? ' • ● Онгоинг' : ''}`;
   $('detailNames').textContent = [i.titleEn, i.titleOrig, i.alt].filter(Boolean).join(' / ');
+  const cr = $('detailCredits'); cr.replaceChildren();
+  [['Автор', 'author'], ['Студия', 'studio'], ['Источник', 'source']].forEach(([lab, k]) => {
+    const v = (k === 'source' ? [i.source] : (i[k] || '').split(',').map(x => x.trim())).filter(Boolean); if (!v.length) return;
+    const row = el('div', 'cr'); row.append(el('span', 'meta', lab + ':'));
+    v.forEach(x => { const c = el('button', 'chip', x); c.onclick = () => { closeAll(); xf = {k, v: x}; render(); }; row.append(c); });
+    cr.append(row);
+  });
   $('detailRating').textContent = `★ Моя оценка: ${i.rating ? i.rating + '/10' : '-/10'}${i.extRating ? ' | Внешняя оценка: ' + i.extRating : ''}`;
   const tg = $('detailTags'); tg.replaceChildren();
   (i.tags || []).forEach(t => { const c = el('button', 'chip', t); c.onclick = () => { closeAll(); $('tagFilter').value = t.toLowerCase(); render(); }; tg.append(c); });
@@ -380,18 +421,22 @@ $('deleteItemBtn').onclick = () => {
 
 // ---------- Автозаполнение ----------
 const decode = s => { const t = document.createElement('textarea'); t.innerHTML = s; return t.value; };
+const SRC = {ORIGINAL: 'Оригинал', MANGA: 'Манга', LIGHT_NOVEL: 'Ранобэ', VISUAL_NOVEL: 'Визуальная новелла', VIDEO_GAME: 'Игра', GAME: 'Игра', NOVEL: 'Книга', WEB_NOVEL: 'Книга', COMIC: 'Комикс'};
 const RU = {Action:'Экшен',Adventure:'Приключения',Comedy:'Комедия',Drama:'Драма',Ecchi:'Эччи',Fantasy:'Фэнтези',Horror:'Ужасы','Mahou Shoujo':'Махо-сёдзё',Mecha:'Меха',Music:'Музыка',Mystery:'Детектив',Psychological:'Психология',Romance:'Романтика','Sci-Fi':'Научная фантастика','Slice of Life':'Повседневность',Sports:'Спорт',Supernatural:'Сверхъестественное',Thriller:'Триллер'};
 const TG = {28:'Боевик',12:'Приключения',16:'Мультфильм',35:'Комедия',80:'Криминал',99:'Документальный',18:'Драма',10751:'Семейный',14:'Фэнтези',36:'История',27:'Ужасы',10402:'Музыка',9648:'Детектив',10749:'Мелодрама',878:'Фантастика',53:'Триллер',10752:'Военный',37:'Вестерн',10759:'Боевик и приключения',10765:'Фантастика и фэнтези',10768:'Война и политика'};
 
 async function anilist(search, type) {
-  const gql = 'query($s:String,$t:MediaType){Page(perPage:10){media(search:$s,type:$t,sort:SEARCH_MATCH){format countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore genres}}}';
+  const gql = 'query($s:String,$t:MediaType){Page(perPage:10){media(search:$s,type:$t,sort:SEARCH_MATCH){format countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore genres status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
   const r = await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'}, body: JSON.stringify({query: gql, variables: {s: search, t: type}})});
   const j = await r.json(); if (j.errors) throw new Error(j.errors[0].message);
   return j.data.Page.media.map(m => {
     const t = m.title, main = t.english || t.romaji || t.native;
+    const stf = m.staff?.edges || [], pick = re => [...new Set(stf.filter(e => re.test(e.role)).map(e => e.node.name.full))].slice(0, 2).join(', ');
     const alt = [...new Set([t.romaji, ...(m.synonyms || [])].filter(x => x && x !== main && x !== t.english))].join(', ');
     return {
-      title: main, en: t.english || '', orig: t.native || '', alt, poster: m.coverImage.large, year: m.startDate.year || '',
+      title: main, en: t.english || '', orig: t.native || '', alt,
+      author: type === 'ANIME' ? (pick(/Original Creator/i) || pick(/Director/i)) : (pick(/Story/i) || pick(/Art/i)),
+      studio: (m.studios?.nodes || []).map(n => n.name).slice(0, 2).join(', '), source: SRC[m.source] || '', ongoing: m.status === 'RELEASING', poster: m.coverImage.large, year: m.startDate.year || '',
       ext: m.averageScore ? (m.averageScore / 10).toFixed(1) : '', tags: (m.genres || []).map(g => RU[g] || g),
       desc: m.description ? decode(m.description.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim() : '',
       category: type === 'ANIME' ? 'Аниме' : m.format === 'NOVEL' ? 'Ранобэ' : 'Манга',
@@ -416,14 +461,24 @@ async function tmdb(search) {
       title: x.title || x.name, en: x.original_language === 'en' ? orig : '', orig, alt: '',
       poster: x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '',
       year: (x.release_date || x.first_air_date || '').slice(0, 4), ext: x.vote_count ? x.vote_average.toFixed(1) : '',
-      tags: ids.map(g => TG[g]).filter(Boolean), desc: x.overview || '',
+      tags: ids.map(g => TG[g]).filter(Boolean), tmdb: x.media_type + '/' + x.id, desc: x.overview || '',
       category: ids.includes(16) ? 'Мультфильм' : x.media_type === 'tv' ? 'Сериал' : 'Фильм'
     };
   });
 }
 
+async function tmdbExtra(r) {
+  const k = TMDB_KEY || localStorage.getItem('tmdbKey');
+  const d = await (await fetch(`https://api.themoviedb.org/3/${r.tmdb}?api_key=${encodeURIComponent(k)}&language=ru-RU&append_to_response=credits`)).json();
+  const dir = (d.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name), by = (d.created_by || []).map(c => c.name);
+  $('inputAuthor').value = [...new Set([...by, ...dir])].slice(0, 2).join(', ');
+  $('inputStudio').value = (d.production_companies || []).slice(0, 2).map(c => c.name).join(', ');
+  $('inputOngoing').checked = d.status === 'Returning Series';
+}
+
 function fillForm(r) {
   if (!$('inputTitle').value.trim()) $('inputTitle').value = r.title;
+  $('inputAuthor').value = r.author || ''; $('inputStudio').value = r.studio || ''; $('inputSource').value = r.source || ''; $('inputOngoing').checked = !!r.ongoing;
   $('inputTitleEn').value = r.en; $('inputTitleOrig').value = r.orig; $('inputAlt').value = r.alt;
   $('inputCategory').value = r.category; $('inputKind').value = r.kind || 'Манга'; $('inputYear').value = r.year; $('inputExtRating').value = r.ext;
   $('inputDescription').value = r.desc; $('inputTags').value = parseTags($('inputTags').value + ',' + r.tags.join(',')).join(', ');
@@ -440,7 +495,7 @@ $('afBtn').onclick = async () => {
       const row = el('div', 'afr'), im = el('img'), t = el('div');
       im.loading = 'lazy'; im.src = r.poster || FALL;
       t.append(el('b', null, r.title), el('div', 'meta', `${r.category} • ${r.year || '?'}${r.ext ? ' • ★ ' + r.ext : ''}`));
-      row.append(im, t); row.onclick = () => { fillForm(r); box.replaceChildren(); }; box.append(row);
+      row.append(im, t); row.onclick = async () => { fillForm(r); box.replaceChildren(); if (r.tmdb) { try { await tmdbExtra(r); } catch (e) {} } }; box.append(row);
     });
   } catch (e) { box.replaceChildren(el('div', 'meta', 'Ошибка поиска: ' + e.message)); }
 };
@@ -485,7 +540,7 @@ window.importData = e => {
           category: x.category === 'Кино' ? 'Фильм' : x.category === 'Манхва' ? 'Манга' : CATS.includes(x.category) ? x.category : 'Фильм', kind: x.category === 'Манхва' ? 'Манхва' : (x.kind || ''),
           status: STATS.includes(x.status) ? x.status : 'В планах', poster: x.poster || '', year: x.year || '', rating: x.rating || '',
           extRating: x.extRating || '', description: x.description || '', titleEn: x.titleEn || '', titleOrig: x.titleOrig || '',
-          alt: x.alt || '', tags: Array.isArray(x.tags) ? x.tags : []
+          alt: x.alt || '', author: x.author || '', studio: x.studio || '', source: x.source || '', ongoing: !!x.ongoing, tags: Array.isArray(x.tags) ? x.tags : []
         };
         if (!it.title || ids.has(String(it.id)) || keys.has(key(it))) return;
         ids.add(String(it.id)); keys.add(key(it)); add.push(it);

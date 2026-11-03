@@ -189,6 +189,15 @@ select option{background:#1a1c2a;color:#fff}
 .fb[data-c="Мультфильм"]::before{content:"🧸 "}
 @media(hover:none){.card .ov{display:none}}
 @media(max-width:600px){body{padding:12px}header{margin:-12px -12px 12px;padding:10px 12px}.btn,.fb,.tb,.tab,select,input{min-height:40px}.tabs{display:flex;width:100%}.tab{flex:1;padding:9px 6px}.row2{flex-direction:column}#addModal .mc{max-width:100%}}
+
+/* ===== Форма и скрытие ===== */
+.fs{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ach);font-weight:700;margin:8px 0 -4px;padding-top:8px;border-top:1px solid var(--bd)}
+.mc>.fs:first-of-type{border-top:0;padding-top:0}
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}.fld>label{font-size:12px;color:var(--mu);font-weight:600}
+#addModal .mb{flex-wrap:wrap}
+.hid{position:absolute;left:10px;bottom:10px;z-index:3;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(18,20,32,.62);backdrop-filter:blur(8px);color:#fff;font-size:12px;cursor:pointer;opacity:0;transition:.2s}
+.card:hover .hid,.hid:focus-visible{opacity:1}.hid:hover{background:#cf6679}
+@media(hover:none){.hid{opacity:.75}}
 </style>
 </head>
 <body>
@@ -207,7 +216,7 @@ select option{background:#1a1c2a;color:#fff}
       <select id="sizeSel" title="Размер карточек"><option value="150">Карточки: мелкие</option><option value="190">Карточки: средние</option><option value="240">Карточки: крупные</option></select>
       <button class="btn" id="openModalBtn">+ Добавить</button>
       <div class="acc"><button class="av" id="accBtn" title="Аккаунт" aria-haspopup="true"><img id="hdrAvatar" referrerpolicy="no-referrer" alt=""></button>
-        <div class="menu" id="accMenu"><button id="accProfile">👤 Мой профиль</button><div class="sw" id="accSw" title="Цвет оформления"></div><button onclick="exportData()">⬇ Скачать бэкап</button><button onclick="importFile.click()">⬆ Загрузить бэкап</button><button class="out" id="logoutBtn">⎋ Выйти</button></div></div>
+        <div class="menu" id="accMenu"><button id="accProfile">👤 Мой профиль</button><div class="sw" id="accSw" title="Цвет оформления"></div><button onclick="exportData()">⬇ Скачать бэкап</button><button onclick="importFile.click()">⬆ Загрузить бэкап</button><button id="accReset">↺ Сбросить оформление</button><button class="out" id="logoutBtn">⎋ Выйти</button></div></div>
     </div>
   </header>
   <div class="tabs"><button class="tab on" data-v="catalog">🌐 Каталог</button><button class="tab" data-v="profile">👤 Мой профиль</button></div>
@@ -222,7 +231,7 @@ select option{background:#1a1c2a;color:#fff}
       <select id="cgKind" style="display:none"><option value="">Все виды</option><option value="JP">Манга</option><option value="KR">Манхва</option><option value="CN">Маньхуа</option></select>
       <select id="cgGenre"></select>
       <input type="number" id="cgYear" placeholder="Год" min="1900" max="2100" style="width:88px">
-      <button class="tb" id="cgHide">Скрыть добавленные</button><button class="tb" id="cgPoster">Только с постером</button><select id="cgMin" title="Минимальная внешняя оценка"><option value="0">Любой рейтинг</option><option value="6">★ 6+</option><option value="7">★ 7+</option><option value="8">★ 8+</option></select>
+      <button class="tb" id="cgHide">Скрыть добавленные</button><button class="tb" id="cgPoster">Только с постером</button><button class="tb" id="cgRec" title="Подобрать по жанрам из твоей коллекции">✨ Для тебя</button><select id="cgMin" title="Минимальная внешняя оценка"><option value="0">Любой рейтинг</option><option value="6">★ 6+</option><option value="7">★ 7+</option><option value="8">★ 8+</option></select>
       <button class="tb" id="cgReset">Сбросить</button>
       <button class="btn" id="cgRand">🎲 Случайное</button>
     </div>
@@ -276,6 +285,7 @@ select option{background:#1a1c2a;color:#fff}
 <div class="modal" id="addModal"><div class="mc">
   <h3 id="formTitle" style="margin:0">Добавить тайтл</h3>
   <input type="hidden" id="editId">
+  <div class="fs">Основное</div>
   <div class="row2">
     <select id="inputCategory"><option>Фильм</option><option>Сериал</option><option>Аниме</option><option>Манга</option><option>Ранобэ</option><option>Мультфильм</option></select>
     <select id="inputStatus"><option>В планах</option><option>Смотрю/Читаю</option><option>Просмотрено/Прочитано</option><option>Любимое</option><option>Пересматриваю</option><option>Брошено</option></select>
@@ -286,21 +296,27 @@ select option{background:#1a1c2a;color:#fff}
     <div class="meta" id="afHint" style="margin:0"></div>
     <div id="afResults"></div>
   </div>
+  <div class="fs">Названия</div>
   <input type="text" id="inputTitle" placeholder="Название (русское) *">
   <div class="row2"><input id="inputTitleEn" placeholder="Английское"><input id="inputTitleOrig" placeholder="Оригинальное"></div>
   <input id="inputAlt" placeholder="Другие названия (через запятую)">
+  <div class="fs">Постер</div>
   <div class="row"><img id="posterPreview" alt=""><div style="flex:1;display:flex;flex-direction:column;gap:8px">
     <input id="inputPoster" placeholder="Ссылка на постер (URL)">
     <div class="row"><input type="file" id="inputPosterFile" accept="image/*" style="flex:1"><button class="btn btn-s" id="clearPoster" type="button">Убрать</button></div>
   </div></div>
+  <div class="fs">Год и оценки</div>
   <div class="row2"><input type="number" id="inputYear" placeholder="Год" min="1900" max="2100"><input type="number" id="inputRating" placeholder="Моя оценка (1-10)" min="1" max="10"></div>
   <input type="number" id="inputExtRating" placeholder="Внешняя оценка (AniList/TMDB, напр. 8.5)" min="0" max="10" step="0.01"><input type="hidden" id="inputExtSrc">
+  <div class="fs">Создатели</div>
   <div class="row2"><input id="inputAuthor" placeholder="Автор / режиссёр"><input id="inputStudio" placeholder="Студия"></div>
   <div class="row2"><select id="inputSource"><option value="">Источник: не указан</option><option>Оригинал</option><option>Манга</option><option>Ранобэ</option><option>Визуальная новелла</option><option>Игра</option><option>Книга</option><option>Комикс</option><option>Другое</option></select><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" id="inputOngoing" style="flex:none;width:18px;height:18px;padding:0"> Онгоинг (выходит сейчас)</label></div>
+  <div class="fs">Жанры и описание</div>
   <input id="inputTags" placeholder="Жанры и теги (через запятую)">
   <textarea id="inputDescription" placeholder="Синопсис / Описание..."></textarea>
   <div class="mb" style="justify-content:flex-end">
     <button class="btn btn-s" id="closeAddBtn" type="button">Отмена</button>
+    <button class="btn btn-s" id="saveNextBtn" type="button">Сохранить и добавить ещё</button>
     <button class="btn" id="saveItemBtn" type="button">Сохранить</button>
   </div>
 </div></div>
@@ -531,7 +547,7 @@ $('inputCategory').onchange = afHint;
 
 function openAdd(item) {
   exTok++; exP = Promise.resolve();
-  $('formTitle').textContent = item ? 'Редактировать тайтл' : 'Добавить тайтл';
+  $('formTitle').textContent = item ? 'Редактировать тайтл' : 'Добавить тайтл'; $('saveNextBtn').style.display = item ? 'none' : '';
   const i = item || {id: '', title: '', category: 'Фильм', status: 'В планах', year: '', rating: '', extRating: '', description: '', titleEn: '', titleOrig: '', alt: '', tags: [], author: '', studio: '', source: '', ongoing: false};
   $('editId').value = i.id; $('inputTitle').value = i.title; $('inputCategory').value = i.category; $('inputStatus').value = i.status;
   $('inputYear').value = i.year || ''; $('inputRating').value = i.rating || ''; $('inputExtRating').value = i.extRating || ''; $('inputExtSrc').value = i.extSrc || '';
@@ -541,9 +557,33 @@ function openAdd(item) {
   $('inputKind').value = i.kind || 'Манга'; $('afQuery').value = ''; $('afResults').replaceChildren(); setPoster(i.poster); afHint();
   $('addModal').style.display = 'flex';
 }
-$('openModalBtn').onclick = () => openAdd(null);
+const LBL = {inputCategory: 'Категория', inputStatus: 'Статус', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputDescription: 'Синопсис / описание'};
+Object.entries(LBL).forEach(([id, t]) => { const e = $(id), w = el('div', 'fld'); e.replaceWith(w); w.append(el('label', null, t), e); });
+const DF = Object.keys(LBL).concat('inputExtSrc');
+const draftClear = () => { try { localStorage.removeItem('draft'); } catch (e) {} };
+function draftSave() { if ($('editId').value) return; const d = {}; DF.forEach(k => { const v = $(k).value; if (v && v.length < 3000) d[k] = v; }); if (!d.inputTitle) return; try { localStorage.setItem('draft', JSON.stringify(d)); } catch (e) {} }
+function draftRestore() {
+  let d = null; try { d = JSON.parse(localStorage.getItem('draft') || 'null'); } catch (e) {}
+  if (!d || !d.inputTitle) return;
+  DF.forEach(k => { if (d[k] != null) $(k).value = d[k]; });
+  toast('Восстановил несохранённый черновик', false, {label: 'Очистить', fn: () => { draftClear(); openAdd(null); }});
+}
+$('addModal').addEventListener('input', draftSave); $('addModal').addEventListener('change', draftSave);
+$('closeAddBtn').addEventListener('click', draftClear);
+$('openModalBtn').onclick = () => { openAdd(null); draftRestore(); };
+$('saveNextBtn').onclick = () => { again = true; $('saveItemBtn').click(); };
+const UIK = ['acc', 'cw', 'profHide', 'view'];
+$('accReset').onclick = () => { if (!confirm('Сбросить оформление (цвет, размер карточек, вид, скрытые блоки профиля, скрытое в каталоге)? Коллекция не пострадает.')) return; try { UIK.concat('cgHid', 'draft').forEach(k => localStorage.removeItem(k)); } catch (e) {} location.reload(); };
+let recI = 0;
+$('cgRec').onclick = () => {
+  const opts = [...$('cgGenre').options].filter(o => o.value), mine = topBy(i => i.tags || []).map(r => opts.find(o => o.textContent.trim().toLowerCase() === r[0].toLowerCase())).filter(Boolean);
+  if (!mine.length) return toast('Нужно больше тайтлов с жанрами в коллекции — тогда подберу рекомендации');
+  const o = mine[recI++ % Math.min(3, mine.length)];
+  $('cgGenre').value = o.value; $('cgMode').value = 'top'; cg.hide = true; $('cgHide').classList.add('on');
+  toast('Рекомендации по жанру «' + o.textContent.trim() + '» — нажми ещё раз для следующего'); cgLoad(true);
+};
 
-let saving = false;
+let saving = false, again = false;
 $('saveItemBtn').onclick = async () => {
   if (saving) return; saving = true;
   try {
@@ -563,8 +603,9 @@ $('saveItemBtn').onclick = async () => {
   const k = items.findIndex(x => x.id === it.id);
   if (k > -1) items[k] = it; else items.push(it);
   refresh(); closeAll(); if (editId) openDetail(it.id);
-  cloudSave(it);
-  } finally { saving = false; }
+  cloudSave(it); draftClear();
+  if (again && !editId) { toast('Добавлено: ' + it.title); openAdd(null); }
+  } finally { saving = false; again = false; }
 };
 
 function openDetail(id) {
@@ -812,7 +853,10 @@ document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
 // ---------- Каталог (популярное из AniList и TMDB) ----------
 const cg = {g: 'Аниме', page: 1, q: '', t: 0, hide: false, poster: false, min: 0}, cgGrid = $('cgGrid');
 const has = r => items.some(i => same(i, r));
-const cgPass = r => !(cg.hide && has(r)) && !(cg.poster && !r.poster) && num(r.ext) >= cg.min;
+const cgKey = r => r.url || r.title + '|' + r.category, cgHid = new Set();
+try { JSON.parse(localStorage.getItem('cgHid') || '[]').forEach(k => cgHid.add(k)); } catch (e) {}
+const cgHidSave = () => { try { localStorage.setItem('cgHid', JSON.stringify([...cgHid].slice(-500))); } catch (e) {} };
+const cgPass = r => !cgHid.has(cgKey(r)) && !(cg.hide && has(r)) && !(cg.poster && !r.poster) && num(r.ext) >= cg.min;
 
 async function cgFetch(page, per, q, mode) {
   const g = cg.g, gen = $('cgGenre').value, yr = parseInt($('cgYear').value) || 0;
@@ -874,6 +918,7 @@ function cgCard(r) {
   const info = el('div', 'ci'), row = el('div', 'cm');
   row.append(el('span', null, [r.year, r.category].filter(Boolean).join('  |  ')), Object.assign(el('span', 'star', r.ext ? '★ ' + r.ext : ''), {title: r.src ? 'Оценка: ' + r.src : 'Внешняя оценка'}));
   info.append(Object.assign(el('h3', 'title', r.title), {title: r.title}), row, el('div', 'tg', r.tags.slice(0, 3).join(', ')));
+  const hb = el('button', 'hid', '✕'); hb.title = 'Не показывать это в каталоге'; hb.onclick = e => { e.stopPropagation(); cgHid.add(cgKey(r)); cgHidSave(); card.remove(); toast('Скрыто. Вернуть скрытое можно кнопкой «Сбросить».'); }; pc.append(hb);
   card.append(pc, info); card.tabIndex = 0; card.onclick = () => showPreview(r, false); card.onkeydown = e => { if (e.key === 'Enter') showPreview(r, false); };
   cgGrid.append(card); cgMarks();
 }
@@ -906,7 +951,7 @@ $('cgSearch').oninput = () => { $('cgClear').style.display = $('cgSearch').value
 $('cgSearch').onkeydown = e => { if (e.key === 'Enter') cgGo(); };
 $('cgHide').onclick = e => { cg.hide = !cg.hide; e.currentTarget.classList.toggle('on', cg.hide); cgLoad(true); };
 let cgY; $('cgYear').oninput = () => { clearTimeout(cgY); cgY = setTimeout(() => cgLoad(true), 600); };
-$('cgReset').onclick = () => { $('cgSearch').value = ''; cg.q = ''; $('cgGenre').value = ''; $('cgYear').value = ''; $('cgKind').value = ''; $('cgMode').value = 'pop'; cg.hide = cg.poster = false; cg.min = 0; $('cgMin').value = '0'; $('cgClear').style.display = 'none'; ['cgHide', 'cgPoster'].forEach(i => $(i).classList.remove('on')); cgLoad(true); };
+$('cgReset').onclick = () => { cgHid.clear(); cgHidSave(); $('cgSearch').value = ''; cg.q = ''; $('cgGenre').value = ''; $('cgYear').value = ''; $('cgKind').value = ''; $('cgMode').value = 'pop'; cg.hide = cg.poster = false; cg.min = 0; $('cgMin').value = '0'; $('cgClear').style.display = 'none'; ['cgHide', 'cgPoster'].forEach(i => $(i).classList.remove('on')); cgLoad(true); };
 $('cgMore').onclick = () => cgLoad(false);
 $('cgPoster').onclick = e => { cg.poster = !cg.poster; e.currentTarget.classList.toggle('on', cg.poster); cgLoad(true); };
 $('cgMin').onchange = () => { cg.min = +$('cgMin').value || 0; cgLoad(true); };

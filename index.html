@@ -117,6 +117,25 @@ textarea{resize:vertical;min-height:80px}
 .mini img{width:96px;height:144px;object-fit:cover;border-radius:10px;display:block;background:#222633;transition:transform .2s}
 .mini:hover img{transform:translateY(-4px)}
 .mini span{display:block;font-size:11px;margin-top:5px;color:#cfd3e2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.brand{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#7c5cff,#a893ff);display:grid;place-items:center;font-size:15px;color:#fff}
+.acc{position:relative}.av{padding:0;border:2px solid var(--bd);background:#222633;border-radius:50%;width:40px;height:40px;cursor:pointer;overflow:hidden}.av:hover{border-color:var(--ac)}.av img{width:100%;height:100%;object-fit:cover;display:block}
+.menu{display:none;position:absolute;right:0;top:48px;min-width:210px;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,.5);z-index:60}.menu.open{display:block}
+.menu button{display:block;width:100%;text-align:left;background:none;border:0;color:#e6e8f0;padding:10px 12px;border-radius:8px;cursor:pointer;font:inherit;font-size:14px}.menu button:hover{background:#262a36}.menu .out{color:#ff6b81}
+.pcard{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:linear-gradient(135deg,#1f1a3d,#171a22 65%);border:1px solid var(--bd);border-radius:16px;padding:18px 20px;margin-bottom:14px}
+.pcard img{width:72px;height:72px;border-radius:50%;background:#222633;object-fit:cover;border:2px solid var(--ac)}
+.pinfo{flex:1;min-width:160px}.pinfo b{font-size:20px}.pinfo .meta{margin:2px 0 0}
+.ring{--p:0;width:72px;height:72px;border-radius:50%;background:conic-gradient(var(--ac) calc(var(--p)*1%),#262a36 0);display:grid;place-items:center;position:relative}
+.ring::before{content:'';position:absolute;inset:7px;border-radius:50%;background:#171a22}.ring span{position:relative;font-weight:800;font-size:15px}
+.dash{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:14px}
+.pb{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px 16px}.pb h4{margin:4px 0 10px;font-size:14px}
+.pb .sr.go{cursor:pointer}.pb .sr.go:hover span:first-child{color:#fff}.pb .sr span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist{display:flex;align-items:flex-end;gap:5px;height:130px}.hist div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;font-size:11px;color:var(--mu)}
+.hist i{display:block;width:100%;background:var(--ac);border-radius:4px 4px 0 0;min-height:2px}
+.donut{width:120px;height:120px;border-radius:50%;flex:none;position:relative}.donut::after{content:'';position:absolute;inset:24px;border-radius:50%;background:var(--card)}
+.lg{display:flex;flex-direction:column;gap:6px;font-size:13px}.lg .go{cursor:pointer;display:flex;gap:7px;align-items:center}.lg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.hl{display:flex;flex-direction:column;gap:7px;font-size:13px}.hl span{color:var(--mu)}
+.pset{margin-bottom:14px;font-size:13px}.pset summary{cursor:pointer;color:var(--mu)}.pset label{display:inline-block;margin:8px 14px 0 0;cursor:pointer}
 </style>
 </head>
 <body>
@@ -129,14 +148,13 @@ textarea{resize:vertical;min-height:80px}
 
 <div id="appScreen">
   <header>
-    <div class="row"><h1 class="logo" style="margin:0;font-size:24px">Моя Коллекция</h1><span id="userEmail" class="meta" style="margin:0"></span><span id="syncState" class="sync">☁ Синхронизировано</span></div>
+    <div class="row"><span class="brand" aria-hidden="true">▶</span><span id="syncState" class="sync">☁ Синхронизировано</span></div>
     <div class="row hdr-actions">
-      <button class="btn btn-s" onclick="exportData()">⬇ Бэкап</button>
-      <button class="btn btn-s" onclick="importFile.click()">⬆ Загрузить</button>
       <input type="file" id="importFile" accept=".json" onchange="importData(event)">
       <select id="sizeSel" title="Размер карточек"><option value="150">Карточки: мелкие</option><option value="190">Карточки: средние</option><option value="240">Карточки: крупные</option></select>
       <button class="btn" id="openModalBtn">+ Добавить</button>
-      <button class="btn btn-d" id="logoutBtn">Выход</button>
+      <div class="acc"><button class="av" id="accBtn" title="Аккаунт" aria-haspopup="true"><img id="hdrAvatar" referrerpolicy="no-referrer" alt=""></button>
+        <div class="menu" id="accMenu"><button id="accProfile">👤 Мой профиль</button><button onclick="exportData()">⬇ Скачать бэкап</button><button onclick="importFile.click()">⬆ Загрузить бэкап</button><button class="out" id="logoutBtn">⎋ Выйти</button></div></div>
     </div>
   </header>
   <div class="tabs"><button class="tab on" data-v="catalog">🌐 Каталог</button><button class="tab" data-v="profile">👤 Мой профиль</button></div>
@@ -160,14 +178,15 @@ textarea{resize:vertical;min-height:80px}
   </div>
 
   <div id="profileView" style="display:none">
-    <div class="row" style="margin-bottom:14px">
-      <img id="avatar" referrerpolicy="no-referrer" alt="" style="width:46px;height:46px;border-radius:50%;background:#222633">
-      <div><b id="profName"></b><div class="meta" id="profMail" style="margin:0"></div></div>
-      <button class="btn btn-s" id="statsBtn" style="margin-left:auto">📊 Подробная статистика</button>
+    <div class="pcard">
+      <img id="avatar" referrerpolicy="no-referrer" alt="">
+      <div class="pinfo"><b id="profName"></b><div class="meta" id="profMail"></div><div class="meta" id="profSince"></div></div>
+      <div class="ring" id="profRing" title="Доля завершённых и любимых"><span id="profRingTxt">0%</span></div>
+      <button class="btn btn-s" id="statsBtn">📊 Подробная статистика</button>
     </div>
     <div class="tiles" id="profStats"></div>
+    <div id="profDash"></div>
     <div id="profStrips"></div>
-    <details style="margin-bottom:14px"><summary style="cursor:pointer;font-weight:700;margin-bottom:10px">📊 Статистика коллекции</summary><div id="profCharts" style="background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:6px 16px 12px"></div></details>
 
   <div class="row">
     <input type="text" id="searchInput" placeholder="Поиск: название, автор, студия, год...">
@@ -312,7 +331,7 @@ $('logoutBtn').onclick = () => signOut(auth);
 onAuthStateChanged(auth, u => {
   user = u;
   if (u) {
-    $('authScreen').style.display = 'none'; $('appScreen').style.display = 'block'; $('userEmail').textContent = u.email; $('profName').textContent = u.displayName || u.email; $('profMail').textContent = u.email; $('avatar').src = u.photoURL || '';
+    $('authScreen').style.display = 'none'; $('appScreen').style.display = 'block'; $('hdrAvatar').src = u.photoURL || ''; $('profName').textContent = u.displayName || u.email; $('profMail').textContent = u.email; $('avatar').src = u.photoURL || '';
     loaded = false; render(); if (!cgGrid.children.length) cgLoad(true);
     // Живая синхронизация: изменения с другого устройства появляются сами
     unsub = onSnapshot(query(collection(db, 'items'), where('userId', '==', u.uid)),
@@ -634,14 +653,74 @@ function buildStats(b) {
 $('statsBtn').onclick = () => { buildStats($('statsBody')); $('statsModal').style.display = 'flex'; };
 
 // ---------- Профиль ----------
-function profStats() {
-  const c = st => items.filter(i => i.status === st).length, e = items.filter(i => num(i.extRating)), box = $('profStats'); box.replaceChildren();
-  [['Всего', items.length, 'Все'], ['Завершено', c('Просмотрено/Прочитано'), 'Просмотрено/Прочитано'], ['В процессе', c('Смотрю/Читаю'), 'Смотрю/Читаю'], ['В планах', c('В планах'), 'В планах'], ['Любимое', c('Любимое'), 'Любимое']].forEach(([l, n, st]) => {
-    const t = el('button', 'tile'); t.append(el('b', null, n), el('span', null, l)); t.onclick = () => { $('statusFilter').value = st; render(); }; box.append(t);
-  });
-  const t = el('div', 'tile'); t.style.cursor = 'default'; t.append(el('b', null, e.length ? (e.reduce((a, i) => a + num(i.extRating), 0) / e.length).toFixed(1) : '—'), el('span', null, 'Ср. внешняя оценка')); box.append(t);
-  profStrips(); buildStats($('profCharts'));
+const MON = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'], PAL = ['#7c5cff','#ff6b81','#4fc3f7','#ffb74d','#81c784','#ba68c8'];
+const born = i => { const v = Number(i.id); return v > 1e14 ? v / 1000 : v > 1e11 && v < 1e13 ? v : 0; }; // дата добавления берётся из id; у совсем старых записей её нет
+const spl = v => (v || '').split(',').map(x => x.trim()).filter(Boolean);
+const hidNow = () => { try { return JSON.parse(localStorage.getItem('profHide') || '[]'); } catch (e) { return []; } };
+const toList = () => $('searchInput').scrollIntoView({behavior: 'smooth'});
+const goCat = c => { document.querySelector(`#catFilters .fb[data-c="${c}"]`)?.click(); toList(); };
+const goTag = t => { $('tagFilter').value = t.toLowerCase(); render(); toList(); };
+const goFind = q => { $('searchInput').value = q; render(); toList(); };
+function topBy(f) { const c = {}; items.forEach(i => f(i).forEach(x => c[x] = (c[x] || 0) + 1)); return Object.entries(c).sort((a, b) => b[1] - a[1]); }
+function bars(p, list, fn) {
+  const max = Math.max(1, ...list.map(r => r[1]));
+  list.forEach(([n, c]) => { const r = el('div', 'sr' + (fn ? ' go' : '')), b = el('div', 'bar'); b.style.width = (c / max * 100) + '%'; r.append(el('span', null, n), b, el('span', 'meta', c)); if (fn) r.onclick = () => fn(n); p.append(r); });
 }
+function columns(p, vals, labels, tips) {
+  const h = el('div', 'hist'), mx = Math.max(1, ...vals);
+  vals.forEach((v, k) => { const col = el('div'), b = el('i'); b.style.height = Math.round(v / mx * 80) + 'px'; col.title = tips ? tips[k] : ''; col.append(el('span', null, v || ''), b, el('span', null, labels[k])); h.append(col); });
+  p.append(h);
+}
+function profDash() {
+  const box = $('profDash'); box.replaceChildren();
+  if (!items.length) return box.append(el('div', 'msg', 'Коллекция пока пуста — добавь первый тайтл из каталога или кнопкой «+ Добавить».'));
+  const hid = hidNow(), grid = el('div', 'dash'), mk = (k, t) => { const p = el('div', 'pb'); p.dataset.k = k; p.append(el('h4', null, t)); if (hid.includes(k)) p.style.display = 'none'; grid.append(p); return p; };
+  const cc = CATS.map(c => [c, items.filter(i => i.category === c).length]).filter(r => r[1]), tot = cc.reduce((s, r) => s + r[1], 0) || 1;
+  { const p = mk('cats', 'Что в коллекции'), w = el('div', 'row'), d = el('div', 'donut'), lg = el('div', 'lg'); let a = 0; const g = [];
+    cc.forEach(([c, n], k) => { const s0 = a / tot * 100; a += n; g.push(`${PAL[k % 6]} ${s0}% ${a / tot * 100}%`); const l = el('div', 'go'), sw = el('i'); sw.style.background = PAL[k % 6]; l.append(sw, el('span', null, `${c}: ${n}`)); l.onclick = () => goCat(c); lg.append(l); });
+    d.style.background = `conic-gradient(${g.join(',')})`; w.append(d, lg); p.append(w); }
+  { const p = mk('hl', 'Коротко о тебе'), h = el('div', 'hl'), rated = items.filter(i => num(i.rating)).sort((a, b) => num(b.rating) - num(a.rating));
+    const line = (l, v) => { if (!v) return; const d = el('div'); d.append(el('span', null, l + ': '), document.createTextNode(v)); h.append(d); };
+    const tg = topBy(i => i.tags || [])[0], st = topBy(i => spl(i.studio))[0], au = topBy(i => spl(i.author))[0], lo = rated[rated.length - 1];
+    line('Любимый жанр', tg && `${tg[0]} (${tg[1]})`); line('Лучшая оценка', rated[0] && `${rated[0].title} — ${rated[0].rating}`);
+    line('Самая низкая оценка', rated.length > 1 && `${lo.title} — ${lo.rating}`); line('Оценено мной', rated.length && `${rated.length} из ${items.length}`);
+    line('Частая студия', st && `${st[0]} (${st[1]})`); line('Частый автор / режиссёр', au && `${au[0]} (${au[1]})`); p.append(h); }
+  { const p = mk('hist', 'Мои оценки'); columns(p, Array.from({length: 10}, (_, k) => items.filter(i => Math.round(num(i.rating)) === k + 1).length), Array.from({length: 10}, (_, k) => k + 1)); }
+  { const p = mk('genres', 'Жанры — нажми, чтобы открыть список'); bars(p, topBy(i => i.tags || []).slice(0, 10), goTag); }
+  { const p = mk('months', 'Добавлено за 12 месяцев'), now = new Date(), m = [];
+    for (let k = 11; k >= 0; k--) { const d = new Date(now.getFullYear(), now.getMonth() - k, 1); m.push({y: d.getFullYear(), m: d.getMonth(), c: 0}); }
+    items.forEach(i => { const t = born(i); if (!t) return; const d = new Date(t), x = m.find(r => r.y === d.getFullYear() && r.m === d.getMonth()); if (x) x.c++; });
+    columns(p, m.map(r => r.c), m.map(r => MON[r.m]), m.map(r => MON[r.m] + ' ' + r.y));
+    const yr = now.getFullYear(); p.append(el('div', 'meta', `В ${yr} году добавлено: ${items.filter(i => born(i) && new Date(born(i)).getFullYear() === yr).length}`)); }
+  { const p = mk('years', 'По десятилетиям выхода'), d = {}; items.forEach(i => { const y = parseInt(i.year); if (y) { const k = Math.floor(y / 10) * 10; d[k] = (d[k] || 0) + 1; } }); bars(p, Object.entries(d).sort((a, b) => a[0] - b[0]).map(([k, v]) => [k + '-е', v])); }
+  { const p = mk('studios', 'Любимые студии'); bars(p, topBy(i => spl(i.studio)).slice(0, 6), goFind); }
+  { const p = mk('authors', 'Любимые авторы и режиссёры'); bars(p, topBy(i => spl(i.author)).slice(0, 6), goFind); }
+  grid.querySelectorAll('.pb').forEach(p => { if (p.children.length < 2) p.remove(); });
+  const set = el('details', 'pset'); set.append(el('summary', null, '⚙ Какие блоки показывать'));
+  [['cats', 'Типы'], ['hl', 'Коротко о тебе'], ['hist', 'Оценки'], ['genres', 'Жанры'], ['months', 'Месяцы'], ['years', 'Десятилетия'], ['studios', 'Студии'], ['authors', 'Авторы']].forEach(([k, t]) => {
+    const l = el('label'), c = el('input'); c.type = 'checkbox'; c.checked = !hid.includes(k);
+    c.onchange = () => { const h = hidNow().filter(x => x !== k); if (!c.checked) h.push(k); try { localStorage.setItem('profHide', JSON.stringify(h)); } catch (e) {} const q = grid.querySelector(`[data-k="${k}"]`); if (q) q.style.display = c.checked ? '' : 'none'; };
+    l.append(c, document.createTextNode(' ' + t)); set.append(l);
+  });
+  box.append(grid, set);
+}
+function profStats() {
+  const c = st => items.filter(i => i.status === st).length, box = $('profStats'); box.replaceChildren();
+  const avg = f => { const a = items.map(f).filter(Boolean); return a.length ? (a.reduce((s, x) => s + x, 0) / a.length).toFixed(1) : '—'; };
+  const tile = (n, l, fn) => { const t = el(fn ? 'button' : 'div', 'tile'); t.append(el('b', null, n), el('span', null, l)); if (fn) t.onclick = fn; else t.style.cursor = 'default'; box.append(t); };
+  const go = st => () => { $('statusFilter').value = st; render(); toList(); };
+  tile(items.length, 'Всего', go('Все'));
+  STATS.forEach(s => tile(c(s), s.replace('Просмотрено/Прочитано', 'Завершено').replace('Смотрю/Читаю', 'В процессе'), go(s)));
+  tile(avg(i => num(i.rating)), 'Моя ср. оценка'); tile(avg(i => num(i.extRating)), 'Ср. внешняя оценка');
+  const pct = items.length ? Math.round((c('Просмотрено/Прочитано') + c('Любимое')) / items.length * 100) : 0;
+  $('profRing').style.setProperty('--p', pct); $('profRingTxt').textContent = pct + '%';
+  const d = user?.metadata?.creationTime; $('profSince').textContent = d ? 'Ведёт коллекцию с ' + new Date(d).toLocaleDateString('ru-RU', {month: 'long', year: 'numeric'}) : '';
+  profDash(); profStrips();
+}
+$('accBtn').onclick = e => { e.stopPropagation(); $('accMenu').classList.toggle('open'); };
+addEventListener('click', () => $('accMenu').classList.remove('open'));
+addEventListener('keydown', e => { if (e.key === 'Escape') $('accMenu').classList.remove('open'); });
+$('accProfile').onclick = () => document.querySelector('.tab[data-v="profile"]').click();
 function profStrips() {
   const box = $('profStrips'); box.replaceChildren();
   const strip = (title, list) => {
@@ -652,6 +731,8 @@ function profStrips() {
   };
   const by = (f, d) => items.filter(f).sort(d).slice(0, 12), ex = (a, b) => num(b.extRating) - num(a.extRating);
   strip('🕒 Недавно добавлено', by(() => true, (a, b) => b.id - a.id));
+  strip('▶ Продолжаю', by(i => i.status === 'Смотрю/Читаю', (a, b) => b.id - a.id));
+  strip('🏆 Топ-10 по моей оценке', items.filter(i => num(i.rating)).sort((a, b) => num(b.rating) - num(a.rating) || ex(a, b)).slice(0, 10));
   strip('❤ Любимое', by(i => i.status === 'Любимое', ex));
   strip('📌 Следующие в планах', by(i => i.status === 'В планах', ex));
 }

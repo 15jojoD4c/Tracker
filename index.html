@@ -239,6 +239,20 @@ html[data-theme=white] .ring{background:conic-gradient(var(--ac) calc(var(--p)*1
 html[data-theme=white] .pb .sr.go:hover span:first-child{color:#000}
 html[data-theme=white] .afr:hover{background:rgba(0,0,0,.06)}html[data-theme=white] :is(#posterPreview,.afr img,.av){background:#e9ebf3}
 html[data-theme=white] .sk{background:linear-gradient(90deg,#e8eaf2 25%,#f4f5fa 50%,#e8eaf2 75%);background-size:200% 100%}
+
+/* ===== Профиль: фон, достижения ===== */
+.pcard{background-size:cover;background-position:center}
+.pcard.hascover{color:#fff;min-height:150px}.pcard.hascover .meta{color:#dfe2f0}.pcard.hascover .btn-s{background:rgba(255,255,255,.18);color:#fff}
+.pbio{font-size:14px;margin-top:6px;max-width:560px;white-space:pre-wrap}
+.pfav{width:64px;height:64px;border-radius:50%;object-fit:cover;background:#222633}
+.gsw{width:34px;height:34px;border-radius:10px;border:2px solid transparent;cursor:pointer;padding:0}.gsw.on{border-color:#fff}
+.ach{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.ab{display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center;padding:10px 6px;border:1px solid var(--bd);border-radius:12px;opacity:.5;filter:grayscale(.7)}
+.ab.ok{opacity:1;filter:none;border-color:var(--ac);box-shadow:0 0 14px rgba(124,92,255,.25)}
+.ab b{font-size:22px}.ab span{font-size:12px;font-weight:700}.ab small{font-size:10px;color:var(--mu)}
+body.bgimg::before{background:linear-gradient(rgba(6,7,12,.62),rgba(6,7,12,.78)),var(--bgimg) center/cover}
+html[data-theme=black] body.bgimg::before{display:block}
+html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,255,255,.8),rgba(255,255,255,.9)),var(--bgimg) center/cover}
 </style>
 </head>
 <body>
@@ -283,8 +297,9 @@ html[data-theme=white] .sk{background:linear-gradient(90deg,#e8eaf2 25%,#f4f5fa 
   <div id="profileView" style="display:none">
     <div class="pcard">
       <img id="avatar" referrerpolicy="no-referrer" alt="">
-      <div class="pinfo"><b id="profName"></b><div class="meta" id="profMail"></div><div class="meta" id="profSince"></div></div>
+      <div class="pinfo"><b id="profName"></b><div class="meta" id="profMail"></div><div class="meta" id="profSince"></div><div class="pbio" id="profBio"></div></div>
       <div class="ring" id="profRing" title="Доля завершённых и любимых"><span id="profRingTxt">0%</span></div>
+      <button class="btn btn-s" id="profEditBtn">✏ Редактировать</button>
       <button class="btn btn-s" id="statsBtn">📊 Подробная статистика</button>
     </div>
     <div class="tiles" id="profStats"></div>
@@ -300,6 +315,7 @@ html[data-theme=white] .sk{background:linear-gradient(90deg,#e8eaf2 25%,#f4f5fa 
       <option>Просмотрено/Прочитано</option><option>Любимое</option><option>Пересматриваю</option><option>Брошено</option>
     </select>
     <select id="tagFilter"><option value="Все">Все жанры и теги</option></select>
+    <select id="listFilter" style="display:none"><option value="Все">Все подборки</option></select>
     <select id="sortSelect">
       <option value="dateDesc">Сначала новые</option>
       <option value="dateAsc">Сначала старые</option>
@@ -354,6 +370,7 @@ html[data-theme=white] .sk{background:linear-gradient(90deg,#e8eaf2 25%,#f4f5fa 
   <div class="row2"><select id="inputSource"><option value="">Источник: не указан</option><option>Оригинал</option><option>Манга</option><option>Ранобэ</option><option>Визуальная новелла</option><option>Игра</option><option>Книга</option><option>Комикс</option><option>Другое</option></select><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" id="inputOngoing" style="flex:none;width:18px;height:18px;padding:0"> Онгоинг (выходит сейчас)</label></div>
   <div class="fs">Жанры и описание</div>
   <input id="inputTags" placeholder="Жанры и теги (через запятую)">
+  <input id="inputLists" placeholder="Подборки (через запятую)">
   <textarea id="inputDescription" placeholder="Синопсис / Описание..."></textarea>
   <div class="mb" style="justify-content:flex-end">
     <button class="btn btn-s" id="closeAddBtn" type="button">Отмена</button>
@@ -400,6 +417,19 @@ html[data-theme=white] .sk{background:linear-gradient(90deg,#e8eaf2 25%,#f4f5fa 
 </div></div>
 
 <div id="toasts"></div>
+<div id="profModal" class="modal"><div class="mc" style="max-width:520px">
+  <h2 style="margin:0">Мой профиль</h2>
+  <div class="fld"><label>Имя</label><input id="pfName" maxlength="40"></div>
+  <div class="fld"><label>О себе</label><textarea id="pfBio" maxlength="300" placeholder="Пара слов о себе: любимые жанры, девиз, что смотришь сейчас…"></textarea></div>
+  <div class="fs">Аватар</div>
+  <div class="row"><img id="pfAv" class="pfav" referrerpolicy="no-referrer" alt=""><button class="btn btn-s" id="pfAvBtn" type="button">Выбрать фото</button><button class="btn btn-s" id="pfAvDel" type="button">Убрать</button></div>
+  <div class="fs">Фон профиля</div>
+  <div class="row"><button class="btn btn-s" id="pfCvBtn" type="button">Загрузить картинку</button><button class="btn btn-s" id="pfCvDel" type="button">Убрать</button></div>
+  <div class="row" id="pfGrad"></div>
+  <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:14px"><input type="checkbox" id="pfBgAll"> Использовать этот фон на всём сайте</label>
+  <input type="file" id="pfFile" accept="image/*" style="display:none">
+  <div class="mb"><button class="btn btn-s" id="pfCancel" type="button">Отмена</button><button class="btn" id="pfSave" type="button">Сохранить</button></div>
+</div></div>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import {getAuth,signInWithPopup,signInWithRedirect,GoogleAuthProvider,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -445,7 +475,7 @@ onAuthStateChanged(auth, u => {
     loaded = false; render(); if (!cgGrid.children.length) cgLoad(true);
     // Живая синхронизация: изменения с другого устройства появляются сами
     unsub = onSnapshot(query(collection(db, 'items'), where('userId', '==', u.uid)),
-      snap => { items = snap.docs.map(d => fix(d.data())); loaded = true; refresh(); },
+      snap => { const all = snap.docs.map(d => d.data()), pd = all.find(x => x.isProfile); if (pd) { const {isProfile, userId, ...rest} = pd; Object.assign(prof, rest); profSaveLocal(); } else if (!profTried && (prof.name || prof.bio || prof.avatar || prof.cover || prof.coverColor)) { profTried = true; profCloud(); } items = all.filter(x => !x.isProfile).map(fix); loaded = true; refresh(); profPaint(); },
       err => toast('Не удалось загрузить данные: ' + err.message));
   } else {
     if (unsub) unsub(); unsub = null; items = []; loaded = false;
@@ -482,7 +512,7 @@ function toast(msg, bad, act) {
   $('toasts').append(t); setTimeout(() => t.remove(), act ? 7000 : 4500);
 }
 
-function refresh() { refreshTags(); render(); profStats(); cgMarks(); catCounts(); }
+function refresh() { refreshTags(); refreshLists(); render(); profStats(); cgMarks(); catCounts(); setTimeout(backupNudge, 4000); }
 function catCounts() {
   document.querySelectorAll('#catFilters .fb').forEach(b => { if (!b.dataset.l) b.dataset.l = b.textContent; const n = b.dataset.c === 'Всё' ? items.length : items.filter(i => i.category === b.dataset.c).length; b.textContent = b.dataset.l + (n ? ' ' + n : ''); });
 }
@@ -503,7 +533,7 @@ function render() {
   const q = $('searchInput').value.toLowerCase().trim(), st = $('statusFilter').value, tg = $('tagFilter').value, so = $('sortSelect').value;
   const list = items.filter(i =>
     (!q || names(i).includes(q)) && (cat === 'Всё' || i.category === cat) && (cat !== 'Манга' || kind === 'Все' || i.kind === kind) && (!ongOnly || i.ongoing) && (!xf || xmatch(i)) && (st === 'Все' || i.status === st) &&
-    (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg))
+    (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) && ($('listFilter').value === 'Все' || (i.lists || []).some(t => t.toLowerCase() === $('listFilter').value))
   ).sort((a, b) => {
     if (so === 'dateAsc') return a.id - b.id;
     if (so === 'titleAsc') return a.title.localeCompare(b.title);
@@ -550,7 +580,7 @@ const setSize = v => { document.documentElement.style.setProperty('--cw', v + 'p
 $('sizeSel').value = localStorage.getItem('cw') || '190'; setSize($('sizeSel').value || '190'); $('sizeSel').onchange = e => setSize(e.target.value);
 
 // ---------- Окна ----------
-const closeAll = () => ['addModal', 'detailModal', 'statsModal', 'rndModal'].forEach(id => $(id).style.display = 'none');
+const closeAll = () => ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal'].forEach(id => $(id).style.display = 'none');
 ['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'rndClose'].forEach(id => $(id).onclick = closeAll);
 window.onclick = e => { if (e.target.classList.contains('modal')) closeAll(); };
 window.onkeydown = e => { if (e.key === 'Escape') closeAll(); };
@@ -677,7 +707,58 @@ const THEMES = [['', '🌌 Стекло'], ['black', '⬛ Чёрная'], ['whit
 function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem('theme', t); } catch (e) {} [...$('accTh').children].forEach(b => b.classList.toggle('on', b.dataset.t === t)); }
 THEMES.forEach(([t, n]) => { const b = el('button', null, n); b.dataset.t = t; b.onclick = e => { e.stopPropagation(); setTheme(t); }; $('accTh').append(b); });
 try { setTheme(localStorage.getItem('theme') || ''); } catch (e) {}
-const LBL = {inputCategory: 'Категория', inputStatus: 'Статус', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputDescription: 'Синопсис / описание'};
+// ---- Профиль: аватар, фон, описание; подборки; напоминание о бэкапе
+let profTried = false;
+let prof = {name: '', bio: '', avatar: '', cover: '', coverColor: 0, bgAll: false}, pf = null, pfTarget = '';
+try { Object.assign(prof, JSON.parse(localStorage.getItem('prof') || '{}')); } catch (e) {}
+const profSaveLocal = () => { try { localStorage.setItem('prof', JSON.stringify(prof)); } catch (e) {} };
+const profCloud = () => { profSaveLocal(); if (user) track(setDoc(doc(db, 'items', 'prof_' + user.uid), {isProfile: true, ...prof, userId: user.uid})).catch(e => toast('Профиль сохранён только на этом устройстве: ' + e.message, true)); };
+const GRAD = ['linear-gradient(135deg,#6a4cf0,#38bdf8)', 'linear-gradient(135deg,#ff5d8f,#f59e0b)', 'linear-gradient(135deg,#0f766e,#2dd4bf)', 'linear-gradient(135deg,#111827,#4b5563)', 'linear-gradient(135deg,#7c2d12,#f59e0b)', 'linear-gradient(135deg,#1e3a8a,#a78bfa)'];
+function profPaint() {
+  const u = user || {}, av = prof.avatar || u.photoURL || '', bg = prof.cover ? `url("${prof.cover}")` : prof.coverColor ? GRAD[prof.coverColor - 1] : '';
+  $('avatar').src = av; $('hdrAvatar').src = av; if (prof.name) $('profName').textContent = prof.name;
+  $('profBio').textContent = prof.bio || ''; $('profBio').style.display = prof.bio ? '' : 'none';
+  const pc = document.querySelector('.pcard'); if (pc) { pc.classList.toggle('hascover', !!bg); pc.style.backgroundImage = prof.cover ? `linear-gradient(rgba(8,9,16,.4),rgba(8,9,16,.75)),${bg}` : bg; }
+  document.documentElement.style.setProperty('--bgimg', bg || 'none'); document.body.classList.toggle('bgimg', !!(prof.bgAll && bg));
+}
+function imgData(file, w, h, q) {   // обрезка по центру до w×h и сжатие в JPEG
+  return new Promise((ok, no) => { const fr = new FileReader(); fr.onerror = no; fr.onload = () => { const im = new Image(); im.onerror = no; im.onload = () => { const c = document.createElement('canvas'); c.width = w; c.height = h; const k = Math.max(w / im.width, h / im.height), sw = w / k, sh = h / k; c.getContext('2d').drawImage(im, (im.width - sw) / 2, (im.height - sh) / 2, sw, sh, 0, 0, w, h); ok(c.toDataURL('image/jpeg', q)); }; im.src = fr.result; }; fr.readAsDataURL(file); });
+}
+function pfDraw() { $('pfAv').src = pf.avatar || (user && user.photoURL) || ''; [...$('pfGrad').children].forEach((b, k) => b.classList.toggle('on', pf.coverColor === k + 1 && !pf.cover)); }
+function pfOpen() { pf = {...prof}; $('pfName').value = pf.name || ''; $('pfBio').value = pf.bio || ''; $('pfBgAll').checked = !!pf.bgAll; pfDraw(); $('profModal').style.display = 'flex'; }
+GRAD.forEach((g, k) => { const b = el('button', 'gsw'); b.type = 'button'; b.style.background = g; b.title = 'Цвет фона'; b.onclick = () => { pf.coverColor = k + 1; pf.cover = ''; pfDraw(); }; $('pfGrad').append(b); });
+$('profEditBtn').onclick = pfOpen;
+['pfAvBtn', 'pfCvBtn'].forEach(id => $(id).onclick = () => { pfTarget = id; $('pfFile').value = ''; $('pfFile').click(); });
+$('pfFile').onchange = async () => {
+  const f = $('pfFile').files[0]; if (!f) return;
+  try { if (pfTarget === 'pfAvBtn') pf.avatar = await imgData(f, 256, 256, 0.85); else { pf.cover = await imgData(f, 1200, 360, 0.72); pf.coverColor = 0; } pfDraw(); }
+  catch (e) { toast('Не удалось прочитать картинку — попробуй другой файл.', true); }
+};
+$('pfAvDel').onclick = () => { pf.avatar = ''; pfDraw(); };
+$('pfCvDel').onclick = () => { pf.cover = ''; pf.coverColor = 0; pfDraw(); };
+$('pfCancel').onclick = () => { $('profModal').style.display = 'none'; };
+$('pfSave').onclick = () => { Object.assign(prof, {name: $('pfName').value.trim(), bio: $('pfBio').value.trim(), avatar: pf.avatar || '', cover: pf.cover || '', coverColor: pf.coverColor || 0, bgAll: $('pfBgAll').checked}); profCloud(); profPaint(); $('profModal').style.display = 'none'; toast('Профиль сохранён'); };
+const kv = (h, l, v) => { if (!v) return; const d = el('div'); d.append(el('span', null, l + ': '), document.createTextNode(v)); h.append(d); };
+const goList = n => { $('listFilter').value = n.toLowerCase(); render(); toList(); };
+function refreshLists() {
+  const sel = $('listFilter'), old = sel.value, map = new Map();
+  items.forEach(i => (i.lists || []).forEach(t => { if (!map.has(t.toLowerCase())) map.set(t.toLowerCase(), t); }));
+  sel.replaceChildren(new Option('Все подборки', 'Все')); [...map].sort((a, b) => a[1].localeCompare(b[1])).forEach(([k, v]) => sel.add(new Option('📁 ' + v, k)));
+  sel.value = map.has(old) ? old : 'Все'; sel.style.display = map.size ? '' : 'none';
+}
+$('listFilter').onchange = render;
+function listEdit(name) {
+  const hit = items.filter(i => (i.lists || []).includes(name)); if (!hit.length) return;
+  const v = prompt('Новое название подборки «' + name + '».\nОставь пустым, чтобы удалить подборку (тайтлы останутся в коллекции):', name); if (v === null) return;
+  const nn = v.trim(); if (nn === name) return;
+  hit.forEach(i => { i.lists = i.lists.filter(x => x !== name); if (nn && !i.lists.includes(nn)) i.lists.push(nn); cloudSave(i); });
+  refresh(); toast(nn ? 'Подборка переименована: ' + nn : 'Подборка «' + name + '» удалена');
+}
+const _openAdd = openAdd; openAdd = function (item) { _openAdd(item); $('inputLists').value = ((item && item.lists) || []).join(', '); };
+queueMicrotask(() => { const ex = window.exportData; if (ex) window.exportData = () => { ex(); try { localStorage.setItem('lastBackup', String(Date.now())); } catch (e) {} }; });
+let nudged = false;
+function backupNudge() { if (nudged || items.length < 5) return; nudged = true; let t = 0; try { t = +localStorage.getItem('lastBackup') || 0; } catch (e) {} if (Date.now() - t > 14 * 864e5) toast('Давно не было резервной копии. Скачать копию коллекции?', false, {label: 'Скачать', fn: () => window.exportData()}); }
+const LBL = {inputCategory: 'Категория', inputStatus: 'Статус', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (например: Лучшее аниме, На выходные)', inputDescription: 'Синопсис / описание'};
 Object.entries(LBL).forEach(([id, t]) => { const e = $(id), w = el('div', 'fld'); e.replaceWith(w); w.append(el('label', null, t), e); });
 const DF = Object.keys(LBL).concat('inputExtSrc');
 const draftClear = () => { try { localStorage.removeItem('draft'); } catch (e) {} };
@@ -718,7 +799,7 @@ $('saveItemBtn').onclick = async () => {
     id: editId ? Number(editId) : newId(), title, category, kind: category === 'Манга' ? $('inputKind').value : '', status: $('inputStatus').value, poster: posterValue, year,
     rating: $('inputRating').value, extRating: $('inputExtRating').value, extSrc: $('inputExtSrc').value, description: $('inputDescription').value.trim(),
     titleEn: $('inputTitleEn').value.trim(), titleOrig: $('inputTitleOrig').value.trim(), alt: $('inputAlt').value.trim(), author: $('inputAuthor').value.trim(), studio: $('inputStudio').value.trim(), source: $('inputSource').value, ongoing: $('inputOngoing').checked,
-    tags: parseTags($('inputTags').value)
+    tags: parseTags($('inputTags').value), lists: parseTags($('inputLists').value)
   };
   const k = items.findIndex(x => x.id === it.id);
   if (k > -1) items[k] = it; else items.push(it);
@@ -743,6 +824,7 @@ function openDetail(id) {
   $('detailRating').textContent = `★ Моя оценка: ${i.rating ? i.rating + '/10' : '-/10'}${i.extRating ? ' | Внешняя оценка: ' + i.extRating + (i.extSrc ? ' (' + i.extSrc + ')' : '') : ''}`;
   const tg = $('detailTags'); tg.replaceChildren();
   (i.tags || []).forEach(t => { const c = el('button', 'chip', t); c.onclick = () => { closeAll(); $('tagFilter').value = t.toLowerCase(); render(); }; tg.append(c); });
+  (i.lists || []).forEach(t => { const c = el('button', 'chip', '📁 ' + t); c.onclick = () => { closeAll(); $('listFilter').value = t.toLowerCase(); render(); }; tg.append(c); });
   $('detailDescription').textContent = i.description || 'Описание отсутствует.';
   const ds = $('detailStatusSel'); ds.replaceChildren(...STATS.map(x => new Option(x, x))); ds.value = i.status;
   ds.onchange = () => { i.status = ds.value; $('detailStatus').textContent = i.status; $('detailStatus').dataset.s = i.status; cloudSave(i); refresh(); toast('Статус изменён: ' + i.status); };
@@ -751,7 +833,7 @@ function openDetail(id) {
 $('editItemBtn').onclick = () => { const i = items.find(x => x.id === curId); if (i) { closeAll(); openAdd(i); } };
 $('deleteItemBtn').onclick = () => {
   if (!confirm('Точно удалить этот тайтл из коллекции?')) return;
-  const id = curId; closeAll(); removeItem(id);
+  const id = curId; closeAll(); removeItem(id, true);
 };
 
 // ---------- Автозаполнение ----------
@@ -908,6 +990,25 @@ function profDash() {
     columns(mk('hist', 'Внешние оценки (AniList, TMDB)'), hs(i => i.extRating), lb);
     if (items.some(i => num(i.rating))) columns(mk('hist2', 'Мои оценки'), hs(i => i.rating), lb); }
   { const p = mk('genres', 'Жанры — нажми, чтобы открыть список'); bars(p, topBy(i => i.tags || []).slice(0, 10), goTag); }
+  { const p = mk('lists', 'Мои подборки'), l = topBy(i => i.lists || []);
+    if (!l.length) p.append(el('div', 'meta', 'Подборок пока нет. Впиши название в поле «Подборки» при добавлении или редактировании тайтла — один тайтл может быть в нескольких подборках.'));
+    l.forEach(([n, c]) => { const r = el('div', 'sr go'), b = el('div', 'bar'), nm = el('span', null, '📁 ' + n), ed = el('button', 'chip', '✏'); b.style.width = (c / l[0][1] * 100) + '%'; ed.title = 'Переименовать или удалить подборку'; ed.onclick = e => { e.stopPropagation(); listEdit(n); }; nm.append(' ', ed); r.append(nm, b, el('span', 'meta', c)); r.onclick = () => goList(n); p.append(r); }); }
+  { const p = mk('ach', 'Достижения'), n = c => items.filter(i => i.category === c).length, dn = items.filter(i => i.status === 'Просмотрено/Прочитано' || i.status === 'Любимое').length, gn = new Set(items.flatMap(i => i.tags || [])).size, cn = new Set(items.map(i => i.category)).size;
+    const A = [['🌱', 'Первый шаг', items.length, 1], ['📚', 'Коллекционер', items.length, 50], ['🏛', 'Архивариус', items.length, 200], ['🌸', 'Аниме-фанат', n('Аниме'), 50], ['📖', 'Книжный червь', n('Манга') + n('Ранобэ'), 50], ['🎬', 'Киноман', n('Фильм') + n('Мультфильм'), 50], ['📺', 'Сериальный марафон', n('Сериал'), 25], ['✅', 'Завершатель', dn, 50], ['🧭', 'Разносторонний', cn, 5], ['🎭', 'Ценитель жанров', gn, 15]], g = el('div', 'ach');
+    A.forEach(([ic, nm, v, need]) => { const d = el('div', 'ab' + (v >= need ? ' ok' : '')); d.title = `${nm}: ${Math.min(v, need)} из ${need}`; d.append(el('b', null, ic), el('span', null, nm), el('small', null, v >= need ? 'получено' : `${v} / ${need}`)); g.append(d); }); p.append(g); }
+  { const yr = new Date().getFullYear(), p = mk('year', 'Итоги ' + yr + ' года'), cur = items.filter(i => born(i) && new Date(born(i)).getFullYear() === yr);
+    if (!cur.length) p.append(el('div', 'meta', `В ${yr} году ты пока ничего не добавлял.`)); else {
+      const top1 = f => { const c = {}; cur.forEach(i => f(i).forEach(x => c[x] = (c[x] || 0) + 1)); return Object.entries(c).sort((a, b) => b[1] - a[1])[0]; }, mo = {}, h = el('div', 'hl');
+      cur.forEach(i => { const m = new Date(born(i)).getMonth(); mo[m] = (mo[m] || 0) + 1; });
+      const bm = Object.entries(mo).sort((a, b) => b[1] - a[1])[0], tg = top1(i => i.tags || []), ct = top1(i => [i.category]), ex = cur.filter(i => num(i.extRating)).sort((a, b) => num(b.extRating) - num(a.extRating))[0];
+      kv(h, 'Добавлено тайтлов', String(cur.length)); kv(h, 'Больше всего', ct && `${ct[0]} (${ct[1]})`); kv(h, 'Любимый жанр года', tg && tg[0]); kv(h, 'Самый активный месяц', bm && MON[bm[0]]); kv(h, 'Лучший по оценке', ex && `${ex.title} — ${ex.extRating}`); p.append(h); } }
+  { const p = mk('dec', 'Лучшее по десятилетиям'), best = {};
+    items.forEach(i => { const y = parseInt(i.year), sc = num(i.rating) || num(i.extRating); if (!y || !sc) return; const k = Math.floor(y / 10) * 10; if (!best[k] || sc > best[k][0]) best[k] = [sc, i]; });
+    Object.entries(best).sort((a, b) => b[0] - a[0]).forEach(([k, [sc, i]]) => { const r = el('div', 'sr go'); r.style.gridTemplateColumns = '56px 1fr 40px'; r.append(el('span', 'meta', k + '-е'), el('span', null, i.title), el('span', 'meta', sc)); r.onclick = () => goFind(i.title); p.append(r); }); }
+  { const p = mk('cmp', 'Моя оценка и внешняя'), both = items.filter(i => num(i.rating) && num(i.extRating));
+    if (both.length >= 3) { const df = i => num(i.rating) - num(i.extRating), srt = both.slice().sort((a, b) => df(b) - df(a)), avg = both.reduce((a, i) => a + df(i), 0) / both.length, h = el('div', 'hl'), lo = srt[srt.length - 1], tx = i => `${i.title} (моя ${i.rating}, внешняя ${i.extRating})`;
+      kv(h, 'В среднем ты оцениваешь', (avg >= 0 ? 'на ' + avg.toFixed(1) + ' выше' : 'на ' + Math.abs(avg).toFixed(1) + ' ниже') + ' внешних оценок'); kv(h, 'Щедрее всего', tx(srt[0])); kv(h, 'Строже всего', tx(lo)); p.append(h); } }
+
   { const p = mk('months', 'Добавлено за 12 месяцев'), now = new Date(), m = [];
     for (let k = 11; k >= 0; k--) { const d = new Date(now.getFullYear(), now.getMonth() - k, 1); m.push({y: d.getFullYear(), m: d.getMonth(), c: 0}); }
     items.forEach(i => { const t = born(i); if (!t) return; const d = new Date(t), x = m.find(r => r.y === d.getFullYear() && r.m === d.getMonth()); if (x) x.c++; });
@@ -918,7 +1019,7 @@ function profDash() {
   { const p = mk('authors', 'Любимые авторы и режиссёры'); bars(p, topBy(i => spl(i.author)).slice(0, 6), goFind); }
   grid.querySelectorAll('.pb').forEach(p => { if (p.children.length < 2) p.remove(); });
   const set = el('details', 'pset'); set.append(el('summary', null, '⚙ Какие блоки показывать'));
-  [['cats', 'Типы'], ['hl', 'Коротко о тебе'], ['hist', 'Оценки'], ['genres', 'Жанры'], ['months', 'Месяцы'], ['years', 'Десятилетия'], ['studios', 'Студии'], ['authors', 'Авторы']].forEach(([k, t]) => {
+  [['cats', 'Типы'], ['hl', 'Коротко о тебе'], ['hist', 'Оценки'], ['genres', 'Жанры'], ['months', 'Месяцы'], ['years', 'Десятилетия'], ['studios', 'Студии'], ['authors', 'Авторы'], ['lists', 'Подборки'], ['ach', 'Достижения'], ['year', 'Итоги года'], ['dec', 'Лучшее по десятилетиям'], ['cmp', 'Моя оценка и внешняя']].forEach(([k, t]) => {
     const l = el('label'), c = el('input'); c.type = 'checkbox'; c.checked = !hid.includes(k);
     c.onchange = () => { const h = hidNow().filter(x => x !== k); if (!c.checked) h.push(k); try { localStorage.setItem('profHide', JSON.stringify(h)); } catch (e) {} const q = grid.querySelector(`[data-k="${k}"]`); if (q) q.style.display = c.checked ? '' : 'none'; };
     l.append(c, document.createTextNode(' ' + t)); set.append(l);
@@ -1015,8 +1116,9 @@ async function quickAdd(r) {
   } finally { adding.delete(ak); }
 }
 
-function removeItem(id) {
+function removeItem(id, undo) {
   const old = items.find(i => i.id === id); items = items.filter(i => i.id !== id); refresh();
+  if (undo && old) toast('Удалено: ' + old.title, false, {label: 'Вернуть', fn: () => { if (!items.some(i => i.id === old.id)) { items.push(old); refresh(); cloudSave(old); } }});
   track(deleteDoc(doc(db, 'items', String(id)))).catch(e => {
     if (old && !items.some(i => i.id === id)) { items.push(old); refresh(); }
     toast('Не удалось удалить в облаке: ' + e.message, true);
@@ -1142,7 +1244,7 @@ window.importData = e => {
           category: x.category === 'Кино' ? 'Фильм' : x.category === 'Манхва' ? 'Манга' : CATS.includes(x.category) ? x.category : 'Фильм', kind: x.category === 'Манхва' ? 'Манхва' : (x.kind || ''),
           status: STATS.includes(x.status) ? x.status : 'В планах', poster: x.poster || '', year: x.year || '', rating: x.rating || '',
           extRating: x.extRating || '', extSrc: x.extSrc || '', description: x.description || '', titleEn: x.titleEn || '', titleOrig: x.titleOrig || '',
-          alt: x.alt || '', author: x.author || '', studio: x.studio || '', source: x.source || '', ongoing: !!x.ongoing, tags: Array.isArray(x.tags) ? x.tags : []
+          alt: x.alt || '', author: x.author || '', studio: x.studio || '', source: x.source || '', ongoing: !!x.ongoing, tags: Array.isArray(x.tags) ? x.tags : [], lists: Array.isArray(x.lists) ? x.lists : []
         };
         if (!it.title || dup(it)) return;
         while (!it.id || ids.has(String(it.id))) it.id = newId();

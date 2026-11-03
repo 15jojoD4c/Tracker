@@ -2,6 +2,9 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
+<meta name="darkreader-lock">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0b12">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Мой Медиа Трекер</title>
 <style>
@@ -136,6 +139,56 @@ textarea{resize:vertical;min-height:80px}
 .lg{display:flex;flex-direction:column;gap:6px;font-size:13px}.lg .go{cursor:pointer;display:flex;gap:7px;align-items:center}.lg i{width:10px;height:10px;border-radius:3px;display:inline-block}
 .hl{display:flex;flex-direction:column;gap:7px;font-size:13px}.hl span{color:var(--mu)}
 .pset{margin-bottom:14px;font-size:13px}.pset summary{cursor:pointer;color:var(--mu)}.pset label{display:inline-block;margin:8px 14px 0 0;cursor:pointer}
+.card:focus-visible{outline:2px solid var(--ac)}
+/* ===== Тема «стекло» ===== */
+:root{color-scheme:dark;--bg:#090a11;--card:rgba(30,32,48,.55);--inp:rgba(255,255,255,.06);--bd:rgba(255,255,255,.11);--ac:#8b6cff;--ach:#a48dff;--mu:#a9afc6}
+html{scrollbar-color:rgba(255,255,255,.22) transparent}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:10px}
+body{font-family:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;min-height:100vh}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(900px 520px at 10% -8%,rgba(139,108,255,.30),transparent 62%),radial-gradient(800px 520px at 100% 6%,rgba(56,189,248,.15),transparent 60%),radial-gradient(800px 560px at 55% 112%,rgba(236,72,153,.14),transparent 60%)}
+header{background:rgba(14,15,26,.55);backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);box-shadow:0 8px 30px rgba(0,0,0,.28)}
+.pb,.pcard,.tile,.menu,.toast,.mc{backdrop-filter:blur(18px) saturate(1.35);-webkit-backdrop-filter:blur(18px) saturate(1.35)}
+.btn{background:linear-gradient(135deg,var(--ach),var(--ac));border-radius:12px;padding:10px 18px;box-shadow:0 6px 18px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.25)}
+.btn:hover{background:linear-gradient(135deg,var(--ach),var(--ac));filter:brightness(1.12);transform:translateY(-1px)}
+.btn-s{background:rgba(255,255,255,.07);border:1px solid var(--bd);box-shadow:none}.btn-s:hover{background:rgba(255,255,255,.14);filter:none}
+.btn-d{background:rgba(207,102,121,.9)}.btn-g{background:#4285F4}
+.btn:disabled,.tb:disabled,.qa:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn:focus-visible,.fb:focus-visible,.tb:focus-visible,.tab:focus-visible,.tile:focus-visible,.menu button:focus-visible,.av:focus-visible{outline:2px solid #cbbfff;outline-offset:2px}
+input,select,textarea{background:var(--inp);border:1px solid var(--bd);border-radius:12px;padding:10px 12px}
+select option{background:#1a1c2a;color:#fff}
+#cgSearch{max-width:460px!important}
+#cgSearch,#searchInput{padding-left:38px;background:var(--inp) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23a9afc6' stroke-width='2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><path d='M20 20l-3.5-3.5'/></svg>") no-repeat 12px center}
+.fb,.kb,.tb{background:rgba(255,255,255,.06);border:1px solid var(--bd);padding:8px 16px;font-family:inherit;font-size:14px}
+.fb:hover,.kb:hover,.tb:hover{background:rgba(255,255,255,.12)}
+.fb.on,.kb.on,.tb.on{background:linear-gradient(135deg,var(--ach),var(--ac));border-color:transparent;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+.tabs{display:inline-flex;gap:4px;padding:4px;background:rgba(255,255,255,.05);border:1px solid var(--bd);border-radius:14px;margin-bottom:18px}
+.tab{border:0;border-radius:10px;padding:9px 20px;transition:.2s}
+.tab.on{background:linear-gradient(135deg,var(--ach),var(--ac));box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.grid{gap:34px 22px}
+.pc{border-radius:16px;border:1px solid rgba(255,255,255,.07);box-shadow:0 8px 22px rgba(0,0,0,.4)}
+.card:hover .pc{transform:translateY(-3px);box-shadow:0 18px 38px rgba(0,0,0,.5)}
+.card:hover .pc img{transform:scale(1.04)}
+.title{font-size:15px;margin:12px 0 6px}.tg{color:#9aa1ba}.msg{text-align:center;padding:48px 10px;font-size:15px;color:var(--mu)}
+.qa{width:34px;height:34px;background:rgba(18,20,32,.62);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.2)}
+.qa:hover{background:var(--ac);transform:scale(1.1)}.qa.done{background:rgba(29,181,122,.9);border-color:transparent}
+.modal{background:rgba(5,6,12,.62);backdrop-filter:blur(10px)}
+.mc{background:rgba(26,28,44,.74);border-color:rgba(255,255,255,.13);border-radius:20px;box-shadow:0 30px 80px rgba(0,0,0,.55)}
+#addModal .mc{max-width:640px}
+#detailDescription,.af{background:rgba(0,0,0,.25)}.chip{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14)}
+.toast{background:rgba(30,32,50,.78);border-color:rgba(255,255,255,.15)}.toast.bad{background:rgba(92,28,46,.8)}
+.tile{border-radius:14px;transition:.2s}.tile:hover{transform:translateY(-2px)}.tile b{font-size:24px}
+.pb,.pcard{border-radius:18px}.pcard{background:linear-gradient(135deg,rgba(139,108,255,.28),rgba(30,32,48,.55) 60%)}
+.donut::after{background:#1a1c2b}
+.brand{background:linear-gradient(135deg,var(--ach),var(--ac));box-shadow:0 6px 16px rgba(0,0,0,.3)}
+.menu .sw{display:flex;gap:8px;padding:8px 12px}.menu .sw button{width:22px;height:22px;padding:0;border-radius:50%;border:2px solid rgba(255,255,255,.3)}
+.fb[data-c="Аниме"]::before,#cgCats .tb[data-g="Аниме"]::before{content:"🌸 "}
+.fb[data-c="Манга"]::before,#cgCats .tb[data-g="Манга"]::before{content:"📖 "}
+.fb[data-c="Ранобэ"]::before,#cgCats .tb[data-g="Ранобэ"]::before{content:"📚 "}
+.fb[data-c="Фильм"]::before,#cgCats .tb[data-g="Фильм"]::before{content:"🎬 "}
+.fb[data-c="Сериал"]::before,#cgCats .tb[data-g="Сериал"]::before{content:"📺 "}
+.fb[data-c="Мультфильм"]::before{content:"🧸 "}
+@media(hover:none){.card .ov{display:none}}
+@media(max-width:600px){body{padding:12px}header{margin:-12px -12px 12px;padding:10px 12px}.btn,.fb,.tb,.tab,select,input{min-height:40px}.tabs{display:flex;width:100%}.tab{flex:1;padding:9px 6px}.row2{flex-direction:column}#addModal .mc{max-width:100%}}
 </style>
 </head>
 <body>
@@ -154,7 +207,7 @@ textarea{resize:vertical;min-height:80px}
       <select id="sizeSel" title="Размер карточек"><option value="150">Карточки: мелкие</option><option value="190">Карточки: средние</option><option value="240">Карточки: крупные</option></select>
       <button class="btn" id="openModalBtn">+ Добавить</button>
       <div class="acc"><button class="av" id="accBtn" title="Аккаунт" aria-haspopup="true"><img id="hdrAvatar" referrerpolicy="no-referrer" alt=""></button>
-        <div class="menu" id="accMenu"><button id="accProfile">👤 Мой профиль</button><button onclick="exportData()">⬇ Скачать бэкап</button><button onclick="importFile.click()">⬆ Загрузить бэкап</button><button class="out" id="logoutBtn">⎋ Выйти</button></div></div>
+        <div class="menu" id="accMenu"><button id="accProfile">👤 Мой профиль</button><div class="sw" id="accSw" title="Цвет оформления"></div><button onclick="exportData()">⬇ Скачать бэкап</button><button onclick="importFile.click()">⬆ Загрузить бэкап</button><button class="out" id="logoutBtn">⎋ Выйти</button></div></div>
     </div>
   </header>
   <div class="tabs"><button class="tab on" data-v="catalog">🌐 Каталог</button><button class="tab" data-v="profile">👤 Мой профиль</button></div>
@@ -164,12 +217,12 @@ textarea{resize:vertical;min-height:80px}
       <button class="tb on" data-g="Аниме">Аниме</button><button class="tb" data-g="Манга">Манга</button><button class="tb" data-g="Ранобэ">Ранобэ</button><button class="tb" data-g="Фильм">Фильмы</button><button class="tb" data-g="Сериал">Сериалы</button>
     </div>
     <div class="row" style="margin-top:12px">
-      <input id="cgSearch" placeholder="Найти в каталоге (Enter)..." style="flex:1;max-width:340px">
+      <input id="cgSearch" placeholder="Найти в каталоге..." style="flex:1;max-width:340px"><button class="tb" id="cgClear" title="Очистить поиск" style="display:none">✕</button>
       <select id="cgMode"><option value="pop">Популярное</option><option value="top">Топ рейтинга</option><option value="new">Новинки / онгоинги</option><option value="soon">Скоро выйдет</option></select>
       <select id="cgKind" style="display:none"><option value="">Все виды</option><option value="JP">Манга</option><option value="KR">Манхва</option><option value="CN">Маньхуа</option></select>
       <select id="cgGenre"></select>
       <input type="number" id="cgYear" placeholder="Год" min="1900" max="2100" style="width:88px">
-      <button class="tb" id="cgHide">Скрыть добавленные</button>
+      <button class="tb" id="cgHide">Скрыть добавленные</button><button class="tb" id="cgPoster">Только с постером</button><select id="cgMin" title="Минимальная внешняя оценка"><option value="0">Любой рейтинг</option><option value="6">★ 6+</option><option value="7">★ 7+</option><option value="8">★ 8+</option></select>
       <button class="tb" id="cgReset">Сбросить</button>
       <button class="btn" id="cgRand">🎲 Случайное</button>
     </div>
@@ -372,7 +425,10 @@ function toast(msg, bad, act) {
   $('toasts').append(t); setTimeout(() => t.remove(), act ? 7000 : 4500);
 }
 
-function refresh() { refreshTags(); render(); profStats(); cgMarks(); }
+function refresh() { refreshTags(); render(); profStats(); cgMarks(); catCounts(); }
+function catCounts() {
+  document.querySelectorAll('#catFilters .fb').forEach(b => { if (!b.dataset.l) b.dataset.l = b.textContent; const n = b.dataset.c === 'Всё' ? items.length : items.filter(i => i.category === b.dataset.c).length; b.textContent = b.dataset.l + (n ? ' ' + n : ''); });
+}
 
 function refreshTags() {
   const sel = $('tagFilter'), old = sel.value, map = new Map();
@@ -415,7 +471,7 @@ function render() {
     const info = el('div', 'ci'), row = el('div', 'cm');
     row.append(el('span', null, [i.year, catLabel(i)].filter(Boolean).join('  |  ')), el('span', 'star', i.extRating ? '★ ' + i.extRating : ''));
     const bd = el('div', 'bd2'), st2 = el('div', 'status', SHORT[i.status] || i.status); st2.dataset.s = i.status; bd.append(st2); if (i.ongoing) bd.append(el('div', 'ong', 'ОНГОИНГ'));
-    info.append(el('h3', 'title', i.title), row, el('div', 'tg', (i.tags || []).slice(0, 3).join(', ')), bd);
+    info.append(Object.assign(el('h3', 'title', i.title), {title: i.title}), row, el('div', 'tg', (i.tags || []).slice(0, 3).join(', ')), bd);
     card.append(pc, info); card.tabIndex = 0; card.onclick = () => openDetail(i.id); card.onkeydown = e => { if (e.key === 'Enter') openDetail(i.id); };
     card.onmousemove = e => { if (view === 'list') return; const r = pc.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5; pc.style.transform = `perspective(700px) rotateY(${x * 10}deg) rotateX(${-y * 10}deg) translateY(-6px)`; };
     card.onmouseleave = () => { pc.style.transform = ''; };
@@ -514,7 +570,7 @@ $('saveItemBtn').onclick = async () => {
 function openDetail(id) {
   const i = items.find(x => x.id === id); if (!i) return; curId = id;
   $('detailPoster').src = i.poster || FALL; $('detailTitle').textContent = i.title; $('detailStatus').textContent = i.status; $('detailStatus').dataset.s = i.status;
-  $('detailMeta').textContent = `${catLabel(i)} • ${i.year || 'Год не указан'}${i.ongoing ? ' • ● Онгоинг' : ''}`;
+  $('detailMeta').textContent = `${catLabel(i)} • ${i.year || 'Год не указан'}${i.ongoing ? ' • ● Онгоинг' : ''}${born(i) ? ' • Добавлено ' + new Date(born(i)).toLocaleDateString('ru-RU') : ''}`;
   $('detailNames').textContent = [i.titleEn, i.titleOrig, i.alt].filter(Boolean).join(' / ');
   const cr = $('detailCredits'); cr.replaceChildren();
   [['Автор', 'author'], ['Студия', 'studio'], ['Источник', 'source']].forEach(([lab, k]) => {
@@ -679,13 +735,15 @@ function profDash() {
   { const p = mk('cats', 'Что в коллекции'), w = el('div', 'row'), d = el('div', 'donut'), lg = el('div', 'lg'); let a = 0; const g = [];
     cc.forEach(([c, n], k) => { const s0 = a / tot * 100; a += n; g.push(`${PAL[k % 6]} ${s0}% ${a / tot * 100}%`); const l = el('div', 'go'), sw = el('i'); sw.style.background = PAL[k % 6]; l.append(sw, el('span', null, `${c}: ${n}`)); l.onclick = () => goCat(c); lg.append(l); });
     d.style.background = `conic-gradient(${g.join(',')})`; w.append(d, lg); p.append(w); }
-  { const p = mk('hl', 'Коротко о тебе'), h = el('div', 'hl'), rated = items.filter(i => num(i.rating)).sort((a, b) => num(b.rating) - num(a.rating));
+  { const p = mk('hl', 'Коротко о тебе'), h = el('div', 'hl'), sc = i => num(i.rating) || num(i.extRating), rated = items.filter(sc).sort((a, b) => sc(b) - sc(a));
     const line = (l, v) => { if (!v) return; const d = el('div'); d.append(el('span', null, l + ': '), document.createTextNode(v)); h.append(d); };
     const tg = topBy(i => i.tags || [])[0], st = topBy(i => spl(i.studio))[0], au = topBy(i => spl(i.author))[0], lo = rated[rated.length - 1];
-    line('Любимый жанр', tg && `${tg[0]} (${tg[1]})`); line('Лучшая оценка', rated[0] && `${rated[0].title} — ${rated[0].rating}`);
-    line('Самая низкая оценка', rated.length > 1 && `${lo.title} — ${lo.rating}`); line('Оценено мной', rated.length && `${rated.length} из ${items.length}`);
+    line('Любимый жанр', tg && `${tg[0]} (${tg[1]})`); line('Лучшая оценка', rated[0] && `${rated[0].title} — ${sc(rated[0])}`);
+    line('Самая низкая оценка', rated.length > 1 && `${lo.title} — ${sc(lo)}`); line('С оценкой', rated.length && `${rated.length} из ${items.length}`);
     line('Частая студия', st && `${st[0]} (${st[1]})`); line('Частый автор / режиссёр', au && `${au[0]} (${au[1]})`); p.append(h); }
-  { const p = mk('hist', 'Мои оценки'); columns(p, Array.from({length: 10}, (_, k) => items.filter(i => Math.round(num(i.rating)) === k + 1).length), Array.from({length: 10}, (_, k) => k + 1)); }
+  { const hs = f => Array.from({length: 10}, (_, k) => items.filter(i => Math.round(num(f(i))) === k + 1).length), lb = Array.from({length: 10}, (_, k) => k + 1);
+    columns(mk('hist', 'Внешние оценки (AniList, TMDB)'), hs(i => i.extRating), lb);
+    if (items.some(i => num(i.rating))) columns(mk('hist2', 'Мои оценки'), hs(i => i.rating), lb); }
   { const p = mk('genres', 'Жанры — нажми, чтобы открыть список'); bars(p, topBy(i => i.tags || []).slice(0, 10), goTag); }
   { const p = mk('months', 'Добавлено за 12 месяцев'), now = new Date(), m = [];
     for (let k = 11; k >= 0; k--) { const d = new Date(now.getFullYear(), now.getMonth() - k, 1); m.push({y: d.getFullYear(), m: d.getMonth(), c: 0}); }
@@ -711,7 +769,7 @@ function profStats() {
   const go = st => () => { $('statusFilter').value = st; render(); toList(); };
   tile(items.length, 'Всего', go('Все'));
   STATS.forEach(s => tile(c(s), s.replace('Просмотрено/Прочитано', 'Завершено').replace('Смотрю/Читаю', 'В процессе'), go(s)));
-  tile(avg(i => num(i.rating)), 'Моя ср. оценка'); tile(avg(i => num(i.extRating)), 'Ср. внешняя оценка');
+  if (items.some(i => num(i.rating))) tile(avg(i => num(i.rating)), 'Моя ср. оценка'); tile(avg(i => num(i.extRating)), 'Ср. внешняя оценка');
   const pct = items.length ? Math.round((c('Просмотрено/Прочитано') + c('Любимое')) / items.length * 100) : 0;
   $('profRing').style.setProperty('--p', pct); $('profRingTxt').textContent = pct + '%';
   const d = user?.metadata?.creationTime; $('profSince').textContent = d ? 'Ведёт коллекцию с ' + new Date(d).toLocaleDateString('ru-RU', {month: 'long', year: 'numeric'}) : '';
@@ -721,6 +779,11 @@ $('accBtn').onclick = e => { e.stopPropagation(); $('accMenu').classList.toggle(
 addEventListener('click', () => $('accMenu').classList.remove('open'));
 addEventListener('keydown', e => { if (e.key === 'Escape') $('accMenu').classList.remove('open'); });
 $('accProfile').onclick = () => document.querySelector('.tab[data-v="profile"]').click();
+const ACC = [['#8b6cff', '#a48dff'], ['#ff5d8f', '#ff86ad'], ['#2dd4bf', '#5eead4'], ['#f59e0b', '#fbbf24'], ['#38bdf8', '#7dd3fc']];
+function setAcc(k) { const [a, h] = ACC[k] || ACC[0], r = document.documentElement.style; r.setProperty('--ac', a); r.setProperty('--ach', h); try { localStorage.setItem('acc', k); } catch (e) {} }
+try { setAcc(+localStorage.getItem('acc') || 0); } catch (e) { setAcc(0); }
+ACC.forEach(([a], k) => { const b = el('button'); b.style.background = a; b.title = 'Цвет оформления'; b.onclick = e => { e.stopPropagation(); setAcc(k); }; $('accSw').append(b); });
+[['openModalBtn', 'Добавить свой тайтл'], ['cgHide', 'Не показывать то, что уже в коллекции'], ['cgReset', 'Сбросить поиск и фильтры'], ['sizeSel', 'Размер карточек']].forEach(([i, t]) => { const e = document.getElementById(i); if (e) e.title = t; });
 function profStrips() {
   const box = $('profStrips'); box.replaceChildren();
   const strip = (title, list) => {
@@ -732,7 +795,7 @@ function profStrips() {
   const by = (f, d) => items.filter(f).sort(d).slice(0, 12), ex = (a, b) => num(b.extRating) - num(a.extRating);
   strip('🕒 Недавно добавлено', by(() => true, (a, b) => b.id - a.id));
   strip('▶ Продолжаю', by(i => i.status === 'Смотрю/Читаю', (a, b) => b.id - a.id));
-  strip('🏆 Топ-10 по моей оценке', items.filter(i => num(i.rating)).sort((a, b) => num(b.rating) - num(a.rating) || ex(a, b)).slice(0, 10));
+  strip('🏆 Топ-10 по оценке', items.filter(i => num(i.rating) || num(i.extRating)).sort((a, b) => (num(b.rating) || num(b.extRating)) - (num(a.rating) || num(a.extRating))).slice(0, 10));
   strip('❤ Любимое', by(i => i.status === 'Любимое', ex));
   strip('📌 Следующие в планах', by(i => i.status === 'В планах', ex));
 }
@@ -747,8 +810,9 @@ document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
 });
 
 // ---------- Каталог (популярное из AniList и TMDB) ----------
-const cg = {g: 'Аниме', page: 1, q: '', t: 0, hide: false}, cgGrid = $('cgGrid');
+const cg = {g: 'Аниме', page: 1, q: '', t: 0, hide: false, poster: false, min: 0}, cgGrid = $('cgGrid');
 const has = r => items.some(i => same(i, r));
+const cgPass = r => !(cg.hide && has(r)) && !(cg.poster && !r.poster) && num(r.ext) >= cg.min;
 
 async function cgFetch(page, per, q, mode) {
   const g = cg.g, gen = $('cgGenre').value, yr = parseInt($('cgYear').value) || 0;
@@ -793,7 +857,12 @@ function removeItem(id) {
 }
 
 function cgMarks() {
-  [...cgGrid.children].forEach(c => { if (!c._r) return; const b = c.querySelector('.qa'), d = has(c._r); b.textContent = d ? '✓' : '＋'; b.title = d ? 'Уже в коллекции' : 'Добавить в «В планах»'; b.classList.toggle('done', d); });
+  [...cgGrid.children].forEach(c => {
+    if (!c._r) return;
+    const b = c.querySelector('.qa'), m = items.find(i => same(i, c._r)), pc = c.querySelector('.pc'); let st = pc.querySelector('.status');
+    b.textContent = m ? '✓' : '＋'; b.title = m ? 'Уже в коллекции: ' + m.status : 'Добавить в «В планах»'; b.classList.toggle('done', !!m);
+    if (m) { if (!st) { st = el('span', 'status'); pc.append(st); } st.dataset.s = m.status; st.textContent = m.status; } else if (st) st.remove();
+  });
 }
 
 function cgCard(r) {
@@ -803,8 +872,8 @@ function cgCard(r) {
   add.onclick = async e => { e.stopPropagation(); if (add.classList.contains('done') || add.disabled) return; add.disabled = true; add.textContent = '…'; await quickAdd(r); add.disabled = false; };
   pc.append(img, ov, add);
   const info = el('div', 'ci'), row = el('div', 'cm');
-  row.append(el('span', null, [r.year, r.category].filter(Boolean).join('  |  ')), el('span', 'star', r.ext ? '★ ' + r.ext : ''));
-  info.append(el('h3', 'title', r.title), row, el('div', 'tg', r.tags.slice(0, 3).join(', ')));
+  row.append(el('span', null, [r.year, r.category].filter(Boolean).join('  |  ')), Object.assign(el('span', 'star', r.ext ? '★ ' + r.ext : ''), {title: r.src ? 'Оценка: ' + r.src : 'Внешняя оценка'}));
+  info.append(Object.assign(el('h3', 'title', r.title), {title: r.title}), row, el('div', 'tg', r.tags.slice(0, 3).join(', ')));
   card.append(pc, info); card.tabIndex = 0; card.onclick = () => showPreview(r, false); card.onkeydown = e => { if (e.key === 'Enter') showPreview(r, false); };
   cgGrid.append(card); cgMarks();
 }
@@ -817,10 +886,10 @@ async function cgLoad(reset) {
     const res = await cgFetch(cg.page, 24, cg.q, $('cgMode').value);
     if (t !== cg.t) return;
     if (reset && !cleared) { cgGrid.replaceChildren(); cleared = true; }
-    const vis = cg.hide ? res.filter(r => !has(r)) : res; vis.forEach(cgCard); shown += vis.length; cg.page++; more = res.length > 0;
-    if (!more || shown >= 8 || !cg.hide) break;
+    const vis = res.filter(cgPass); vis.forEach(cgCard); shown += vis.length; cg.page++; more = res.length > 0;
+    if (!more || shown >= 8 || !(cg.hide || cg.poster || cg.min)) break;
     }
-    if (reset && !shown) cgGrid.append(el('div', 'msg', more ? 'Всё найденное уже в коллекции — нажми «Ещё».' : 'Ничего не найдено.'));
+    if (reset && !shown) cgGrid.append(el('div', 'msg', more ? 'Под выбранные фильтры тут ничего не подошло — нажми «Ещё» или смени фильтры.' : 'Ничего не найдено.'));
     $('cgMore').style.display = more ? '' : 'none';
   } catch (e) {
     if (t !== cg.t) return;
@@ -833,12 +902,15 @@ document.querySelectorAll('#cgCats .tb').forEach(b => b.onclick = () => {
 });
 ['cgMode', 'cgKind', 'cgGenre'].forEach(id => $(id).onchange = () => cgLoad(true));
 let cgT; const cgGo = () => { clearTimeout(cgT); cg.q = $('cgSearch').value.trim(); cgLoad(true); };
-$('cgSearch').oninput = () => { clearTimeout(cgT); cgT = setTimeout(cgGo, 450); };
+$('cgSearch').oninput = () => { $('cgClear').style.display = $('cgSearch').value ? '' : 'none'; clearTimeout(cgT); cgT = setTimeout(cgGo, 450); };
 $('cgSearch').onkeydown = e => { if (e.key === 'Enter') cgGo(); };
 $('cgHide').onclick = e => { cg.hide = !cg.hide; e.currentTarget.classList.toggle('on', cg.hide); cgLoad(true); };
 let cgY; $('cgYear').oninput = () => { clearTimeout(cgY); cgY = setTimeout(() => cgLoad(true), 600); };
-$('cgReset').onclick = () => { $('cgSearch').value = ''; cg.q = ''; $('cgGenre').value = ''; $('cgYear').value = ''; $('cgKind').value = ''; $('cgMode').value = 'pop'; cg.hide = false; $('cgHide').classList.remove('on'); cgLoad(true); };
+$('cgReset').onclick = () => { $('cgSearch').value = ''; cg.q = ''; $('cgGenre').value = ''; $('cgYear').value = ''; $('cgKind').value = ''; $('cgMode').value = 'pop'; cg.hide = cg.poster = false; cg.min = 0; $('cgMin').value = '0'; $('cgClear').style.display = 'none'; ['cgHide', 'cgPoster'].forEach(i => $(i).classList.remove('on')); cgLoad(true); };
 $('cgMore').onclick = () => cgLoad(false);
+$('cgPoster').onclick = e => { cg.poster = !cg.poster; e.currentTarget.classList.toggle('on', cg.poster); cgLoad(true); };
+$('cgMin').onchange = () => { cg.min = +$('cgMin').value || 0; cgLoad(true); };
+$('cgClear').onclick = () => { $('cgSearch').value = ''; $('cgClear').style.display = 'none'; cgGo(); };
 function cgGenres() {
   const sel = $('cgGenre'), tm = cg.g === 'Фильм' || cg.g === 'Сериал'; sel.replaceChildren(new Option('Все жанры', ''));
   Object.entries(tm ? TG : RU).filter(([k]) => !tm || (cg.g === 'Фильм' ? !['10759', '10765', '10768'].includes(k) : k !== '10770')).forEach(([k, v]) => sel.add(new Option(v, k)));
@@ -865,7 +937,7 @@ async function cgRandom() {
   try {
     const md = $('cgMode').value, q = cg.q;
     const rp = q ? 1 : 1 + Math.floor(Math.random() * (md === 'new' || md === 'soon' ? 3 : md === 'top' ? 10 : 20)); let res = await cgFetch(rp, 24, q, md); if (!res.length && rp > 1) res = await cgFetch(1, 24, q, md);
-    const fresh = res.filter(r => !has(r)), pool = fresh.length ? fresh : res;
+    const fresh = res.filter(r => !has(r) && cgPass(r)), pool = fresh.length ? fresh : res;
     if (!pool.length) throw new Error('ничего не пришло');
     showPreview(pool[Math.floor(Math.random() * pool.length)], true);
   } catch (e) { toast('Не удалось получить случайный тайтл: ' + e.message, true); }

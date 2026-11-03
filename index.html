@@ -324,14 +324,15 @@ onAuthStateChanged(auth, u => {
   }
 });
 
-let pend = 0;
+let pend = 0, syncBad = false;
 const setSync = () => {
   const e = $('syncState');
   if (!navigator.onLine) { e.className = 'sync err'; e.textContent = '⚠ Нет подключения'; }
   else if (pend) { e.className = 'sync sav'; e.textContent = '⏳ Сохранение...'; }
+  else if (syncBad) { e.className = 'sync err'; e.textContent = '⚠ Ошибка сохранения'; }
   else { e.className = 'sync'; e.textContent = '☁ Синхронизировано'; }
 };
-const track = p => { pend++; setSync(); return p.then(() => { pend--; setSync(); }, e => { pend--; setSync(); throw e; }); };
+const track = p => { pend++; setSync(); return p.then(() => { pend--; if (!pend) syncBad = false; setSync(); }, e => { pend--; syncBad = true; setSync(); throw e; }); };
 addEventListener('online', setSync); addEventListener('offline', setSync);
 const cloudSave = it => track(setDoc(doc(db, 'items', String(it.id)), {...it, userId: user.uid})).catch(e => toast('Не удалось сохранить в облако: ' + e.message, true));
 
@@ -339,10 +340,13 @@ const cloudSave = it => track(setDoc(doc(db, 'items', String(it.id)), {...it, us
 const names = i => [i.title, i.titleEn, i.titleOrig, i.alt, i.author, i.studio, i.source, i.year, (i.tags || []).join(' ')].join(' ').toLowerCase();
 const xmatch = i => xf.k === 'source' ? i.source === xf.v : (i[xf.k] || '').split(',').some(x => x.trim().toLowerCase() === xf.v.toLowerCase());
 const num = v => parseFloat(v) || 0;
-const newId = () => Date.now() * 1000 + Math.floor(Math.random() * 1000);
-const grp = c => ['Фильм', 'Сериал', 'Мультфильм'].includes(c) ? 'кино' : c;
+let lastId = 0;
+const newId = () => { const n = Date.now() * 1000 + Math.floor(Math.random() * 1000); return lastId = n > lastId ? n : lastId + 1; };
+// Фильм и сериал — разные произведения; «Мультфильм» может быть и тем и другим
+const KINO = ['Фильм', 'Сериал', 'Мультфильм'];
+const sameCat = (a, b) => a === b || ((a === 'Мультфильм' || b === 'Мультфильм') && KINO.includes(a) && KINO.includes(b));
 const nset = o => [o.title, o.titleEn || o.en, o.titleOrig || o.orig, ...String(o.alt || '').split(',')].map(x => (x || '').trim().toLowerCase()).filter(Boolean);
-const same = (a, b) => grp(a.category) === grp(b.category) && nset(a).some(n => nset(b).includes(n));
+const same = (a, b) => sameCat(a.category, b.category) && nset(a).some(n => nset(b).includes(n));
 function toast(msg, bad, act) {
   const t = el('div', 'toast' + ((bad ?? /не удалось|ошибк|обязательно|должен|нужен/i.test(msg)) ? ' bad' : ''), msg);
   if (act) { const b = el('button', null, act.label); b.onclick = () => { act.fn(); t.remove(); }; t.append(b); }
@@ -451,6 +455,7 @@ function afHint() {
 $('inputCategory').onchange = afHint;
 
 function openAdd(item) {
+  exTok++; exP = Promise.resolve();
   $('formTitle').textContent = item ? 'Редактировать тайтл' : 'Добавить тайтл';
   const i = item || {id: '', title: '', category: 'Фильм', status: 'В планах', year: '', rating: '', extRating: '', description: '', titleEn: '', titleOrig: '', alt: '', tags: [], author: '', studio: '', source: '', ongoing: false};
   $('editId').value = i.id; $('inputTitle').value = i.title; $('inputCategory').value = i.category; $('inputStatus').value = i.status;
@@ -463,7 +468,11 @@ function openAdd(item) {
 }
 $('openModalBtn').onclick = () => openAdd(null);
 
-$('saveItemBtn').onclick = () => {
+let saving = false;
+$('saveItemBtn').onclick = async () => {
+  if (saving) return; saving = true;
+  try {
+  await Promise.race([exP.catch(() => {}), new Promise(r => setTimeout(r, 5000))]);
   const title = $('inputTitle').value.trim(), year = $('inputYear').value, editId = $('editId').value;
   if (!title) return toast('Название обязательно!');
   if (year && (year < 1900 || year > 2100)) return toast('Год должен быть между 1900 и 2100');
@@ -480,6 +489,7 @@ $('saveItemBtn').onclick = () => {
   if (k > -1) items[k] = it; else items.push(it);
   refresh(); closeAll(); if (editId) openDetail(it.id);
   cloudSave(it);
+  } finally { saving = false; }
 };
 
 function openDetail(id) {
@@ -505,8 +515,7 @@ function openDetail(id) {
 $('editItemBtn').onclick = () => { const i = items.find(x => x.id === curId); if (i) { closeAll(); openAdd(i); } };
 $('deleteItemBtn').onclick = () => {
   if (!confirm('Точно удалить этот тайтл из коллекции?')) return;
-  const id = curId; items = items.filter(i => i.id !== id); closeAll(); refresh();
-  track(deleteDoc(doc(db, 'items', String(id)))).catch(e => toast('Не удалось удалить в облаке: ' + e.message, true));
+  const id = curId; closeAll(); removeItem(id);
 };
 
 // ---------- Автозаполнение ----------
@@ -563,9 +572,21 @@ async function tmdbInfo(r) {
   const dir = (d.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name), by = (d.created_by || []).map(c => c.name);
   return {author: [...new Set([...by, ...dir])].slice(0, 2).join(', '), studio: (d.production_companies || []).slice(0, 2).map(c => c.name).join(', '), ongoing: d.status === 'Returning Series'};
 }
-async function tmdbExtra(r) { const x = await tmdbInfo(r); $('inputAuthor').value = x.author; $('inputStudio').value = x.studio; $('inputOngoing').checked = x.ongoing; }
+let exTok = 0, exP = Promise.resolve();
+// Доп. данные TMDB: не затираем уже вписанное и не пишем в чужую форму; сохранение дожидается загрузки
+function tmdbExtra(r) {
+  const t = ++exTok;
+  return exP = (async () => {
+    const x = await tmdbInfo(r);
+    if (t !== exTok) return;
+    if (!$('inputAuthor').value.trim()) $('inputAuthor').value = x.author;
+    if (!$('inputStudio').value.trim()) $('inputStudio').value = x.studio;
+    if (x.ongoing) $('inputOngoing').checked = true;
+  })();
+}
 
 function fillForm(r) {
+  exTok++;
   if (!$('inputTitle').value.trim()) $('inputTitle').value = r.title;
   $('inputAuthor').value = r.author || ''; $('inputStudio').value = r.studio || ''; $('inputSource').value = r.source || ''; $('inputOngoing').checked = !!r.ongoing;
   $('inputTitleEn').value = r.en; $('inputTitleOrig').value = r.orig; $('inputAlt').value = r.alt;
@@ -669,13 +690,26 @@ async function cgFetch(page, per, q, mode) {
   return anilist(q || null, g === 'Аниме' ? 'ANIME' : 'MANGA', o);
 }
 
+const adding = new Set();
 async function quickAdd(r) {
+  const ak = r.url || r.title + '|' + r.category;
+  if (has(r) || adding.has(ak)) { cgMarks(); return; }
+  adding.add(ak);
+  try {
   const it = {id: newId(), extSrc: r.src || '', title: r.title, category: r.category, kind: r.category === 'Манга' ? (r.kind || 'Манга') : '', status: 'В планах', poster: r.poster || '', year: r.year || '', rating: '', extRating: r.ext || '', description: r.desc || '', titleEn: r.en || '', titleOrig: r.orig || '', alt: r.alt || '', tags: r.tags || [], author: r.author || '', studio: r.studio || '', source: r.source || '', ongoing: !!r.ongoing};
   if (r.tmdb) { try { Object.assign(it, await tmdbInfo(r)); } catch (e) {} }
+  if (has(r)) { cgMarks(); return; }
   items.push(it); refresh(); cloudSave(it); toast('Добавлено: ' + it.title, false, {label: 'Отменить', fn: () => removeItem(it.id)});
+  } finally { adding.delete(ak); }
 }
 
-function removeItem(id) { items = items.filter(i => i.id !== id); refresh(); track(deleteDoc(doc(db, 'items', String(id)))).catch(e => toast('Не удалось удалить в облаке: ' + e.message, true)); }
+function removeItem(id) {
+  const old = items.find(i => i.id === id); items = items.filter(i => i.id !== id); refresh();
+  track(deleteDoc(doc(db, 'items', String(id)))).catch(e => {
+    if (old && !items.some(i => i.id === id)) { items.push(old); refresh(); }
+    toast('Не удалось удалить в облаке: ' + e.message, true);
+  });
+}
 
 function cgMarks() {
   [...cgGrid.children].forEach(c => { if (!c._r) return; const b = c.querySelector('.qa'), d = has(c._r); b.textContent = d ? '✓' : '＋'; b.title = d ? 'Уже в коллекции' : 'Добавить в «В планах»'; b.classList.toggle('done', d); });
@@ -695,17 +729,21 @@ function cgCard(r) {
 }
 
 async function cgLoad(reset) {
-  const t = ++cg.t;
+  const t = ++cg.t; let cleared = false, shown = 0, more = true;
   if (reset) { cg.page = 1; cgGrid.replaceChildren(...Array.from({length: 12}, () => el('div', 'sk'))); $('cgMore').style.display = 'none'; }
   try {
+    for (let tries = 0; tries < 5; tries++) {
     const res = await cgFetch(cg.page, 24, cg.q, $('cgMode').value);
     if (t !== cg.t) return;
-    if (reset) cgGrid.replaceChildren();
-    if (reset && !res.length) cgGrid.append(el('div', 'msg', 'Ничего не найдено.'));
-    (cg.hide ? res.filter(r => !has(r)) : res).forEach(cgCard); cg.page++; $('cgMore').style.display = res.length ? '' : 'none';
+    if (reset && !cleared) { cgGrid.replaceChildren(); cleared = true; }
+    const vis = cg.hide ? res.filter(r => !has(r)) : res; vis.forEach(cgCard); shown += vis.length; cg.page++; more = res.length > 0;
+    if (!more || shown >= 8 || !cg.hide) break;
+    }
+    if (reset && !shown) cgGrid.append(el('div', 'msg', more ? 'Всё найденное уже в коллекции — нажми «Ещё».' : 'Ничего не найдено.'));
+    $('cgMore').style.display = more ? '' : 'none';
   } catch (e) {
     if (t !== cg.t) return;
-    if (reset) { const m = el('div', 'msg', 'Ошибка загрузки: ' + e.message + ' '), rb = el('button', 'btn btn-s', 'Повторить'); rb.onclick = () => cgLoad(true); m.append(rb); cgGrid.replaceChildren(m); } else toast('Ошибка загрузки: ' + e.message, true);
+    if (reset && !shown) { const m = el('div', 'msg', 'Ошибка загрузки: ' + e.message + ' '), rb = el('button', 'btn btn-s', 'Повторить'); rb.onclick = () => cgLoad(true); m.append(rb); cgGrid.replaceChildren(m); } else toast('Ошибка загрузки: ' + e.message, true);
   }
 }
 document.querySelectorAll('#cgCats .tb').forEach(b => b.onclick = () => {
@@ -764,29 +802,32 @@ window.exportData = () => {
 };
 
 // Старые бэкапы (без id, категория «Кино») тоже подходят: id выдаётся заново, повторы пропускаются
-const key = i => (i.title + '|' + i.category).toLowerCase();
+// Повтор = то же произведение по любому названию (рус/англ/ориг/другие) в той же категории; фильм и сериал не путаются
 window.importData = e => {
   const f = e.target.files[0]; if (!f) return;
   const r = new FileReader();
   r.onload = async () => {
     try {
       const arr = JSON.parse(r.result); if (!Array.isArray(arr)) throw 0;
-      const ids = new Set(items.map(i => String(i.id))), keys = new Set(items.map(key)), add = [];
+      const ids = new Set(items.map(i => String(i.id))), add = [], idx = new Map();
+      const put = o => nset(o).forEach(n => { if (!idx.has(n)) idx.set(n, []); idx.get(n).push(o.category); });
+      const dup = o => nset(o).some(n => (idx.get(n) || []).some(c => sameCat(c, o.category)));
+      items.forEach(put);
       arr.forEach((x, n) => {
         const it = {
-          id: Number(x.id) || newId() + n, title: String(x.title || '').trim(),
+          id: Number(x.id) || 0, title: String(x.title || '').trim(),
           category: x.category === 'Кино' ? 'Фильм' : x.category === 'Манхва' ? 'Манга' : CATS.includes(x.category) ? x.category : 'Фильм', kind: x.category === 'Манхва' ? 'Манхва' : (x.kind || ''),
           status: STATS.includes(x.status) ? x.status : 'В планах', poster: x.poster || '', year: x.year || '', rating: x.rating || '',
           extRating: x.extRating || '', extSrc: x.extSrc || '', description: x.description || '', titleEn: x.titleEn || '', titleOrig: x.titleOrig || '',
           alt: x.alt || '', author: x.author || '', studio: x.studio || '', source: x.source || '', ongoing: !!x.ongoing, tags: Array.isArray(x.tags) ? x.tags : []
         };
-        if (!it.title || keys.has(key(it))) return;
-        if (ids.has(String(it.id))) it.id = newId() + n;
-        ids.add(String(it.id)); keys.add(key(it)); add.push(it);
+        if (!it.title || dup(it)) return;
+        while (!it.id || ids.has(String(it.id))) it.id = newId();
+        ids.add(String(it.id)); put(it); add.push(it);
       });
       if (!confirm(`В файле записей: ${arr.length}. Будет добавлено: ${add.length}, пропущено повторов: ${arr.length - add.length}. Продолжить?`)) { e.target.value = ''; return; }
       for (let i = 0; i < add.length; i += 400) {
-        const b = writeBatch(db); add.slice(i, i + 400).forEach(it => b.set(doc(db, 'items', String(it.id)), {...it, userId: user.uid})); await b.commit();
+        const b = writeBatch(db); add.slice(i, i + 400).forEach(it => b.set(doc(db, 'items', String(it.id)), {...it, userId: user.uid})); await track(b.commit());
       }
       toast(`Добавлено: ${add.length}. Пропущено повторов: ${arr.length - add.length}.`);
     } catch (err) { toast('Ошибка: файл не подходит или не удалось сохранить.'); }

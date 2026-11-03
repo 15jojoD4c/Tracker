@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="darkreader-lock">
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('theme')||''}catch(e){}</script>
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0a0b12">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -198,6 +199,46 @@ select option{background:#1a1c2a;color:#fff}
 .hid{position:absolute;left:10px;bottom:10px;z-index:3;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(18,20,32,.62);backdrop-filter:blur(8px);color:#fff;font-size:12px;cursor:pointer;opacity:0;transition:.2s}
 .card:hover .hid,.hid:focus-visible{opacity:1}.hid:hover{background:#cf6679}
 @media(hover:none){.hid{opacity:.75}}
+
+/* ===== Темы: чёрная и белая ===== */
+.menu .th{display:flex;gap:6px;padding:2px 6px 8px}.menu .th button{width:auto;flex:1;text-align:center;padding:7px 4px;font-size:12px;border:1px solid var(--bd)}.menu .th button.on{border-color:var(--ac)}
+html[data-theme=black]{--bg:#000;--card:rgba(14,14,14,.8);--bd:rgba(255,255,255,.13)}
+html[data-theme=black] body::before{display:none}
+html[data-theme=black] header{background:rgba(0,0,0,.82)}
+html[data-theme=black] .mc{background:rgba(8,8,8,.94)}
+html[data-theme=black] .pcard{background:linear-gradient(135deg,rgba(255,255,255,.08),rgba(10,10,10,.7) 60%)}
+html[data-theme=black] .ring::before{background:#000}html[data-theme=black] .donut::after{background:#0a0a0a}
+html[data-theme=black] .toast{background:rgba(16,16,16,.94)}html[data-theme=black] .pc{background:#111}
+html[data-theme=black] .sk{background:linear-gradient(90deg,#0c0c0c 25%,#1a1a1a 50%,#0c0c0c 75%);background-size:200% 100%}
+html[data-theme=black] select option{background:#0a0a0a}html[data-theme=black] .menu button:hover{background:#1a1a1a}
+html[data-theme=black] #detailDescription,html[data-theme=black] .af{background:rgba(255,255,255,.05)}
+html[data-theme=white]{color-scheme:light;--bg:#fff;--card:rgba(255,255,255,.85);--inp:rgba(0,0,0,.04);--bd:rgba(0,0,0,.13);--mu:#5d6478;scrollbar-color:rgba(0,0,0,.25) transparent}
+html[data-theme=white] ::-webkit-scrollbar-thumb{background:rgba(0,0,0,.22)}
+html[data-theme=white] body{color:#14161f}
+html[data-theme=white] body::before{background:radial-gradient(900px 520px at 10% -8%,rgba(139,108,255,.14),transparent 62%),radial-gradient(800px 520px at 100% 6%,rgba(56,189,248,.10),transparent 60%)}
+html[data-theme=white] header{background:rgba(255,255,255,.78);box-shadow:0 6px 24px rgba(20,22,40,.08)}
+html[data-theme=white] :is(input,select,textarea){color:#14161f}
+html[data-theme=white] select option{background:#fff;color:#14161f}
+html[data-theme=white] :is(.fb,.kb,.tb):not(.on){background:rgba(0,0,0,.05);color:#2b2f40}
+html[data-theme=white] :is(.fb,.kb,.tb):not(.on):hover{background:rgba(0,0,0,.1)}
+html[data-theme=white] .btn-s{background:rgba(0,0,0,.06);color:#14161f}html[data-theme=white] .btn-s:hover{background:rgba(0,0,0,.12)}
+html[data-theme=white] .tabs{background:rgba(0,0,0,.05)}
+html[data-theme=white] :is(.tile,.star,.logo){color:#14161f}
+html[data-theme=white] .logo{background:linear-gradient(90deg,#14161f,#6a4cf0);-webkit-background-clip:text;background-clip:text;color:transparent}
+html[data-theme=white] .menu{background:rgba(255,255,255,.96)}
+html[data-theme=white] .menu button{color:#14161f}html[data-theme=white] .menu button:hover{background:rgba(0,0,0,.07)}html[data-theme=white] .menu .out{color:#d6294d}
+html[data-theme=white] .mc{background:rgba(255,255,255,.92);border-color:rgba(0,0,0,.12);box-shadow:0 30px 80px rgba(30,34,60,.25)}
+html[data-theme=white] .modal{background:rgba(236,239,248,.65)}
+html[data-theme=white] :is(#detailDescription,.af){background:rgba(0,0,0,.04);color:#2b2f40}
+html[data-theme=white] .chip{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.13);color:#2b2f40}
+html[data-theme=white] .pc{background:#e9ebf3;border-color:rgba(0,0,0,.08);box-shadow:0 8px 22px rgba(30,34,60,.18)}
+html[data-theme=white] .toast{background:rgba(255,255,255,.96);color:#14161f;border-color:rgba(0,0,0,.14)}html[data-theme=white] .toast.bad{background:#ffe9ee}html[data-theme=white] .toast button{color:#6a4cf0}
+html[data-theme=white] :is(.tg,.msg,.sync){color:#6b7288}html[data-theme=white] .mini span{color:#2b2f40}
+html[data-theme=white] .pcard{background:linear-gradient(135deg,rgba(139,108,255,.18),rgba(255,255,255,.85) 60%)}
+html[data-theme=white] .ring{background:conic-gradient(var(--ac) calc(var(--p)*1%),#dfe2ee 0)}html[data-theme=white] .ring::before,html[data-theme=white] .donut::after{background:#fff}
+html[data-theme=white] .pb .sr.go:hover span:first-child{color:#000}
+html[data-theme=white] .afr:hover{background:rgba(0,0,0,.06)}html[data-theme=white] :is(#posterPreview,.afr img,.av){background:#e9ebf3}
+html[data-theme=white] .sk{background:linear-gradient(90deg,#e8eaf2 25%,#f4f5fa 50%,#e8eaf2 75%);background-size:200% 100%}
 </style>
 </head>
 <body>
@@ -216,7 +257,7 @@ select option{background:#1a1c2a;color:#fff}
       <select id="sizeSel" title="Размер карточек"><option value="150">Карточки: мелкие</option><option value="190">Карточки: средние</option><option value="240">Карточки: крупные</option></select>
       <button class="btn" id="openModalBtn">+ Добавить</button>
       <div class="acc"><button class="av" id="accBtn" title="Аккаунт" aria-haspopup="true"><img id="hdrAvatar" referrerpolicy="no-referrer" alt=""></button>
-        <div class="menu" id="accMenu"><button id="accProfile">👤 Мой профиль</button><div class="sw" id="accSw" title="Цвет оформления"></div><button onclick="exportData()">⬇ Скачать бэкап</button><button onclick="importFile.click()">⬆ Загрузить бэкап</button><button id="accReset">↺ Сбросить оформление</button><button class="out" id="logoutBtn">⎋ Выйти</button></div></div>
+        <div class="menu" id="accMenu"><button id="accProfile">👤 Мой профиль</button><div class="sw" id="accSw" title="Цвет оформления"></div><div class="th" id="accTh"></div><button onclick="exportData()">⬇ Скачать бэкап</button><button onclick="importFile.click()">⬆ Загрузить бэкап</button><button id="accRu">🌐 Перевести всё на русский</button><button id="accReset">↺ Сбросить оформление</button><button class="out" id="logoutBtn">⎋ Выйти</button></div></div>
     </div>
   </header>
   <div class="tabs"><button class="tab on" data-v="catalog">🌐 Каталог</button><button class="tab" data-v="profile">👤 Мой профиль</button></div>
@@ -557,6 +598,85 @@ function openAdd(item) {
   $('inputKind').value = i.kind || 'Манга'; $('afQuery').value = ''; $('afResults').replaceChildren(); setPoster(i.poster); afHint();
   $('addModal').style.display = 'flex';
 }
+// ---- Русский язык: названия и описания из Shikimori (по MAL-id), запасной вариант — автоперевод
+const SHK = {'Аниме': 'animes', 'Манга': 'mangas', 'Ранобэ': 'ranobe'};
+const hasRu = t => /[а-яё]/i.test(t || ''), ruN = t => (t || '').toLowerCase().replace(/[^a-z0-9а-яё]+/g, ''), ruWait = ms => new Promise(r => setTimeout(r, ms));
+const ruClean = t => (t || '').replace(/\[(character|person|anime|manga|ranobe|url|user)[^\]]*\]([^\[]*)\[\/\1\]/gi, '$2').replace(/\[\/?[a-z_]+(?:=[^\]]*)?\]/gi, '').replace(/\n{3,}/g, '\n\n').trim();
+const ruJson = async u => { const r = await fetch(u); if (!r.ok) throw new Error(r.status); return r.json(); };
+const RUC = (() => { try { return JSON.parse(localStorage.getItem('ruCache') || '{}'); } catch (e) { return {}; } })();
+let ruWarned = false, ruBusy = false;
+const ruWarn = () => { if (!ruWarned) { ruWarned = true; toast('Не удалось получить русский текст — оставил как есть (сервис перевода не ответил).', true); } };
+async function ruChunk(p) {
+  try { const j = await ruJson('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ru&dt=t&q=' + encodeURIComponent(p)); const t = (j[0] || []).map(x => x[0]).join(''); if (t) return t; } catch (e) {}
+  let out = ''; for (let i = 0; i < p.length; i += 450) { const j = await ruJson('https://api.mymemory.translated.net/get?langpair=en|ru&q=' + encodeURIComponent(p.slice(i, i + 450))); out += j.responseData?.translatedText || p.slice(i, i + 450); } return out;
+}
+async function ruTranslate(t) {
+  if (!t || hasRu(t)) return t || '';
+  const parts = []; let rest = t; while (rest.length > 1400) { let i = rest.lastIndexOf('. ', 1400); if (i < 200) i = 1400; parts.push(rest.slice(0, i + 1)); rest = rest.slice(i + 1); } parts.push(rest);
+  let out = ''; for (const p of parts) out += await ruChunk(p); return out.trim();
+}
+function ruFull(r) {   // русское название и описание одного тайтла из каталога (один раз на тайтл)
+  return r.ruP ||= (async () => {
+    let ru = '', d = '';
+    if (r.mal && SHK[r.category]) { try { const x = await ruJson(`https://shikimori.one/api/${SHK[r.category]}/${r.mal}`); ru = x.russian || ''; d = ruClean(x.description); } catch (e) {} }
+    if (ru && !hasRu(r.title)) { if (!r.en) r.en = r.title; r.title = ru; }
+    if (hasRu(d)) r.desc = d; else if (r.desc && !hasRu(r.desc)) { try { r.desc = await ruTranslate(r.desc); } catch (e) { ruWarn(); } }
+    r.ruDone = 1; return r;
+  })();
+}
+async function ruPreview(r) {
+  if (r.src !== 'AniList' || r.ruDone) return;
+  $('rndDesc').textContent = 'Перевожу на русский…';
+  await ruFull(r);
+  if (rndR === r) { $('rndTitle').textContent = r.title; $('rndNames').textContent = [r.en, r.orig].filter(Boolean).join(' / '); $('rndDesc').textContent = r.desc || 'Описание отсутствует.'; }
+}
+const ruSet = (c, ru) => { const r = c._r; r.ruTitle = 1; if (!ru) return; if (!r.en) r.en = r.title; r.title = ru; const h = c.querySelector('.title'); if (h) { h.textContent = ru; h.title = ru; } };
+async function ruCards() {   // русские названия на карточках каталога: один запрос на все карточки страницы
+  const cards = [...cgGrid.children].filter(c => c._r && c._r.mal && SHK[c._r.category] && !c._r.ruTitle), key = c => SHK[c._r.category] + c._r.mal;
+  cards.filter(c => RUC[key(c)]).forEach(c => ruSet(c, RUC[key(c)]));
+  for (const kind of ['animes', 'mangas', 'ranobe']) {
+    const grp = cards.filter(c => !c._r.ruTitle && SHK[c._r.category] === kind); if (!grp.length) continue;
+    try {
+      const list = await ruJson(`https://shikimori.one/api/${kind}?ids=${[...new Set(grp.map(c => c._r.mal))].join(',')}&limit=50`);
+      list.forEach(x => { RUC[kind + x.id] = x.russian || ''; grp.filter(c => c._r.mal === x.id).forEach(c => ruSet(c, x.russian)); });
+      try { localStorage.setItem('ruCache', JSON.stringify(RUC)); } catch (e) {}
+    } catch (e) {}
+  }
+}
+async function ruBulk() {   // перевод уже добавленной коллекции
+  if (ruBusy) return toast('Перевод уже идёт — подожди, пожалуйста.');
+  const todo = items.filter(i => !hasRu(i.title) || (i.description && !hasRu(i.description)));
+  if (!todo.length) return toast('Всё уже на русском 🙂');
+  if (!confirm(`Тайтлов с английским названием или описанием: ${todo.length}.\nСначала скачается бэкап, потом всё переведётся по очереди (несколько минут, вкладку лучше не закрывать).\nПродолжить?`)) return;
+  ruBusy = true; exportData(); let ok = 0, n = 0;
+  try {
+    for (const i of todo) {
+      if (n++ % 8 === 0) toast(`Перевожу на русский: ${n} из ${todo.length}…`);
+      try {
+        let title = '', desc = ''; const q = i.titleEn || i.titleOrig || i.title, names = [i.title, i.titleEn, i.titleOrig, ...spl(i.alt)].map(ruN);
+        if (SHK[i.category]) {
+          const list = await ruJson(`https://shikimori.one/api/${SHK[i.category]}?search=${encodeURIComponent(q)}&limit=5`), c = list.find(x => names.includes(ruN(x.name))) || (list.length === 1 ? list[0] : null);
+          if (c) { const x = await ruJson(`https://shikimori.one/api/${SHK[i.category]}/${c.id}`); title = x.russian || ''; desc = ruClean(x.description); }
+        } else {
+          const list = await tmdb(q, null, null), c = list.find(x => String(x.year) === String(i.year) && sameCat(x.category, i.category)) || list.find(x => sameCat(x.category, i.category));
+          if (c) { title = c.title; desc = c.desc; }
+        }
+        if (!hasRu(desc) && i.description) desc = await ruTranslate(i.description);
+        let ch = false;
+        if (hasRu(title) && !hasRu(i.title)) { if (!i.titleEn) i.titleEn = i.title; i.title = title; ch = true; }
+        if (hasRu(desc) && !hasRu(i.description)) { i.description = desc; ch = true; }
+        if (ch) { cloudSave(i); ok++; }
+      } catch (e) {}
+      await ruWait(1500);
+    }
+  } finally { ruBusy = false; refresh(); toast(`Готово: переведено ${ok} из ${todo.length}.` + (ok < todo.length ? '\nУ остальных нет русского варианта или сервис не ответил — можно запустить ещё раз позже.' : '')); }
+}
+$('accRu').onclick = ruBulk;
+// ---- Темы оформления
+const THEMES = [['', '🌌 Стекло'], ['black', '⬛ Чёрная'], ['white', '⬜ Белая']];
+function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem('theme', t); } catch (e) {} [...$('accTh').children].forEach(b => b.classList.toggle('on', b.dataset.t === t)); }
+THEMES.forEach(([t, n]) => { const b = el('button', null, n); b.dataset.t = t; b.onclick = e => { e.stopPropagation(); setTheme(t); }; $('accTh').append(b); });
+try { setTheme(localStorage.getItem('theme') || ''); } catch (e) {}
 const LBL = {inputCategory: 'Категория', inputStatus: 'Статус', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputDescription: 'Синопсис / описание'};
 Object.entries(LBL).forEach(([id, t]) => { const e = $(id), w = el('div', 'fld'); e.replaceWith(w); w.append(el('label', null, t), e); });
 const DF = Object.keys(LBL).concat('inputExtSrc');
@@ -573,7 +693,7 @@ $('closeAddBtn').addEventListener('click', draftClear);
 $('openModalBtn').onclick = () => { openAdd(null); draftRestore(); };
 $('saveNextBtn').onclick = () => { again = true; $('saveItemBtn').click(); };
 const UIK = ['acc', 'cw', 'profHide', 'view'];
-$('accReset').onclick = () => { if (!confirm('Сбросить оформление (цвет, размер карточек, вид, скрытые блоки профиля, скрытое в каталоге)? Коллекция не пострадает.')) return; try { UIK.concat('cgHid', 'draft').forEach(k => localStorage.removeItem(k)); } catch (e) {} location.reload(); };
+$('accReset').onclick = () => { if (!confirm('Сбросить оформление (цвет, размер карточек, вид, скрытые блоки профиля, скрытое в каталоге)? Коллекция не пострадает.')) return; try { UIK.concat('cgHid', 'draft', 'theme').forEach(k => localStorage.removeItem(k)); } catch (e) {} location.reload(); };
 let recI = 0;
 $('cgRec').onclick = () => {
   const opts = [...$('cgGenre').options].filter(o => o.value), mine = topBy(i => i.tags || []).map(r => opts.find(o => o.textContent.trim().toLowerCase() === r[0].toLowerCase())).filter(Boolean);
@@ -641,7 +761,8 @@ const RU = {Action:'Экшен',Adventure:'Приключения',Comedy:'Ко�
 const TG = {28:'Боевик',12:'Приключения',16:'Мультфильм',35:'Комедия',80:'Криминал',99:'Документальный',18:'Драма',10751:'Семейный',14:'Фэнтези',36:'История',27:'Ужасы',10402:'Музыка',9648:'Детектив',10749:'Мелодрама',878:'Фантастика',53:'Триллер',10752:'Военный',37:'Вестерн',10759:'Боевик и приключения',10765:'Фантастика и фэнтези',10768:'Война и политика'};
 
 async function anilist(search, type, o = {}) {
-  const gql = 'query($s:String,$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int,$g:[String],$sg:FuzzyDateInt,$sl:FuzzyDateInt){Page(page:$p,perPage:$pp){media(search:$s,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg,genre_in:$g,startDate_greater:$sg,startDate_lesser:$sl){format siteUrl countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore genres status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
+  if (hasRu(search)) { try { for (const kk of type === 'ANIME' ? ['animes'] : ['mangas', 'ranobe']) { const l = await ruJson(`https://shikimori.one/api/${kk}?search=${encodeURIComponent(search)}&limit=1`); if (l[0]) { search = l[0].name; break; } } } catch (e) {} }
+  const gql = 'query($s:String,$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int,$g:[String],$sg:FuzzyDateInt,$sl:FuzzyDateInt){Page(page:$p,perPage:$pp){media(search:$s,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg,genre_in:$g,startDate_greater:$sg,startDate_lesser:$sl){idMal format siteUrl countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore genres status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
   const r = await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'}, body: JSON.stringify({query: gql, variables: {s: search, t: type, p: o.page || 1, pp: o.per || 10, so: o.sort || ['SEARCH_MATCH'], st: o.status, f: o.format, fn: o.fn, c: o.country, ad: o.ad, pg: o.pg, g: o.genre, sg: o.sg, sl: o.sl}})});
   const j = await r.json(); if (j.errors) throw new Error(j.errors[0].message);
   return j.data.Page.media.map(m => {
@@ -649,7 +770,7 @@ async function anilist(search, type, o = {}) {
     const stf = m.staff?.edges || [], pick = re => [...new Set(stf.filter(e => re.test(e.role)).map(e => e.node.name.full))].slice(0, 2).join(', ');
     const alt = [...new Set([t.romaji, ...(m.synonyms || [])].filter(x => x && x !== main && x !== t.english))].join(', ');
     return {
-      title: main, en: t.english || '', orig: t.native || '', alt,
+      mal: m.idMal || 0, title: main, en: t.english || '', orig: t.native || '', alt,
       author: type === 'ANIME' ? (pick(/Original Creator/i) || pick(/Director/i)) : (pick(/Story/i) || pick(/Art/i)),
       studio: (m.studios?.nodes || []).map(n => n.name).slice(0, 2).join(', '), source: SRC[m.source] || '', ongoing: m.status === 'RELEASING', src: 'AniList', url: m.siteUrl, poster: m.coverImage.large, year: m.startDate.year || '',
       ext: m.averageScore ? (m.averageScore / 10).toFixed(1) : '', tags: (m.genres || []).map(g => RU[g] || g),
@@ -709,6 +830,7 @@ function fillForm(r) {
   $('inputCategory').value = r.category; $('inputKind').value = r.kind || 'Манга'; $('inputYear').value = r.year; $('inputExtRating').value = r.ext; $('inputExtSrc').value = r.src || '';
   $('inputDescription').value = r.desc; $('inputTags').value = parseTags($('inputTags').value + ',' + r.tags.join(',')).join(', ');
   setPoster(r.poster); afHint();
+  if (r.src === 'AniList' && !r.ruDone) { const t0 = $('inputTitle').value, d0 = $('inputDescription').value; ruFull(r).then(() => { if ($('inputTitle').value === t0) { $('inputTitle').value = r.title; $('inputTitleEn').value = r.en || ''; } if ($('inputDescription').value === d0) $('inputDescription').value = r.desc || ''; }).catch(() => {}); }
 }
 
 $('afBtn').onclick = async () => {
@@ -887,6 +1009,7 @@ async function quickAdd(r) {
   try {
   const it = {id: newId(), extSrc: r.src || '', title: r.title, category: r.category, kind: r.category === 'Манга' ? (r.kind || 'Манга') : '', status: 'В планах', poster: r.poster || '', year: r.year || '', rating: '', extRating: r.ext || '', description: r.desc || '', titleEn: r.en || '', titleOrig: r.orig || '', alt: r.alt || '', tags: r.tags || [], author: r.author || '', studio: r.studio || '', source: r.source || '', ongoing: !!r.ongoing};
   if (r.tmdb) { try { Object.assign(it, await tmdbInfo(r)); } catch (e) {} }
+  if (r.src === 'AniList') { try { await ruFull(r); it.title = r.title; it.titleEn = r.en || ''; it.description = r.desc || ''; } catch (e) {} }
   if (has(r)) { cgMarks(); return; }
   items.push(it); refresh(); cloudSave(it); toast('Добавлено: ' + it.title, false, {label: 'Отменить', fn: () => removeItem(it.id)});
   } finally { adding.delete(ak); }
@@ -936,6 +1059,7 @@ async function cgLoad(reset) {
     }
     if (reset && !shown) cgGrid.append(el('div', 'msg', more ? 'Под выбранные фильтры тут ничего не подошло — нажми «Ещё» или смени фильтры.' : 'Ничего не найдено.'));
     $('cgMore').style.display = more ? '' : 'none';
+    ruCards();
   } catch (e) {
     if (t !== cg.t) return;
     if (reset && !shown) { const m = el('div', 'msg', 'Ошибка загрузки: ' + e.message + ' '), rb = el('button', 'btn btn-s', 'Повторить'); rb.onclick = () => cgLoad(true); m.append(rb); cgGrid.replaceChildren(m); } else toast('Ошибка загрузки: ' + e.message, true);
@@ -976,6 +1100,7 @@ function showPreview(r, rnd) {
   $('rndMore').style.display = rnd ? '' : 'none';
   a.disabled = d; a.textContent = d ? '✓ Уже в коллекции' : '＋ В планы';
   $('rndModal').style.display = 'flex';
+  ruPreview(r);
 }
 async function cgRandom() {
   const b = $('cgRand'); b.disabled = true;

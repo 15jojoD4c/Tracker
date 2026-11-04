@@ -266,6 +266,15 @@ button.ab{background:none;color:inherit;font:inherit;cursor:pointer}.ab:hover{bo
 .achinfo{margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.05);font-size:13px;display:flex;flex-direction:column;gap:6px}
 .track{height:8px;border-radius:6px;background:rgba(255,255,255,.12);overflow:hidden}.track .bar{height:100%;border-radius:6px;background:var(--ac)}
 html[data-theme=white] .achinfo{background:rgba(0,0,0,.04)}html[data-theme=white] .track{background:rgba(0,0,0,.1)}
+
+.adv{flex-basis:100%}.adv summary{cursor:pointer;color:var(--mu);margin:4px 0}.adv .row{margin-top:8px}
+
+.stars{display:flex;gap:2px;margin-top:4px}.stars button{background:none;border:0;font-size:18px;color:rgba(255,255,255,.25);cursor:pointer;padding:0 1px}.stars button.on{color:#ffb74d}
+html[data-theme=white] .stars button{color:rgba(0,0,0,.2)}html[data-theme=white] .stars button.on{color:#f59e0b}
+.pv{display:flex;gap:12px;align-items:flex-start}.pvp{position:relative;width:96px;flex:none}.pvp img{width:96px;height:140px;object-fit:cover;border-radius:12px;display:block;background:#222633}.pvp .status{position:absolute;top:6px;left:6px}
+.calr{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:12px;background:rgba(255,255,255,.04)}.calr img{width:38px;height:54px;object-fit:cover;border-radius:6px;background:#222633}
+.calt{flex:1;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}.calt b{flex-basis:100%}html[data-theme=white] .calr{background:rgba(0,0,0,.04)}
+.pc img{transition:opacity .35s ease,transform .35s ease}.pc img:not(.ld){opacity:0}
 </style>
 </head>
 <body>
@@ -284,7 +293,7 @@ html[data-theme=white] .achinfo{background:rgba(0,0,0,.04)}html[data-theme=white
       <select id="sizeSel" title="Размер карточек"><option value="150">Карточки: мелкие</option><option value="190">Карточки: средние</option><option value="240">Карточки: крупные</option></select>
       <button class="btn" id="openModalBtn">+ Добавить</button>
       <div class="acc"><button class="av" id="accBtn" title="Аккаунт" aria-haspopup="true"><img id="hdrAvatar" referrerpolicy="no-referrer" alt=""></button>
-        <div class="menu" id="accMenu"><button id="accProfile">👤 Мой профиль</button><div class="sw" id="accSw" title="Цвет оформления"></div><div class="th" id="accTh"></div><button onclick="exportData()">⬇ Скачать бэкап</button><button onclick="importFile.click()">⬆ Загрузить бэкап</button><button id="accRu">🌐 Перевести всё на русский</button><button id="accReset">↺ Сбросить оформление</button><button class="out" id="logoutBtn">⎋ Выйти</button></div></div>
+        <div class="menu" id="accMenu"><button id="accProfile">👤 Мой профиль</button><div class="sw" id="accSw" title="Цвет оформления"></div><div class="th" id="accTh"></div><button onclick="exportData()">⬇ Скачать бэкап</button><button onclick="importFile.click()">⬆ Загрузить бэкап</button><button id="accCal">📅 Календарь выхода</button><button id="accRu">🌐 Перевести всё на русский</button><button id="accReset">↺ Сбросить оформление</button><button class="out" id="logoutBtn">⎋ Выйти</button></div></div>
     </div>
   </header>
   <div class="tabs"><button class="tab on" data-v="catalog">🌐 Каталог</button><button class="tab" data-v="profile">👤 Мой профиль</button></div>
@@ -295,11 +304,11 @@ html[data-theme=white] .achinfo{background:rgba(0,0,0,.04)}html[data-theme=white
     </div>
     <div class="row" style="margin-top:12px">
       <input id="cgSearch" placeholder="Найти в каталоге..." style="flex:1;max-width:340px"><button class="tb" id="cgClear" title="Очистить поиск" style="display:none">✕</button>
-      <select id="cgMode"><option value="pop">Популярное</option><option value="top">Топ рейтинга</option><option value="new">Новинки / онгоинги</option><option value="soon">Скоро выйдет</option></select>
+      <select id="cgMode"><option value="pop">Популярное</option><option value="top">Топ рейтинга</option><option value="new">Новинки / онгоинги</option><option value="soon">Скоро выйдет</option><option value="trend">🔥 В тренде на неделе</option><option value="month">🆕 Новинки месяца</option><option value="date">📅 По дате выхода</option><option value="votes">👥 По числу голосов</option><option value="hidden">💎 Недооценённые</option><option value="classic">🏛 Классика</option><option value="rare">🔭 Малоизвестные</option></select>
       <select id="cgKind" style="display:none"><option value="">Все виды</option><option value="JP">Манга</option><option value="KR">Манхва</option><option value="CN">Маньхуа</option></select>
       <select id="cgGenre"></select>
       <input type="number" id="cgYear" placeholder="Год" min="1900" max="2100" style="width:88px">
-      <button class="tb" id="cgHide">Скрыть добавленные</button><button class="tb" id="cgPoster">Только с постером</button><button class="tb" id="cgRec" title="Подобрать по жанрам из твоей коллекции">✨ Для тебя</button><select id="cgMin" title="Минимальная внешняя оценка"><option value="0">Любой рейтинг</option><option value="6">★ 6+</option><option value="7">★ 7+</option><option value="8">★ 8+</option></select>
+      <button class="tb" id="cgHide">Скрыть добавленные</button><button class="tb" id="cgPoster">Только с постером</button><button class="tb" id="cgRec" title="Подобрать по жанрам из твоей коллекции">✨ Для тебя</button><button class="tb" id="cgThree" title="Три случайных варианта на выбор">🎲 Три варианта</button><button class="tb" id="cgPick" title="Один тайтл по твоим вкусам">🧭 Выбери за меня</button><select id="cgMood" title="Подобрать по настроению"><option value="">Настроение…</option><option value="fun">😄 Весёлое</option><option value="serious">🎭 Серьёзное</option><option value="scary">👻 Страшное</option><option value="love">💕 Романтичное</option><option value="thrill">⚡ Захватывающее</option><option value="mystery">🕵 Загадочное</option><option value="scifi">🚀 Фантастика</option><option value="short">⏱ Короткое</option></select><button class="tb" id="cgCal" title="Календарь выхода серий и премьер">📅 Календарь</button><select id="cgMin" title="Минимальная внешняя оценка"><option value="0">Любой рейтинг</option><option value="6">★ 6+</option><option value="7">★ 7+</option><option value="8">★ 8+</option></select><details class="adv"><summary>⚙ Дополнительно</summary><div class="row"><input type="number" id="cgYear2" placeholder="Год по" min="1900" max="2100" style="width:96px"><select id="cgGenre2"></select><select id="cgSeason"><option value="">Любой сезон</option><option value="WINTER">❄ Зима</option><option value="SPRING">🌸 Весна</option><option value="SUMMER">☀ Лето</option><option value="FALL">🍂 Осень</option></select><select id="cgLen"></select><select id="cgCountry"><option value="">Любая страна</option><option value="US">США</option><option value="RU">Россия</option><option value="GB">Великобритания</option><option value="FR">Франция</option><option value="DE">Германия</option><option value="JP">Япония</option><option value="KR">Южная Корея</option><option value="CN">Китай</option><option value="IN">Индия</option></select><button class="tb" id="cgNow">📅 Текущий сезон</button></div></details>
       <button class="tb" id="cgReset">Сбросить</button>
       <button class="btn" id="cgRand">🎲 Случайное</button>
     </div>
@@ -327,7 +336,7 @@ html[data-theme=white] .achinfo{background:rgba(0,0,0,.04)}html[data-theme=white
     <select id="statusFilter">
       <option value="Все">Все статусы</option><option>В планах</option><option>Смотрю/Читаю</option>
       <option>Просмотрено/Прочитано</option><option>Любимое</option><option>Пересматриваю</option><option>Брошено</option>
-    </select>
+    <option value="Архив">📦 Архив</option></select>
     <select id="tagFilter"><option value="Все">Все жанры и теги</option></select>
     <select id="listFilter" style="display:none"><option value="Все">Все подборки</option></select>
     <select id="sortSelect">
@@ -363,6 +372,7 @@ html[data-theme=white] .achinfo{background:rgba(0,0,0,.04)}html[data-theme=white
     <select id="inputStatus"><option>В планах</option><option>Смотрю/Читаю</option><option>Просмотрено/Прочитано</option><option>Любимое</option><option>Пересматриваю</option><option>Брошено</option></select>
   </div>
   <select id="inputKind" style="display:none"><option>Манга</option><option>Манхва</option><option>Маньхуа</option><option>Комикс</option></select>
+  <button type="button" class="btn btn-s" id="afToggle">✍ Заполнить вручную</button>
   <div class="af">
     <div class="row"><input id="afQuery" placeholder="Автозаполнение: введи название..." style="flex:1"><button class="btn btn-s" id="afBtn" type="button">Найти</button></div>
     <div class="meta" id="afHint" style="margin:0"></div>
@@ -386,7 +396,9 @@ html[data-theme=white] .achinfo{background:rgba(0,0,0,.04)}html[data-theme=white
   <div class="fs">Жанры и описание</div>
   <input id="inputTags" placeholder="Жанры и теги (через запятую)">
   <input id="inputLists" placeholder="Подборки (через запятую)">
+  <input id="inputRecBy" placeholder="Кто посоветовал (необязательно)">
   <textarea id="inputDescription" placeholder="Синопсис / Описание..."></textarea>
+  <div class="fs">Как будет выглядеть</div><div id="pvCard" class="pv"></div>
   <div class="mb" style="justify-content:flex-end">
     <button class="btn btn-s" id="closeAddBtn" type="button">Отмена</button>
     <button class="btn btn-s" id="saveNextBtn" type="button">Сохранить и добавить ещё</button>
@@ -447,6 +459,12 @@ html[data-theme=white] .achinfo{background:rgba(0,0,0,.04)}html[data-theme=white
 </div></div>
 <nav id="botnav"><button data-go="catalog">🔍<span>Каталог</span></button><button data-go="add">➕<span>Добавить</span></button><button data-go="profile">👤<span>Коллекция</span></button></nav>
 <div id="selbar"><span id="selN">Выбрано: 0</span><select id="selSt"></select><button class="btn btn-s" id="selList" type="button">📁 В подборку</button><button class="btn btn-d" id="selDel" type="button">🗑 Удалить</button><button class="btn btn-s" id="selOff" type="button">Готово</button></div>
+<div id="calModal" class="modal"><div class="mc" style="max-width:720px">
+  <div class="row" style="justify-content:space-between"><h2 style="margin:0">📅 Календарь</h2><button class="btn btn-s" id="calClose" type="button">✕</button></div>
+  <div class="row"><button class="btn btn-s" id="calPrev" type="button">◀</button><b id="calRange" style="flex:1;text-align:center"></b><button class="btn btn-s" id="calNext" type="button">▶</button></div>
+  <div class="row"><button class="tb on" id="calTabA" type="button">Аниме</button><button class="tb" id="calTabM" type="button">Фильмы и сериалы</button><button class="tb" id="calMine" type="button">Только моё</button><button class="tb" id="calToday" type="button">Эта неделя</button></div>
+  <div id="calBody" style="display:flex;flex-direction:column;gap:6px"></div>
+</div></div>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import {getAuth,signInWithPopup,signInWithRedirect,GoogleAuthProvider,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -492,7 +510,7 @@ onAuthStateChanged(auth, u => {
     loaded = false; render(); if (!cgGrid.children.length) cgLoad(true);
     // Живая синхронизация: изменения с другого устройства появляются сами
     unsub = onSnapshot(query(collection(db, 'items'), where('userId', '==', u.uid)),
-      snap => { const all = snap.docs.map(d => d.data()), pd = all.find(x => x.isProfile); if (pd) { const {isProfile, userId, ...rest} = pd; Object.assign(prof, rest); profSaveLocal(); } else if (!profTried && (prof.name || prof.bio || prof.avatar || prof.cover || prof.coverColor)) { profTried = true; profCloud(); } items = all.filter(x => !x.isProfile).map(fix); loaded = true; refresh(); profPaint(); },
+      snap => { const all = snap.docs.map(d => d.data()), pd = all.find(x => x.isProfile); if (pd) { const {isProfile, userId, ...rest} = pd; Object.assign(prof, rest); profSaveLocal(); } else if (!profTried && (prof.name || prof.bio || prof.avatar || prof.cover || prof.coverColor)) { profTried = true; profCloud(); } const nx = all.filter(x => !x.isProfile).map(fix); actDiff(items, nx, loaded); items = nx; loaded = true; refresh(); profPaint(); homeTab(); },
       err => toast('Не удалось загрузить данные: ' + err.message));
   } else {
     if (unsub) unsub(); unsub = null; items = []; loaded = false;
@@ -549,7 +567,7 @@ function render() {
   if (!items.length) { const m = el('div', 'msg', 'Коллекция пока пуста. Добавь первый тайтл — вручную или из каталога.'), r = el('div', 'row'), a = el('button', 'btn', '＋ Добавить тайтл'), c = el('button', 'btn btn-s', '🔍 Открыть каталог'); r.style.justifyContent = 'center'; r.style.marginTop = '14px'; a.onclick = () => { openAdd(null); draftRestore(); }; c.onclick = () => document.querySelector('.tab:not([data-v="profile"])').click(); r.append(a, c); m.append(r); return grid.append(m); }
   const q = $('searchInput').value.toLowerCase().trim(), st = $('statusFilter').value, tg = $('tagFilter').value, so = $('sortSelect').value;
   const list = items.filter(i =>
-    (!q || names(i).includes(q)) && (cat === 'Всё' || i.category === cat) && (cat !== 'Манга' || kind === 'Все' || i.kind === kind) && (!ongOnly || i.ongoing) && (!xf || xmatch(i)) && (st === 'Все' || i.status === st) &&
+    (!q || names(i).includes(q)) && (cat === 'Всё' || i.category === cat) && (cat !== 'Манга' || kind === 'Все' || i.kind === kind) && (!ongOnly || i.ongoing) && (!xf || xmatch(i)) && (st === 'Архив' ? !!i.archived : !i.archived && (st === 'Все' || i.status === st)) &&
     (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) && ($('listFilter').value === 'Все' || (i.lists || []).some(t => t.toLowerCase() === $('listFilter').value))
   ).sort((a, b) => {
     if (so === 'dateAsc') return a.id - b.id;
@@ -560,7 +578,7 @@ function render() {
     if (so === 'yearAsc') return (num(a.year) || 9999) - (num(b.year) || 9999);
     return b.id - a.id;
   });
-  lastList = list; renderChips(); setTimeout(selPaint, 0); $('countInfo').textContent = `Показано: ${list.length} из ${items.length}`;
+  list.sort((a, b) => !!b.pin - !!a.pin); lastList = list; renderChips(); setTimeout(selPaint, 0); $('countInfo').textContent = `Показано: ${list.length} из ${items.length}`;
   const xb = $('xfBtn'); xb.style.display = xf ? '' : 'none'; if (xf) xb.textContent = `${{author: 'Автор', studio: 'Студия', source: 'Источник'}[xf.k]}: ${xf.v} ✕`;
   if (!list.length) return grid.append(el('div', 'msg', 'Ничего не найдено.'));
   const SHORT = {'Просмотрено/Прочитано': 'Завершено', 'Смотрю/Читаю': 'В процессе'};
@@ -597,7 +615,7 @@ const setSize = v => { document.documentElement.style.setProperty('--cw', v + 'p
 $('sizeSel').value = localStorage.getItem('cw') || '190'; setSize($('sizeSel').value || '190'); $('sizeSel').onchange = e => setSize(e.target.value);
 
 // ---------- Окна ----------
-const closeAll = () => ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal'].forEach(id => $(id).style.display = 'none');
+const closeAll = () => ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'calModal'].forEach(id => $(id).style.display = 'none');
 ['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'rndClose'].forEach(id => $(id).onclick = closeAll);
 window.onclick = e => { if (e.target.classList.contains('modal')) closeAll(); };
 window.onkeydown = e => { if (e.key === 'Escape') closeAll(); };
@@ -800,14 +818,16 @@ function refreshLists() {
   sel.value = map.has(old) ? old : 'Все'; sel.style.display = map.size ? '' : 'none';
 }
 $('listFilter').onchange = render;
+const LCOL = {красный: '#ef4444', оранжевый: '#f59e0b', жёлтый: '#eab308', зелёный: '#22c55e', голубой: '#38bdf8', синий: '#3b82f6', фиолетовый: '#8b5cf6', розовый: '#ec4899'};
 function listEdit(name) {
   const hit = items.filter(i => (i.lists || []).includes(name)); if (!hit.length) return;
-  const v = prompt('Новое название подборки «' + name + '».\nОставь пустым, чтобы удалить подборку (тайтлы останутся в коллекции):', name); if (v === null) return;
-  const nn = v.trim(); if (nn === name) return;
-  hit.forEach(i => { i.lists = i.lists.filter(x => x !== name); if (nn && !i.lists.includes(nn)) i.lists.push(nn); cloudSave(i); });
-  refresh(); toast(nn ? 'Подборка переименована: ' + nn : 'Подборка «' + name + '» удалена');
+  const v = prompt('Название подборки (пусто — удалить подборку, тайтлы останутся в коллекции):', name); if (v === null) return;
+  const nn = v.trim(); prof.listMeta = prof.listMeta || {};
+  if (nn) { const lm = prof.listMeta[name] || {}, d = prompt('Описание подборки (необязательно):', lm.desc || ''); if (d === null) return; const c = prompt('Цвет метки: ' + Object.keys(LCOL).join(', ') + ' (или пусто):', lm.cn || ''); if (c === null) return; delete prof.listMeta[name]; prof.listMeta[nn] = {desc: d.trim(), cn: (c || '').trim().toLowerCase()}; } else delete prof.listMeta[name];
+  if (nn !== name) hit.forEach(i => { i.lists = i.lists.filter(x => x !== name); if (nn && !i.lists.includes(nn)) i.lists.push(nn); cloudSave(i); });
+  profCloud(); refresh(); toast(nn ? 'Подборка сохранена: ' + nn : 'Подборка «' + name + '» удалена');
 }
-const _openAdd = openAdd; openAdd = function (item) { _openAdd(item); $('inputLists').value = ((item && item.lists) || []).join(', '); };
+const _openAdd = openAdd; openAdd = function (item) { _openAdd(item); $('inputLists').value = ((item && item.lists) || []).join(', '); $('inputRecBy').value = (item && item.recBy) || ''; };
 queueMicrotask(() => { const ex = window.exportData; if (ex) window.exportData = () => { ex(); try { localStorage.setItem('lastBackup', String(Date.now())); } catch (e) {} }; });
 let nudged = false;
 function backupNudge() { if (nudged || items.length < 5) return; nudged = true; let t = 0; try { t = +localStorage.getItem('lastBackup') || 0; } catch (e) {} if (Date.now() - t > 14 * 864e5) toast('Давно не было резервной копии. Скачать копию коллекции?', false, {label: 'Скачать', fn: () => window.exportData()}); }
@@ -833,7 +853,35 @@ document.querySelectorAll('#botnav button').forEach(b => b.onclick = () => { con
 let uiT = 0; const uiSync = () => { clearTimeout(uiT); uiT = setTimeout(profCloud, 1500); };
 const _setTheme = setTheme; setTheme = (t, quiet) => { _setTheme(t); if (!quiet) { prof.theme = t; profSaveLocal(); uiSync(); } };
 const _setAcc = setAcc; setAcc = (k, quiet) => { _setAcc(k); if (!quiet) { prof.acc = k; profSaveLocal(); uiSync(); } };
-const LBL = {inputCategory: 'Категория', inputStatus: 'Статус', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (например: Лучшее аниме, На выходные)', inputDescription: 'Синопсис / описание'};
+// ---- Каталог: расширенные фильтры, настроение, случайные варианты
+const rndSeen = new Set(); try { JSON.parse(localStorage.getItem('rndSeen') || '[]').forEach(k => rndSeen.add(k)); } catch (e) {}
+const _showPreview = showPreview; showPreview = (r, rnd) => { if (rnd) { rndSeen.add(cgKey(r)); try { localStorage.setItem('rndSeen', JSON.stringify([...rndSeen].slice(-300))); } catch (e) {} } return _showPreview(r, rnd); };
+['cgYear2', 'cgGenre2', 'cgSeason', 'cgLen', 'cgCountry'].forEach(id => $(id).onchange = () => cgLoad(true));
+$('cgNow').onclick = () => { const m = new Date().getMonth(); $('cgSeason').value = m < 2 || m === 11 ? 'WINTER' : m < 5 ? 'SPRING' : m < 8 ? 'SUMMER' : 'FALL'; $('cgYear').value = new Date().getFullYear(); if ($('cgSeason').style.display === 'none') toast('Сезоны работают для аниме — открой вкладку «Аниме»'); cgLoad(true); };
+const MOODS = {fun: /комед|comedy/i, serious: /драм|drama/i, scary: /ужас|horror/i, love: /романт|мелодрам|romance/i, thrill: /экш|боевик|action|приключ/i, mystery: /детектив|триллер|mystery|thriller/i, scifi: /фантаст|sci-?fi/i};
+$('cgMood').onchange = () => {
+  const v = $('cgMood').value; if (!v) return; $('cgMood').value = '';
+  if (v === 'short') { if ($('cgLen').style.display === 'none') return toast('Для этой категории фильтр длины недоступен'); $('cgLen').value = 's'; return cgLoad(true); }
+  const o = [...$('cgGenre').options].find(x => x.value && MOODS[v].test(x.textContent)); if (!o) return toast('Для этой категории подходящего жанра нет');
+  $('cgGenre').value = o.value; $('cgMode').value = 'top'; cgLoad(true);
+};
+async function cgThree() {
+  const b = $('cgThree'); b.disabled = true;
+  try {
+    const md = $('cgMode').value, rp = cg.q ? 1 : 1 + Math.floor(Math.random() * (md === 'new' || md === 'soon' ? 3 : md === 'top' ? 10 : 20)); let res = await cgFetch(rp, 24, cg.q, md); if (!res.length && rp > 1) res = await cgFetch(1, 24, cg.q, md);
+    const pool = res.filter(r => !has(r) && cgPass(r) && !rndSeen.has(cgKey(r))).sort(() => Math.random() - 0.5).slice(0, 3); if (!pool.length) throw new Error('ничего подходящего');
+    cgGrid.replaceChildren(); pool.forEach(cgCard); $('cgMore').style.display = 'none'; toast('Три случайных варианта — выбирай'); ruCards();
+  } catch (e) { toast('Не удалось подобрать: ' + e.message, true); }
+  b.disabled = false;
+}
+async function cgPickMe() {
+  const opts = [...$('cgGenre').options].filter(o => o.value), mine = [...spl(prof.like).map(x => [x]), ...topBy(i => i.tags || [])].map(r => opts.find(o => o.textContent.trim().toLowerCase() === r[0].toLowerCase())).filter(Boolean), o = mine[Math.floor(Math.random() * Math.min(3, mine.length || 1))];
+  const pg = $('cgGenre').value, pm = $('cgMode').value; if (o) $('cgGenre').value = o.value; $('cgMode').value = 'top';
+  try { const res = await cgFetch(1 + Math.floor(Math.random() * 5), 24, '', 'top'), pool = res.filter(r => !has(r) && cgPass(r) && !rndSeen.has(cgKey(r))); if (!pool.length) throw new Error('ничего подходящего'); $('cgGenre').value = pg; $('cgMode').value = pm; showPreview(pool[Math.floor(Math.random() * pool.length)], true); }
+  catch (e) { $('cgGenre').value = pg; $('cgMode').value = pm; toast('Не удалось подобрать: ' + e.message, true); }
+}
+$('cgThree').onclick = cgThree; $('cgPick').onclick = cgPickMe;
+const LBL = {inputCategory: 'Категория', inputStatus: 'Статус', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (например: Лучшее аниме, На выходные)', inputRecBy: 'Кто посоветовал', inputDescription: 'Синопсис / описание'};
 Object.entries(LBL).forEach(([id, t]) => { const e = $(id), w = el('div', 'fld'); e.replaceWith(w); w.append(el('label', null, t), e); });
 const DF = Object.keys(LBL).concat('inputExtSrc');
 const draftClear = () => { try { localStorage.removeItem('draft'); } catch (e) {} };
@@ -848,11 +896,116 @@ $('addModal').addEventListener('input', draftSave); $('addModal').addEventListen
 $('closeAddBtn').addEventListener('click', draftClear);
 $('openModalBtn').onclick = () => { openAdd(null); draftRestore(); };
 $('saveNextBtn').onclick = () => { again = true; $('saveItemBtn').click(); };
+// ---- Форма: ручной режим, звёзды, предпросмотр, перетаскивание постера
+$('afToggle').onclick = () => { const a = document.querySelector('#addModal .af'), hide = a.style.display !== 'none'; a.style.display = hide ? 'none' : ''; $('afToggle').textContent = hide ? '🔍 Автозаполнение' : '✍ Заполнить вручную'; };
+const stars = el('div', 'stars');
+const starPaint = () => [...stars.children].forEach((b, k) => b.classList.toggle('on', k < +$('inputRating').value));
+for (let k = 1; k <= 10; k++) { const b = el('button', null, '★'); b.type = 'button'; b.title = 'Оценка ' + k; b.onclick = () => { $('inputRating').value = +$('inputRating').value === k ? '' : k; starPaint(); draftSave(); pvDraw(); }; stars.append(b); }
+$('inputRating').parentElement.append(stars); $('inputRating').addEventListener('input', starPaint);
+function pvDraw() {
+  const b = $('pvCard'); b.replaceChildren(); const pc = el('div', 'pvp'), im = el('img'), st = el('div', 'status', $('inputStatus').value), info = el('div'); im.alt = ''; im.src = $('posterPreview').src || ''; st.dataset.s = $('inputStatus').value; pc.append(im, st);
+  info.append(el('div', 'title', $('inputTitle').value || 'Название тайтла'), el('div', 'meta', [$('inputYear').value, $('inputCategory').value, $('inputExtRating').value ? '★ ' + $('inputExtRating').value : ''].filter(Boolean).join(' • ')), el('div', 'tg', $('inputTags').value)); b.append(pc, info);
+}
+$('addModal').addEventListener('input', pvDraw); $('addModal').addEventListener('change', pvDraw); $('posterPreview').addEventListener('load', pvDraw);
+const CATL = {'Аниме': ['Режиссёр / автор оригинала', 'Студия'], 'Манга': ['Автор / художник', 'Издатель'], 'Ранобэ': ['Автор', 'Издатель'], 'Фильм': ['Режиссёр', 'Студия / компания'], 'Сериал': ['Создатель / режиссёр', 'Студия / канал'], 'Мультфильм': ['Режиссёр', 'Студия']};
+function catFields() { const c = $('inputCategory').value, l = CATL[c], a = $('inputAuthor').previousSibling, t = $('inputStudio').previousSibling; if (l && a && t) { a.textContent = l[0]; t.textContent = l[1]; } const o = $('inputOngoing').parentElement; if (o) o.style.display = c === 'Фильм' ? 'none' : ''; }
+$('inputCategory').addEventListener('change', catFields);
+const _oa2 = openAdd; openAdd = function (item) { _oa2(item); starPaint(); catFields(); pvDraw(); };
+['dragover', 'drop'].forEach(ev => $('posterPreview').addEventListener(ev, async e => {
+  e.preventDefault(); if (ev !== 'drop') return; const f = e.dataTransfer && e.dataTransfer.files[0];
+  if (!f || !f.type.startsWith('image/')) return toast('Перетащи сюда картинку (jpg, png, webp)', true);
+  if (f.size > 8e6) toast('Файл большой — сжимаю…');
+  try { const d = await imgData(f, 400, 600, 0.82); setPoster(d); toast(`Постер загружен: ${Math.round(d.length * 0.75 / 1024)} КБ после сжатия`); } catch (e2) { toast('Не удалось прочитать картинку', true); }
+}));
+// ---- Окно тайтла: закрепить, в любимое, в архив, ссылка
+function detailExtra(id) {
+  const i = items.find(x => x.id === id); if (!i) return;
+  let box = $('detailExtra'); if (!box) { box = el('div', 'row'); box.id = 'detailExtra'; $('detailDescription').after(box); }
+  box.replaceChildren(); const btn = (t, fn) => { const b = el('button', 'btn btn-s', t); b.type = 'button'; b.onclick = fn; box.append(b); };
+  btn(i.pin ? '📌 Открепить' : '📌 Закрепить', () => { i.pin = !i.pin; cloudSave(i); refresh(); detailExtra(id); });
+  btn(i.status === 'Любимое' ? '💔 Убрать из любимого' : '❤ В любимое', () => { if (i.status === 'Любимое') i.status = i.prevSt || 'Просмотрено/Прочитано'; else { i.prevSt = i.status; i.status = 'Любимое'; } cloudSave(i); refresh(); closeAll(); openDetail(id); });
+  btn(i.archived ? '📤 Вернуть из архива' : '📦 В архив', () => { i.archived = !i.archived; cloudSave(i); refresh(); closeAll(); toast(i.archived ? 'Убрано в архив (смотри фильтр «📦 Архив»)' : 'Возвращено из архива'); });
+  const a = el('a', 'btn btn-s', '📖 В Википедии'); a.href = 'https://ru.wikipedia.org/w/index.php?search=' + encodeURIComponent(i.title); a.target = '_blank'; a.rel = 'noopener'; box.append(a);
+  if (i.recBy) box.append(el('span', 'meta', 'Посоветовал(а): ' + i.recBy));
+}
+const _od = openDetail; openDetail = function (id) { _od(id); detailExtra(id); };
+// ---- Журнал изменений и стартовая вкладка
+const actLog = () => { try { return JSON.parse(localStorage.getItem('actlog') || '[]'); } catch (e) { return []; } };
+function actDiff(prev, nx, was) {
+  if (!was) return; const pm = new Map(prev.map(i => [i.id, i])), nm = new Map(nx.map(i => [i.id, i])), L = actLog(), t = Date.now();
+  nx.forEach(i => { const o = pm.get(i.id); if (!o) L.unshift({t, k: 'add', title: i.title}); else if (o.status !== i.status) L.unshift({t, k: 'st', title: i.title, st: i.status}); });
+  prev.forEach(i => { if (!nm.has(i.id)) L.unshift({t, k: 'del', title: i.title}); });
+  try { localStorage.setItem('actlog', JSON.stringify(L.slice(0, 80))); } catch (e) {}
+}
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { try { localStorage.setItem('lastTab', b.dataset.v || ''); } catch (e) {} }));
+let tabDone = false;
+function homeTab() { if (tabDone) return; tabDone = true; let t = ''; try { t = localStorage.getItem('lastTab'); } catch (e) {} if (t === null || t === undefined) t = items.length ? 'profile' : ''; const b = t && document.querySelector('.tab[data-v="' + t + '"]'); if (b) b.click(); }
+// ---- Календарь выхода серий и премьер
+let calWeek = 0, calTab = 'a', calMine = false;
+const calStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + calWeek * 7); return d; };
+const fmtD = d => d.toLocaleDateString('ru-RU', {day: 'numeric', month: 'long'});
+async function calAnime(a, b) {
+  const q = 'query($a:Int,$b:Int,$p:Int){Page(page:$p,perPage:50){pageInfo{hasNextPage} airingSchedules(airingAt_greater:$a,airingAt_lesser:$b,sort:TIME){airingAt episode media{idMal title{romaji english} coverImage{medium} siteUrl isAdult}}}}', out = [];
+  for (let p = 1; p <= 8; p++) {
+    const j = await (await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({query: q, variables: {a: Math.floor(a / 1000), b: Math.floor(b / 1000), p}})})).json(), pg = j.data.Page;
+    pg.airingSchedules.forEach(x => { if (!x.media.isAdult) out.push({t: x.airingAt * 1000, ep: x.episode, mal: x.media.idMal, en: x.media.title.english || x.media.title.romaji, names: [x.media.title.romaji, x.media.title.english], img: x.media.coverImage.medium, url: x.media.siteUrl}); });
+    if (!pg.pageInfo.hasNextPage) break;
+  }
+  const mals = [...new Set(out.map(x => x.mal).filter(Boolean))];
+  for (let i = 0; i < mals.length; i += 50) { try { const t = await ruTitles('animes', mals.slice(i, i + 50)); out.forEach(x => { if (t[x.mal]) { x.ru = t[x.mal]; x.names.push(t[x.mal]); } }); } catch (e) {} }
+  return out;
+}
+async function calMovies(a, b) {
+  const k = TMDB_KEY || localStorage.getItem('tmdbKey'); if (!k) throw new Error('нужен ключ TMDB — открой каталог фильмов, сайт его спросит');
+  const A = a.toISOString().slice(0, 10), B = new Date(b - 864e5).toISOString().slice(0, 10), out = [];
+  for (const [m, dk] of [['movie', 'primary_release_date'], ['tv', 'first_air_date']]) {
+    const j = await ruJson(`https://api.themoviedb.org/3/discover/${m}?api_key=${encodeURIComponent(k)}&language=ru-RU&sort_by=popularity.desc&${dk}.gte=${A}&${dk}.lte=${B}`, 8000);
+    (j.results || []).slice(0, 15).forEach(x => out.push({t: new Date((x.release_date || x.first_air_date) + 'T12:00:00').getTime(), day: true, ep: m === 'movie' ? 'Фильм' : 'Сериал', ru: x.title || x.name, names: [x.title, x.name, x.original_title, x.original_name], img: x.poster_path ? 'https://image.tmdb.org/t/p/w92' + x.poster_path : '', url: 'https://www.themoviedb.org/' + m + '/' + x.id}));
+  }
+  return out;
+}
+function calDraw(ev) {
+  const body = $('calBody'), find = n => items.find(i => nset(i).some(x => n.some(y => y && ruN(y) === ruN(x)))), fol = prof.follow || [];
+  ev = ev.map(x => ({...x, it: find(x.names)})).filter(x => !calMine || x.it || (x.mal && fol.includes(x.mal))).sort((p, q) => p.t - q.t);
+  body.replaceChildren(); if (!ev.length) return body.append(el('div', 'msg', calMine ? 'На этой неделе из твоей коллекции и подписок ничего не выходит.' : 'Ничего не нашлось.'));
+  const todayS = new Date().toDateString(); let last = '';
+  ev.forEach(x => {
+    const d = new Date(x.t), ds = d.toDateString(); if (ds !== last) { last = ds; body.append(el('div', 'fs', (ds === todayS ? 'Сегодня · ' : '') + d.toLocaleDateString('ru-RU', {weekday: 'long', day: 'numeric', month: 'long'}))); }
+    const r = el('div', 'calr'), img = el('img'), tx = el('div', 'calt'); img.src = x.img || ''; img.alt = ''; img.loading = 'lazy';
+    tx.append(el('b', null, x.ru || x.en), el('span', 'meta', (x.day ? x.ep : d.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'}) + ' · серия ' + x.ep)));
+    if (x.it) tx.append(el('span', 'chip', '✓ ' + x.it.status)); if (!x.day && x.t < Date.now()) tx.append(el('span', 'chip', 'вышла'));
+    r.append(img, tx);
+    if (x.mal) { const st = el('button', 'chip', fol.includes(x.mal) ? '★' : '☆'); st.title = 'Следить за этим тайтлом'; st.onclick = () => { const f = prof.follow || []; prof.follow = f.includes(x.mal) ? f.filter(m => m !== x.mal) : [...f, x.mal]; profCloud(); st.textContent = prof.follow.includes(x.mal) ? '★' : '☆'; }; r.append(st); }
+    if (x.url) { img.style.cursor = 'pointer'; img.onclick = () => window.open(x.url, '_blank', 'noopener'); }
+    body.append(r);
+  });
+}
+async function calLoad() {
+  const a = calStart(), b = new Date(a.getTime() + 7 * 864e5), body = $('calBody'); $('calRange').textContent = `${fmtD(a)} — ${fmtD(new Date(b.getTime() - 864e5))}`; body.replaceChildren(el('div', 'msg', 'Загружаю…'));
+  try { calDraw(calTab === 'a' ? await calAnime(a, b) : await calMovies(a, b)); } catch (e) { body.replaceChildren(el('div', 'msg', 'Не удалось загрузить календарь: ' + e.message)); }
+}
+const calOpen = () => { calWeek = 0; $('calModal').style.display = 'flex'; calLoad(); };
+$('cgCal').onclick = calOpen; $('accCal').onclick = calOpen; $('calClose').onclick = () => { $('calModal').style.display = 'none'; };
+$('calPrev').onclick = () => { calWeek--; calLoad(); }; $('calNext').onclick = () => { calWeek++; calLoad(); }; $('calToday').onclick = () => { calWeek = 0; calLoad(); };
+$('calTabA').onclick = () => { calTab = 'a'; $('calTabA').classList.add('on'); $('calTabM').classList.remove('on'); calLoad(); };
+$('calTabM').onclick = () => { calTab = 'm'; $('calTabM').classList.add('on'); $('calTabA').classList.remove('on'); calLoad(); };
+$('calMine').onclick = () => { calMine = !calMine; $('calMine').classList.toggle('on', calMine); calLoad(); };
+// ---- Надёжность: кэш и повтор запросов, фокус и прокрутка в окнах, подписи, плавные постеры
+const ALC = new Map();
+function cached(fn) { return async (...a) => { const k = JSON.stringify(a), h = ALC.get(k); if (h && Date.now() - h.t < 6e5) return h.v.map(r => ({...r})); let v; try { v = await fn(...a); } catch (e) { if (/ключ/.test(e.message)) throw e; await ruWait(800); v = await fn(...a); } ALC.set(k, {t: Date.now(), v}); if (ALC.size > 80) ALC.delete(ALC.keys().next().value); return v.map(r => ({...r})); }; }
+const _al = anilist; anilist = cached(_al); const _tm = tmdb; tmdb = cached(_tm);
+{ const mods = [...document.querySelectorAll('.modal')]; let back = null;
+  const sync = () => { const open = mods.find(m => m.style.display && m.style.display !== 'none'); document.body.style.overflow = open ? 'hidden' : ''; if (open && !back) { back = document.activeElement; const f = open.querySelector('input:not([type=hidden]),select,textarea,button'); if (f) setTimeout(() => f.focus({preventScroll: true}), 30); } if (!open && back) { try { back.focus({preventScroll: true}); } catch (e) {} back = null; } };
+  mods.forEach(m => new MutationObserver(sync).observe(m, {attributes: true, attributeFilter: ['style']})); }
+document.querySelectorAll('button[title]').forEach(b => { if (!b.getAttribute('aria-label')) b.setAttribute('aria-label', b.title); });
+document.addEventListener('load', e => { if (e.target && e.target.tagName === 'IMG') e.target.classList.add('ld'); }, true);
+document.addEventListener('error', e => { if (e.target && e.target.tagName === 'IMG') e.target.classList.add('ld'); }, true);
+
 const UIK = ['acc', 'cw', 'profHide', 'view'];
 $('accReset').onclick = () => { if (!confirm('Сбросить оформление (цвет, размер карточек, вид, скрытые блоки профиля, скрытое в каталоге)? Коллекция не пострадает.')) return; try { UIK.concat('cgHid', 'draft', 'theme').forEach(k => localStorage.removeItem(k)); } catch (e) {} location.reload(); };
 let recI = 0;
 $('cgRec').onclick = () => {
-  const opts = [...$('cgGenre').options].filter(o => o.value), mine = topBy(i => i.tags || []).map(r => opts.find(o => o.textContent.trim().toLowerCase() === r[0].toLowerCase())).filter(Boolean);
+  const opts = [...$('cgGenre').options].filter(o => o.value), mine = [...spl(prof.like).map(x => [x]), ...topBy(i => i.tags || [])].map(r => opts.find(o => o.textContent.trim().toLowerCase() === r[0].toLowerCase())).filter(Boolean);
   if (!mine.length) return toast('Нужно больше тайтлов с жанрами в коллекции — тогда подберу рекомендации');
   const o = mine[recI++ % Math.min(3, mine.length)];
   $('cgGenre').value = o.value; $('cgMode').value = 'top'; cg.hide = true; $('cgHide').classList.add('on');
@@ -874,8 +1027,9 @@ $('saveItemBtn').onclick = async () => {
     id: editId ? Number(editId) : newId(), title, category, kind: category === 'Манга' ? $('inputKind').value : '', status: $('inputStatus').value, poster: posterValue, year,
     rating: $('inputRating').value, extRating: $('inputExtRating').value, extSrc: $('inputExtSrc').value, description: $('inputDescription').value.trim(),
     titleEn: $('inputTitleEn').value.trim(), titleOrig: $('inputTitleOrig').value.trim(), alt: $('inputAlt').value.trim(), author: $('inputAuthor').value.trim(), studio: $('inputStudio').value.trim(), source: $('inputSource').value, ongoing: $('inputOngoing').checked,
-    tags: parseTags($('inputTags').value), lists: parseTags($('inputLists').value)
+    tags: parseTags($('inputTags').value), lists: parseTags($('inputLists').value), recBy: $('inputRecBy').value.trim()
   };
+  { const old = items.find(x => x.id === it.id); if (old) ['pin', 'archived', 'prevSt'].forEach(k => { if (old[k]) it[k] = old[k]; }); }
   const k = items.findIndex(x => x.id === it.id);
   if (k > -1) items[k] = it; else items.push(it);
   refresh(); closeAll(); if (editId) openDetail(it.id);
@@ -919,8 +1073,8 @@ const TG = {28:'Боевик',12:'Приключения',16:'Мультфиль
 
 async function anilist(search, type, o = {}) {
   if (hasRu(search)) { let en = ''; if (shikiOk()) { try { for (const kk of type === 'ANIME' ? ['animes'] : ['mangas', 'ranobe']) { const l = await shiki(`/api/${kk}?search=${encodeURIComponent(search)}&limit=1`); if (l[0]) { en = l[0].name; break; } } } catch (e) {} } if (!en) { try { en = await ruToEn(search); } catch (e) {} } if (en) search = en; }
-  const gql = 'query($s:String,$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int,$g:[String],$sg:FuzzyDateInt,$sl:FuzzyDateInt){Page(page:$p,perPage:$pp){media(search:$s,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg,genre_in:$g,startDate_greater:$sg,startDate_lesser:$sl){idMal format siteUrl countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore genres status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
-  const r = await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'}, body: JSON.stringify({query: gql, variables: {s: search, t: type, p: o.page || 1, pp: o.per || 10, so: o.sort || ['SEARCH_MATCH'], st: o.status, f: o.format, fn: o.fn, c: o.country, ad: o.ad, pg: o.pg, g: o.genre, sg: o.sg, sl: o.sl}})});
+  const gql = 'query($s:String,$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int,$g:[String],$sg:FuzzyDateInt,$sl:FuzzyDateInt,$ag:Int,$pl:Int,$el:Int,$eg:Int,$cl:Int,$cg:Int,$se:MediaSeason,$sy:Int){Page(page:$p,perPage:$pp){media(search:$s,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg,genre_in:$g,startDate_greater:$sg,startDate_lesser:$sl,averageScore_greater:$ag,popularity_lesser:$pl,episodes_lesser:$el,episodes_greater:$eg,chapters_lesser:$cl,chapters_greater:$cg,season:$se,seasonYear:$sy){idMal format siteUrl countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore genres status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
+  const r = await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'}, body: JSON.stringify({query: gql, variables: {s: search, t: type, p: o.page || 1, pp: o.per || 10, so: o.sort || ['SEARCH_MATCH'], st: o.status, f: o.format, fn: o.fn, c: o.country, ad: o.ad, pg: o.pg, g: o.genre, sg: o.sg, sl: o.sl, ag: o.ag, pl: o.pl, el: o.el, eg: o.eg, cl: o.cl, cg: o.cg, se: o.se, sy: o.sy}})});
   const j = await r.json(); if (j.errors) throw new Error(j.errors[0].message);
   return j.data.Page.media.map(m => {
     const t = m.title, main = t.english || t.romaji || t.native;
@@ -1065,9 +1219,15 @@ function profDash() {
     columns(mk('hist', 'Внешние оценки (AniList, TMDB)'), hs(i => i.extRating), lb);
     if (items.some(i => num(i.rating))) columns(mk('hist2', 'Мои оценки'), hs(i => i.rating), lb); }
   { const p = mk('genres', 'Жанры — нажми, чтобы открыть список'); bars(p, topBy(i => i.tags || []).slice(0, 10), goTag); }
+  { const p = mk('taste', 'Мои вкусы'), mkIn = (lab, key, ph) => { const w = el('div', 'fld'), i = el('input'); i.value = prof[key] || ''; i.placeholder = ph; i.onchange = () => { prof[key] = i.value.trim(); profCloud(); toast('Вкусы сохранены'); }; w.append(el('label', null, lab), i); p.append(w); };
+    mkIn('Хочу чаще (жанры через запятую)', 'like', 'например: Комедия, Фэнтези'); mkIn('Не показывать в каталоге', 'dislike', 'например: Ужасы'); }
+  { const p = mk('log', 'Последние изменения'), L = actLog().slice(0, 12); if (!L.length) p.append(el('div', 'meta', 'Здесь появятся добавления, удаления и смены статуса (журнал ведётся на этом устройстве).'));
+    L.forEach(x => { const r = el('div', 'sr'), d = new Date(x.t); r.style.gridTemplateColumns = '1fr 110px'; r.append(el('span', null, `${x.k === 'add' ? '➕' : x.k === 'del' ? '🗑' : '🔁'} ${x.title}${x.k === 'st' ? ' → ' + x.st : ''}`), el('span', 'meta', d.toLocaleDateString('ru-RU', {day: 'numeric', month: 'short'}) + ' ' + d.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'}))); p.append(r); }); }
+
+
   { const p = mk('lists', 'Мои подборки'), l = topBy(i => i.lists || []);
     if (!l.length) p.append(el('div', 'meta', 'Подборок пока нет. Впиши название в поле «Подборки» при добавлении или редактировании тайтла — один тайтл может быть в нескольких подборках.'));
-    l.forEach(([n, c]) => { const r = el('div', 'sr go'), b = el('div', 'bar'), nm = el('span', null, '📁 ' + n), ed = el('button', 'chip', '✏'); b.style.width = (c / l[0][1] * 100) + '%'; ed.title = 'Переименовать или удалить подборку'; ed.onclick = e => { e.stopPropagation(); listEdit(n); }; nm.append(' ', ed); r.append(nm, b, el('span', 'meta', c)); r.onclick = () => goList(n); p.append(r); }); }
+    l.forEach(([n, c]) => { const r = el('div', 'sr go'), b = el('div', 'bar'), nm = el('span', null, '📁 ' + n), ed = el('button', 'chip', '✏'); b.style.width = (c / l[0][1] * 100) + '%'; ed.title = 'Изменить подборку: имя, описание, цвет'; { const lm = (prof.listMeta || {})[n] || {}; if (lm.cn && LCOL[lm.cn]) nm.style.color = LCOL[lm.cn]; if (lm.desc) nm.title = lm.desc; } ed.onclick = e => { e.stopPropagation(); listEdit(n); }; nm.append(' ', ed); r.append(nm, b, el('span', 'meta', c)); r.onclick = () => goList(n); p.append(r); }); }
   { const p = mk('ach', 'Достижения — нажми, чтобы узнать условие'), n = c => items.filter(i => i.category === c).length, dn = items.filter(i => i.status === 'Просмотрено/Прочитано' || i.status === 'Любимое').length, gn = new Set(items.flatMap(i => i.tags || [])).size, cn = new Set(items.map(i => i.category)).size, fv = items.filter(i => i.status === 'Любимое').length;
     const A = [['🌱', 'Первый шаг', items.length, 1, 'Добавь в коллекцию свой первый тайтл.'], ['📚', 'Коллекционер', items.length, 50, 'Собери коллекцию из 50 тайтлов (любые категории).'], ['🏛', 'Архивариус', items.length, 200, 'Собери коллекцию из 200 тайтлов.'], ['🏆', 'Легенда', items.length, 500, 'Собери коллекцию из 500 тайтлов.'],
       ['🌸', 'Аниме-фанат', n('Аниме'), 50, 'Добавь 50 аниме.'], ['⭐', 'Аниме-эксперт', n('Аниме'), 100, 'Добавь 100 аниме.'], ['📖', 'Книжный червь', n('Манга') + n('Ранобэ'), 50, 'Добавь 50 тайтлов манги и ранобэ (они считаются вместе).'],
@@ -1096,7 +1256,7 @@ function profDash() {
   { const p = mk('authors', 'Любимые авторы и режиссёры'); bars(p, topBy(i => spl(i.author)).slice(0, 6), goFind); }
   grid.querySelectorAll('.pb').forEach(p => { if (p.children.length < 2) p.remove(); });
   const set = el('details', 'pset'); set.append(el('summary', null, '⚙ Какие блоки показывать'));
-  [['cats', 'Типы'], ['hl', 'Коротко о тебе'], ['hist', 'Оценки'], ['genres', 'Жанры'], ['months', 'Месяцы'], ['studios', 'Студии'], ['authors', 'Авторы'], ['lists', 'Подборки'], ['ach', 'Достижения'], ['year', 'Итоги года'], ['cmp', 'Моя оценка и внешняя']].forEach(([k, t]) => {
+  [['cats', 'Типы'], ['hl', 'Коротко о тебе'], ['hist', 'Оценки'], ['genres', 'Жанры'], ['months', 'Месяцы'], ['studios', 'Студии'], ['authors', 'Авторы'], ['lists', 'Подборки'], ['taste', 'Мои вкусы'], ['log', 'Последние изменения'], ['ach', 'Достижения'], ['year', 'Итоги года'], ['cmp', 'Моя оценка и внешняя']].forEach(([k, t]) => {
     const l = el('label'), c = el('input'); c.type = 'checkbox'; c.checked = !hid.includes(k);
     c.onchange = () => { const h = hidNow().filter(x => x !== k); if (!c.checked) h.push(k); try { localStorage.setItem('profHide', JSON.stringify(h)); } catch (e) {} const q = grid.querySelector(`[data-k="${k}"]`); if (q) q.style.display = c.checked ? '' : 'none'; };
     l.append(c, document.createTextNode(' ' + t)); set.append(l);
@@ -1157,24 +1317,40 @@ const has = r => items.some(i => same(i, r));
 const cgKey = r => r.url || r.title + '|' + r.category, cgHid = new Set();
 try { JSON.parse(localStorage.getItem('cgHid') || '[]').forEach(k => cgHid.add(k)); } catch (e) {}
 const cgHidSave = () => { try { localStorage.setItem('cgHid', JSON.stringify([...cgHid].slice(-500))); } catch (e) {} };
-const cgPass = r => !cgHid.has(cgKey(r)) && !(cg.hide && has(r)) && !(cg.poster && !r.poster) && num(r.ext) >= cg.min;
+const cgPass = r => !cgHid.has(cgKey(r)) && !spl(prof.dislike).some(d => (r.tags || []).some(t => t.toLowerCase() === d.toLowerCase())) && !(cg.hide && has(r)) && !(cg.poster && !r.poster) && num(r.ext) >= cg.min;
 
 async function cgFetch(page, per, q, mode) {
-  const g = cg.g, gen = $('cgGenre').value, yr = parseInt($('cgYear').value) || 0;
+  const g = cg.g, gen = $('cgGenre').value, gen2 = $('cgGenre2').value, len = $('cgLen').value, season = $('cgSeason').value;
+  let yr = parseInt($('cgYear').value) || 0; const yr2 = parseInt($('cgYear2').value) || 0; if (yr2 && !yr) yr = 1900;
+  const iso = d => d.toISOString().slice(0, 10), today = iso(new Date()), ago = n => iso(new Date(Date.now() - n * 864e5)), num8 = t => Number(t.replace(/-/g, ''));
   if (g === 'Фильм' || g === 'Сериал') {
-    const m = g === 'Фильм' ? 'movie' : 'tv', mv = m === 'movie', dk = mv ? 'primary_release_date' : 'first_air_date', yk = mv ? 'primary_release_year' : 'first_air_date_year', today = new Date().toISOString().slice(0, 10);
+    const m = g === 'Фильм' ? 'movie' : 'tv', mv = m === 'movie', dk = mv ? 'primary_release_date' : 'first_air_date', yk = mv ? 'primary_release_year' : 'first_air_date_year', cty = $('cgCountry').value, gens = [gen, gen2].filter(Boolean).join(',');
+    const rt = mv ? ({s: '&with_runtime.lte=100', m: '&with_runtime.lte=130', l: '&with_runtime.gte=150'}[len] || '') : '';
+    const EX = {date: `sort_by=${dk}.desc&${dk}.lte=${today}&vote_count.gte=20`, votes: 'sort_by=vote_count.desc&vote_count.gte=100', month: `sort_by=popularity.desc&${dk}.gte=${ago(30)}&${dk}.lte=${today}`, hidden: 'sort_by=vote_average.desc&vote_count.gte=150&vote_count.lte=1500', classic: `sort_by=vote_average.desc&vote_count.gte=1000&${dk}.lte=1999-12-31`, rare: 'sort_by=vote_average.desc&vote_count.gte=50&vote_count.lte=400'};
     let path;
     if (q) path = `/search/${m}?query=${encodeURIComponent(q)}${yr ? '&' + (mv ? 'year' : yk) + '=' + yr : ''}`;
-    else if (gen || yr || mode === 'soon') path = `/discover/${m}?sort_by=${mode === 'top' ? 'vote_average.desc&vote_count.gte=300' : mode === 'new' ? dk + '.desc&' + dk + '.lte=' + today + '&vote_count.gte=20' : 'popularity.desc'}${gen ? '&with_genres=' + gen : ''}${yr ? '&' + yk + '=' + yr : ''}${mode === 'soon' ? '&' + dk + '.gte=' + today : ''}`;
+    else if (mode === 'trend' && !gens && !yr && !cty && !rt) path = `/trending/${m}/week`;
+    else if (gens || yr || cty || rt || EX[mode] || mode === 'soon' || mode === 'trend') path = `/discover/${m}?` + (EX[mode] || (mode === 'top' ? 'sort_by=vote_average.desc&vote_count.gte=300' : mode === 'new' ? `sort_by=${dk}.desc&${dk}.lte=${today}&vote_count.gte=20` : 'sort_by=popularity.desc')) + (gens ? '&with_genres=' + gens : '') + (yr2 ? `&${dk}.gte=${yr}-01-01&${dk}.lte=${yr2}-12-31` : yr ? '&' + yk + '=' + yr : '') + (mode === 'soon' ? `&${dk}.gte=${today}` : '') + (cty ? '&with_origin_country=' + cty : '') + rt;
     else path = mode === 'top' ? `/${m}/top_rated` : mode === 'new' ? (mv ? '/movie/now_playing' : '/tv/on_the_air') : `/${m}/popular`;
     return tmdb(null, path, m, page);
   }
-  const o = {page, per, sort: [q ? 'SEARCH_MATCH' : mode === 'top' ? 'SCORE_DESC' : 'POPULARITY_DESC'], ad: false};
-  if (!q && mode === 'top') o.pg = 3000;
-  if (!q && mode === 'new') o.status = 'RELEASING';
-  if (!q && mode === 'soon') o.status = 'NOT_YET_RELEASED';
-  if (gen) o.genre = [gen];
-  if (yr) { o.sg = yr * 10000 - 1; o.sl = (yr + 1) * 10000; }
+  const SO = {top: 'SCORE_DESC', trend: 'TRENDING_DESC', date: 'START_DATE_DESC', votes: 'FAVOURITES_DESC', hidden: 'SCORE_DESC', classic: 'SCORE_DESC', rare: 'SCORE_DESC'};
+  const o = {page, per, sort: [q ? 'SEARCH_MATCH' : SO[mode] || 'POPULARITY_DESC'], ad: false};
+  if (!q) {
+    if (mode === 'top') o.pg = 3000;
+    if (mode === 'new') o.status = 'RELEASING';
+    if (mode === 'soon') o.status = 'NOT_YET_RELEASED';
+    if (mode === 'date') o.sl = num8(today);
+    if (mode === 'month') { o.sg = num8(ago(30)); o.sl = num8(today); }
+    if (mode === 'hidden') { o.ag = 75; o.pl = 60000; }
+    if (mode === 'classic') { o.sl = 20000101; o.pg = 5000; }
+    if (mode === 'rare') { o.ag = 65; o.pl = 15000; }
+  }
+  if (gen) o.genre = [gen, gen2].filter(Boolean);
+  if (g === 'Аниме' && season) { o.se = season; o.sy = yr || new Date().getFullYear(); }
+  else if (yr) { o.sg = yr * 10000 - 1; o.sl = ((yr2 || yr) + 1) * 10000; }
+  if (g === 'Аниме') { if (len === 's') o.el = 14; else if (len === 'm') o.el = 27; else if (len === 'l') o.eg = 49; }
+  if (g === 'Манга') { if (len === 's') o.cl = 31; else if (len === 'm') o.cl = 101; else if (len === 'l') o.cg = 199; }
   if (g === 'Ранобэ') o.format = 'NOVEL';
   if (g === 'Манга') { o.fn = 'NOVEL'; if ($('cgKind').value) o.country = $('cgKind').value; }
   return anilist(q || null, g === 'Аниме' ? 'ANIME' : 'MANGA', o);
@@ -1255,14 +1431,17 @@ $('cgSearch').oninput = () => { $('cgClear').style.display = $('cgSearch').value
 $('cgSearch').onkeydown = e => { if (e.key === 'Enter') cgGo(); };
 $('cgHide').onclick = e => { cg.hide = !cg.hide; e.currentTarget.classList.toggle('on', cg.hide); cgLoad(true); };
 let cgY; $('cgYear').oninput = () => { clearTimeout(cgY); cgY = setTimeout(() => cgLoad(true), 600); };
-$('cgReset').onclick = () => { cgHid.clear(); cgHidSave(); $('cgSearch').value = ''; cg.q = ''; $('cgGenre').value = ''; $('cgYear').value = ''; $('cgKind').value = ''; $('cgMode').value = 'pop'; cg.hide = cg.poster = false; cg.min = 0; $('cgMin').value = '0'; $('cgClear').style.display = 'none'; ['cgHide', 'cgPoster'].forEach(i => $(i).classList.remove('on')); cgLoad(true); };
+$('cgReset').onclick = () => { cgHid.clear(); cgHidSave(); ['cgYear2', 'cgGenre2', 'cgSeason', 'cgLen', 'cgCountry', 'cgMood'].forEach(i => { if ($(i)) $(i).value = ''; }); $('cgSearch').value = ''; cg.q = ''; $('cgGenre').value = ''; $('cgYear').value = ''; $('cgKind').value = ''; $('cgMode').value = 'pop'; cg.hide = cg.poster = false; cg.min = 0; $('cgMin').value = '0'; $('cgClear').style.display = 'none'; ['cgHide', 'cgPoster'].forEach(i => $(i).classList.remove('on')); cgLoad(true); };
 $('cgMore').onclick = () => cgLoad(false);
 $('cgPoster').onclick = e => { cg.poster = !cg.poster; e.currentTarget.classList.toggle('on', cg.poster); cgLoad(true); };
 $('cgMin').onchange = () => { cg.min = +$('cgMin').value || 0; cgLoad(true); };
 $('cgClear').onclick = () => { $('cgSearch').value = ''; $('cgClear').style.display = 'none'; cgGo(); };
 function cgGenres() {
-  const sel = $('cgGenre'), tm = cg.g === 'Фильм' || cg.g === 'Сериал'; sel.replaceChildren(new Option('Все жанры', ''));
-  Object.entries(tm ? TG : RU).filter(([k]) => !tm || (cg.g === 'Фильм' ? !['10759', '10765', '10768'].includes(k) : k !== '10770')).forEach(([k, v]) => sel.add(new Option(v, k)));
+  const tm = cg.g === 'Фильм' || cg.g === 'Сериал', opts = Object.entries(tm ? TG : RU).filter(([k]) => !tm || (cg.g === 'Фильм' ? !['10759', '10765', '10768'].includes(k) : k !== '10770'));
+  [['cgGenre', 'Все жанры'], ['cgGenre2', 'Ещё жанр']].forEach(([id, t]) => { const sel = $(id); sel.replaceChildren(new Option(t, '')); opts.forEach(([k, v]) => sel.add(new Option(v, k))); });
+  $('cgCountry').style.display = tm ? '' : 'none'; $('cgSeason').style.display = cg.g === 'Аниме' ? '' : 'none';
+  const L = cg.g === 'Аниме' ? [['', 'Любая длина'], ['s', 'Короткие (до 13 серий)'], ['m', 'До 26 серий'], ['l', 'Длинные (50+ серий)']] : cg.g === 'Фильм' ? [['', 'Любая длина'], ['s', 'До 100 минут'], ['m', 'До 130 минут'], ['l', 'Длинные (от 150 мин)']] : cg.g === 'Манга' ? [['', 'Любой объём'], ['s', 'Короткие (до 30 глав)'], ['m', 'До 100 глав'], ['l', 'Длинные (200+ глав)']] : [['', 'Любая длина']];
+  $('cgLen').replaceChildren(...L.map(([v, t]) => new Option(t, v))); $('cgLen').style.display = L.length > 1 ? '' : 'none';
 }
 cgGenres();
 
@@ -1287,7 +1466,7 @@ async function cgRandom() {
   try {
     const md = $('cgMode').value, q = cg.q;
     const rp = q ? 1 : 1 + Math.floor(Math.random() * (md === 'new' || md === 'soon' ? 3 : md === 'top' ? 10 : 20)); let res = await cgFetch(rp, 24, q, md); if (!res.length && rp > 1) res = await cgFetch(1, 24, q, md);
-    const fresh = res.filter(r => !has(r) && cgPass(r)), pool = fresh.length ? fresh : res;
+    const fresh = res.filter(r => !has(r) && cgPass(r) && !rndSeen.has(cgKey(r))), pool = fresh.length ? fresh : res;
     if (!pool.length) throw new Error('ничего не пришло');
     showPreview(pool[Math.floor(Math.random() * pool.length)], true);
   } catch (e) { toast('Не удалось получить случайный тайтл: ' + e.message, true); }
@@ -1322,7 +1501,7 @@ window.importData = e => {
           category: x.category === 'Кино' ? 'Фильм' : x.category === 'Манхва' ? 'Манга' : CATS.includes(x.category) ? x.category : 'Фильм', kind: x.category === 'Манхва' ? 'Манхва' : (x.kind || ''),
           status: STATS.includes(x.status) ? x.status : 'В планах', poster: x.poster || '', year: x.year || '', rating: x.rating || '',
           extRating: x.extRating || '', extSrc: x.extSrc || '', description: x.description || '', titleEn: x.titleEn || '', titleOrig: x.titleOrig || '',
-          alt: x.alt || '', author: x.author || '', studio: x.studio || '', source: x.source || '', ongoing: !!x.ongoing, tags: Array.isArray(x.tags) ? x.tags : [], lists: Array.isArray(x.lists) ? x.lists : []
+          alt: x.alt || '', author: x.author || '', studio: x.studio || '', source: x.source || '', ongoing: !!x.ongoing, tags: Array.isArray(x.tags) ? x.tags : [], lists: Array.isArray(x.lists) ? x.lists : [], recBy: x.recBy || '', pin: !!x.pin, archived: !!x.archived
         };
         if (!it.title || dup(it)) return;
         while (!it.id || ids.has(String(it.id))) it.id = newId();

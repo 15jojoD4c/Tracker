@@ -253,6 +253,19 @@ html[data-theme=white] .sk{background:linear-gradient(90deg,#e8eaf2 25%,#f4f5fa 
 body.bgimg::before{background:linear-gradient(rgba(6,7,12,.62),rgba(6,7,12,.78)),var(--bgimg) center/cover}
 html[data-theme=black] body.bgimg::before{display:block}
 html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,255,255,.8),rgba(255,255,255,.9)),var(--bgimg) center/cover}
+
+/* ===== Интерфейс: чипы, выбор, нижнее меню, достижения ===== */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.chips:empty{display:none}
+.card.sel{outline:3px solid var(--ac);outline-offset:3px;border-radius:16px}body.selmode .card{cursor:pointer}
+#selbar{display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:45;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;padding:10px 14px;border-radius:16px;background:rgba(26,28,44,.88);backdrop-filter:blur(18px);border:1px solid var(--bd);box-shadow:0 14px 40px rgba(0,0,0,.5)}
+html[data-theme=white] #selbar{background:rgba(255,255,255,.94)}
+#botnav{display:none}
+@media(max-width:600px){#botnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(14,15,26,.82);backdrop-filter:blur(18px);border-top:1px solid var(--bd);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}#botnav button{flex:1;background:none;border:0;color:inherit;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:20px;padding:4px;cursor:pointer}#botnav span{font-size:11px;color:var(--mu)}body{padding-bottom:80px}#selbar{bottom:84px;width:calc(100% - 20px)}}
+html[data-theme=white] #botnav{background:rgba(255,255,255,.88)}
+button.ab{background:none;color:inherit;font:inherit;cursor:pointer}.ab:hover{border-color:var(--ac)}
+.achinfo{margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.05);font-size:13px;display:flex;flex-direction:column;gap:6px}
+.track{height:8px;border-radius:6px;background:rgba(255,255,255,.12);overflow:hidden}.track .bar{height:100%;border-radius:6px;background:var(--ac)}
+html[data-theme=white] .achinfo{background:rgba(0,0,0,.04)}html[data-theme=white] .track{background:rgba(0,0,0,.1)}
 </style>
 </head>
 <body>
@@ -310,6 +323,7 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
     <input type="text" id="searchInput" placeholder="Поиск: название, автор, студия, год...">
     <button class="btn btn-s" id="rndBtn">🎲 Случайный</button>
     <button class="btn btn-s" id="viewBtn">☰ Список</button>
+    <button class="btn btn-s" id="selBtn">☑ Выбрать</button>
     <select id="statusFilter">
       <option value="Все">Все статусы</option><option>В планах</option><option>Смотрю/Читаю</option>
       <option>Просмотрено/Прочитано</option><option>Любимое</option><option>Пересматриваю</option><option>Брошено</option>
@@ -331,7 +345,8 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
     <button class="fb on" data-c="Всё">Всё</button><button class="fb" data-c="Фильм">Фильмы</button>
     <button class="fb" data-c="Сериал">Сериалы</button><button class="fb" data-c="Аниме">Аниме</button>
     <button class="fb" data-c="Манга">Манга</button>
-    <button class="fb" data-c="Ранобэ">Ранобэ</button><button class="fb" data-c="Мультфильм">Мультфильмы</button><button class="tb" id="ongBtn">● Онгоинг</button><button class="tb on" id="xfBtn" style="display:none"></button><span id="countInfo" style="margin-left:auto;font-size:12px;color:#7d839a"></span>
+    <button class="fb" data-c="Ранобэ">Ранобэ</button><button class="fb" data-c="Мультфильм">Мультфильмы</button><button class="tb" id="ongBtn">● Онгоинг</button><button class="tb on" id="xfBtn" style="display:none"></button><div id="chips" class="chips"></div>
+    <span id="countInfo" style="margin-left:auto;font-size:12px;color:#7d839a"></span>
   </div>
   <div class="filters" id="kindFilters" style="display:none;margin-top:8px"><button class="kb on" data-k="Все">Все виды</button><button class="kb" data-k="Манга">Манга</button><button class="kb" data-k="Манхва">Манхва</button><button class="kb" data-k="Маньхуа">Маньхуа</button><button class="kb" data-k="Комикс">Комикс</button></div>
   <div class="grid" id="itemsGrid"></div>
@@ -430,6 +445,8 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
   <input type="file" id="pfFile" accept="image/*" style="display:none">
   <div class="mb"><button class="btn btn-s" id="pfCancel" type="button">Отмена</button><button class="btn" id="pfSave" type="button">Сохранить</button></div>
 </div></div>
+<nav id="botnav"><button data-go="catalog">🔍<span>Каталог</span></button><button data-go="add">➕<span>Добавить</span></button><button data-go="profile">👤<span>Коллекция</span></button></nav>
+<div id="selbar"><span id="selN">Выбрано: 0</span><select id="selSt"></select><button class="btn btn-s" id="selList" type="button">📁 В подборку</button><button class="btn btn-d" id="selDel" type="button">🗑 Удалить</button><button class="btn btn-s" id="selOff" type="button">Готово</button></div>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import {getAuth,signInWithPopup,signInWithRedirect,GoogleAuthProvider,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -529,7 +546,7 @@ function render() {
   grid.replaceChildren();
   lastList = []; grid.className = 'grid' + (view === 'list' ? ' list' : ''); $('viewBtn').textContent = view === 'list' ? '▦ Сетка' : '☰ Список';
   if (!loaded) return grid.append(el('div', 'msg', 'Загрузка...'));
-  if (!items.length) return grid.append(el('div', 'msg', 'Коллекция пуста. Нажми «+ Добавить».'));
+  if (!items.length) { const m = el('div', 'msg', 'Коллекция пока пуста. Добавь первый тайтл — вручную или из каталога.'), r = el('div', 'row'), a = el('button', 'btn', '＋ Добавить тайтл'), c = el('button', 'btn btn-s', '🔍 Открыть каталог'); r.style.justifyContent = 'center'; r.style.marginTop = '14px'; a.onclick = () => { openAdd(null); draftRestore(); }; c.onclick = () => document.querySelector('.tab:not([data-v="profile"])').click(); r.append(a, c); m.append(r); return grid.append(m); }
   const q = $('searchInput').value.toLowerCase().trim(), st = $('statusFilter').value, tg = $('tagFilter').value, so = $('sortSelect').value;
   const list = items.filter(i =>
     (!q || names(i).includes(q)) && (cat === 'Всё' || i.category === cat) && (cat !== 'Манга' || kind === 'Все' || i.kind === kind) && (!ongOnly || i.ongoing) && (!xf || xmatch(i)) && (st === 'Все' || i.status === st) &&
@@ -543,7 +560,7 @@ function render() {
     if (so === 'yearAsc') return (num(a.year) || 9999) - (num(b.year) || 9999);
     return b.id - a.id;
   });
-  lastList = list; $('countInfo').textContent = `Показано: ${list.length} из ${items.length}`;
+  lastList = list; renderChips(); setTimeout(selPaint, 0); $('countInfo').textContent = `Показано: ${list.length} из ${items.length}`;
   const xb = $('xfBtn'); xb.style.display = xf ? '' : 'none'; if (xf) xb.textContent = `${{author: 'Автор', studio: 'Студия', source: 'Источник'}[xf.k]}: ${xf.v} ✕`;
   if (!list.length) return grid.append(el('div', 'msg', 'Ничего не найдено.'));
   const SHORT = {'Просмотрено/Прочитано': 'Завершено', 'Смотрю/Читаю': 'В процессе'};
@@ -628,11 +645,13 @@ function openAdd(item) {
   $('inputKind').value = i.kind || 'Манга'; $('afQuery').value = ''; $('afResults').replaceChildren(); setPoster(i.poster); afHint();
   $('addModal').style.display = 'flex';
 }
-// ---- Русский язык: названия и описания из Shikimori (по MAL-id), запасной вариант — автоперевод
-const SHK = {'Аниме': 'animes', 'Манга': 'mangas', 'Ранобэ': 'ranobe'};
+// ---- Русский язык без VPN: Shikimori (если открыт) → Википедия и Викиданные → автоперевод
+const SHK = {'Аниме': 'animes', 'Манга': 'mangas', 'Ранобэ': 'ranobe'}, SHD = ['shikimori.one', 'shikimori.io', 'shikimori.me'], WDP = {animes: 'P4086', mangas: 'P4087', ranobe: 'P4087'};
 const hasRu = t => /[а-яё]/i.test(t || ''), ruN = t => (t || '').toLowerCase().replace(/[^a-z0-9а-яё]+/g, ''), ruWait = ms => new Promise(r => setTimeout(r, ms));
 const ruClean = t => (t || '').replace(/\[(character|person|anime|manga|ranobe|url|user)[^\]]*\]([^\[]*)\[\/\1\]/gi, '$2').replace(/\[\/?[a-z_]+(?:=[^\]]*)?\]/gi, '').replace(/\n{3,}/g, '\n\n').trim();
-const ruJson = async u => { const r = await fetch(u); if (!r.ok) throw new Error(r.status); return r.json(); };
+const ruJson = async (u, ms = 7000) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); try { const r = await fetch(u, {signal: c.signal}); if (!r.ok) throw new Error(r.status); return await r.json(); } finally { clearTimeout(t); } };
+let shDown = 0; const shikiOk = () => Date.now() - shDown > 6e5;
+async function shiki(path) { try { return await Promise.any(SHD.map(d => ruJson('https://' + d + path, 4000))); } catch (e) { shDown = Date.now(); throw e; } }
 const RUC = (() => { try { return JSON.parse(localStorage.getItem('ruCache') || '{}'); } catch (e) { return {}; } })();
 let ruWarned = false, ruBusy = false;
 const ruWarn = () => { if (!ruWarned) { ruWarned = true; toast('Не удалось получить русский текст — оставил как есть (сервис перевода не ответил).', true); } };
@@ -645,10 +664,41 @@ async function ruTranslate(t) {
   const parts = []; let rest = t; while (rest.length > 1400) { let i = rest.lastIndexOf('. ', 1400); if (i < 200) i = 1400; parts.push(rest.slice(0, i + 1)); rest = rest.slice(i + 1); } parts.push(rest);
   let out = ''; for (const p of parts) out += await ruChunk(p); return out.trim();
 }
+async function wdBatch(mals, prop) {   // MAL-id → русское название и статья в рувики (Викиданные доступны без VPN)
+  const q = `SELECT ?m ?l ?a WHERE { VALUES ?m { ${mals.map(m => `"${m}"`).join(' ')} } ?i wdt:${prop} ?m . OPTIONAL { ?i rdfs:label ?l FILTER(LANG(?l)="ru") } OPTIONAL { ?a schema:about ?i; schema:isPartOf <https://ru.wikipedia.org/> } }`;
+  const j = await ruJson('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q), 9000), out = {};
+  j.results.bindings.forEach(b => { out[b.m.value] = {ru: b.l ? b.l.value : '', wiki: b.a ? decodeURIComponent(b.a.value.split('/wiki/')[1] || '') : ''}; }); return out;
+}
+const ruWikiDesc = async t => (await ruJson('https://ru.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(t), 6000)).extract || '';
+async function ruToEn(q) {   // русский запрос → английское/ромадзи название для поиска в AniList
+  const s = await ruJson('https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&origin=*&language=ru&uselang=ru&type=item&limit=5&search=' + encodeURIComponent(q), 6000);
+  const c = (s.search || []).find(x => /аниме|манг|ранобэ|новелл/i.test(x.description || '')) || (s.search || [])[0]; if (!c) return '';
+  const e = await ruJson('https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&props=labels&languages=en&ids=' + c.id, 6000);
+  return e.entities?.[c.id]?.labels?.en?.value || '';
+}
+async function ruWikiFind(q, names, cat, year) {   // поиск статьи в рувики по названию (для уже добавленных тайтлов)
+  const w = {'Аниме': 'аниме', 'Манга': 'манга', 'Ранобэ': 'ранобэ'}[cat] || '';
+  const s = await ruJson('https://ru.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=3&srsearch=' + encodeURIComponent(q + ' ' + w), 6000);
+  for (const [k, h] of (s.query?.search || []).entries()) {
+    const x = await ruJson('https://ru.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(h.title), 6000), ex = ruN(x.extract || '');
+    if (names.some(n => n.length > 3 && ex.includes(n)) || (k === 0 && year && (x.extract || '').includes(String(year)))) return {title: (x.title || h.title).replace(/\s*\(.*?\)\s*$/, ''), desc: x.extract || ''};
+  }
+  return null;
+}
+async function ruTitles(kind, mals) {   // русские названия пачкой: Shikimori, а если закрыт — Викиданные
+  const out = {};
+  if (shikiOk()) { try { (await shiki(`/api/${kind}?ids=${mals.join(',')}&limit=50`)).forEach(x => { if (x.russian) out[x.id] = x.russian; }); } catch (e) {} }
+  const miss = mals.filter(m => !out[m]);
+  if (miss.length) { try { const w = await wdBatch(miss, WDP[kind]); miss.forEach(m => { if (w[m] && hasRu(w[m].ru)) out[m] = w[m].ru; }); } catch (e) {} }
+  return out;
+}
 function ruFull(r) {   // русское название и описание одного тайтла из каталога (один раз на тайтл)
   return r.ruP ||= (async () => {
     let ru = '', d = '';
-    if (r.mal && SHK[r.category]) { try { const x = await ruJson(`https://shikimori.one/api/${SHK[r.category]}/${r.mal}`); ru = x.russian || ''; d = ruClean(x.description); } catch (e) {} }
+    if (r.mal && SHK[r.category]) {
+      if (shikiOk()) { try { const x = await shiki(`/api/${SHK[r.category]}/${r.mal}`); ru = x.russian || ''; d = ruClean(x.description); } catch (e) {} }
+      if (!ru || !hasRu(d)) { try { const w = (await wdBatch([r.mal], WDP[SHK[r.category]]))[r.mal]; if (w) { if (!ru && hasRu(w.ru)) ru = w.ru; if (!hasRu(d) && w.wiki) d = await ruWikiDesc(w.wiki); } } catch (e) {} }
+    }
     if (ru && !hasRu(r.title)) { if (!r.en) r.en = r.title; r.title = ru; }
     if (hasRu(d)) r.desc = d; else if (r.desc && !hasRu(r.desc)) { try { r.desc = await ruTranslate(r.desc); } catch (e) { ruWarn(); } }
     r.ruDone = 1; return r;
@@ -667,8 +717,8 @@ async function ruCards() {   // русские названия на карто�
   for (const kind of ['animes', 'mangas', 'ranobe']) {
     const grp = cards.filter(c => !c._r.ruTitle && SHK[c._r.category] === kind); if (!grp.length) continue;
     try {
-      const list = await ruJson(`https://shikimori.one/api/${kind}?ids=${[...new Set(grp.map(c => c._r.mal))].join(',')}&limit=50`);
-      list.forEach(x => { RUC[kind + x.id] = x.russian || ''; grp.filter(c => c._r.mal === x.id).forEach(c => ruSet(c, x.russian)); });
+      const t = await ruTitles(kind, [...new Set(grp.map(c => c._r.mal))]);
+      grp.forEach(c => { const ru = t[c._r.mal]; RUC[kind + c._r.mal] = ru || ''; ruSet(c, ru); });
       try { localStorage.setItem('ruCache', JSON.stringify(RUC)); } catch (e) {}
     } catch (e) {}
   }
@@ -685,8 +735,8 @@ async function ruBulk() {   // перевод уже добавленной ко
       try {
         let title = '', desc = ''; const q = i.titleEn || i.titleOrig || i.title, names = [i.title, i.titleEn, i.titleOrig, ...spl(i.alt)].map(ruN);
         if (SHK[i.category]) {
-          const list = await ruJson(`https://shikimori.one/api/${SHK[i.category]}?search=${encodeURIComponent(q)}&limit=5`), c = list.find(x => names.includes(ruN(x.name))) || (list.length === 1 ? list[0] : null);
-          if (c) { const x = await ruJson(`https://shikimori.one/api/${SHK[i.category]}/${c.id}`); title = x.russian || ''; desc = ruClean(x.description); }
+          if (shikiOk()) { try { const list = await shiki(`/api/${SHK[i.category]}?search=${encodeURIComponent(q)}&limit=5`), c = list.find(x => names.includes(ruN(x.name))) || (list.length === 1 ? list[0] : null); if (c) { const x = await shiki(`/api/${SHK[i.category]}/${c.id}`); title = x.russian || ''; desc = ruClean(x.description); } } catch (e) {} }
+          if (!hasRu(title) || !hasRu(desc)) { try { const w = await ruWikiFind(q, names, i.category, i.year); if (w) { if (!hasRu(title)) title = w.title; if (!hasRu(desc)) desc = w.desc; } } catch (e) {} }
         } else {
           const list = await tmdb(q, null, null), c = list.find(x => String(x.year) === String(i.year) && sameCat(x.category, i.category)) || list.find(x => sameCat(x.category, i.category));
           if (c) { title = c.title; desc = c.desc; }
@@ -697,7 +747,7 @@ async function ruBulk() {   // перевод уже добавленной ко
         if (hasRu(desc) && !hasRu(i.description)) { i.description = desc; ch = true; }
         if (ch) { cloudSave(i); ok++; }
       } catch (e) {}
-      await ruWait(1500);
+      await ruWait(1200);
     }
   } finally { ruBusy = false; refresh(); toast(`Готово: переведено ${ok} из ${todo.length}.` + (ok < todo.length ? '\nУ остальных нет русского варианта или сервис не ответил — можно запустить ещё раз позже.' : '')); }
 }
@@ -715,6 +765,9 @@ const profSaveLocal = () => { try { localStorage.setItem('prof', JSON.stringify(
 const profCloud = () => { profSaveLocal(); if (user) track(setDoc(doc(db, 'items', 'prof_' + user.uid), {isProfile: true, ...prof, userId: user.uid})).catch(e => toast('Профиль сохранён только на этом устройстве: ' + e.message, true)); };
 const GRAD = ['linear-gradient(135deg,#6a4cf0,#38bdf8)', 'linear-gradient(135deg,#ff5d8f,#f59e0b)', 'linear-gradient(135deg,#0f766e,#2dd4bf)', 'linear-gradient(135deg,#111827,#4b5563)', 'linear-gradient(135deg,#7c2d12,#f59e0b)', 'linear-gradient(135deg,#1e3a8a,#a78bfa)'];
 function profPaint() {
+  const lsAcc = () => { try { return +localStorage.getItem('acc') || 0; } catch (e) { return 0; } };
+  if (prof.theme != null && prof.theme !== (document.documentElement.dataset.theme || '')) setTheme(prof.theme, true);
+  if (prof.acc != null && prof.acc !== lsAcc()) setAcc(prof.acc, true);
   const u = user || {}, av = prof.avatar || u.photoURL || '', bg = prof.cover ? `url("${prof.cover}")` : prof.coverColor ? GRAD[prof.coverColor - 1] : '';
   $('avatar').src = av; $('hdrAvatar').src = av; if (prof.name) $('profName').textContent = prof.name;
   $('profBio').textContent = prof.bio || ''; $('profBio').style.display = prof.bio ? '' : 'none';
@@ -758,6 +811,28 @@ const _openAdd = openAdd; openAdd = function (item) { _openAdd(item); $('inputLi
 queueMicrotask(() => { const ex = window.exportData; if (ex) window.exportData = () => { ex(); try { localStorage.setItem('lastBackup', String(Date.now())); } catch (e) {} }; });
 let nudged = false;
 function backupNudge() { if (nudged || items.length < 5) return; nudged = true; let t = 0; try { t = +localStorage.getItem('lastBackup') || 0; } catch (e) {} if (Date.now() - t > 14 * 864e5) toast('Давно не было резервной копии. Скачать копию коллекции?', false, {label: 'Скачать', fn: () => window.exportData()}); }
+// ---- Интерфейс: чипы фильтров, выбор нескольких тайтлов, нижнее меню, общие настройки оформления
+function renderChips() {
+  const box = $('chips'); if (!box) return; box.replaceChildren();
+  const add = (t, fn) => { const c = el('button', 'chip', t + ' ✕'); c.onclick = fn; box.append(c); };
+  if ($('searchInput').value.trim()) add('🔍 ' + $('searchInput').value.trim(), () => { $('searchInput').value = ''; render(); });
+  if ($('statusFilter').value !== 'Все') add($('statusFilter').value, () => { $('statusFilter').value = 'Все'; render(); });
+  if ($('tagFilter').value !== 'Все') add('Жанр: ' + $('tagFilter').selectedOptions[0].textContent, () => { $('tagFilter').value = 'Все'; render(); });
+  if ($('listFilter').value !== 'Все') add($('listFilter').selectedOptions[0].textContent, () => { $('listFilter').value = 'Все'; render(); });
+}
+let selMode = false; const selSet = new Set();
+function selPaint() { [...grid.children].forEach((c, k) => { if (c.classList) c.classList.toggle('sel', !!(selMode && lastList[k] && selSet.has(lastList[k].id))); }); $('selN').textContent = 'Выбрано: ' + selSet.size; }
+function selToggle(on) { selMode = on; if (!on) selSet.clear(); $('selbar').style.display = on ? 'flex' : 'none'; $('selBtn').classList.toggle('on', on); document.body.classList.toggle('selmode', on); selPaint(); }
+grid.addEventListener('click', e => { if (!selMode) return; const c = e.target.closest('.card'); if (!c) return; e.preventDefault(); e.stopPropagation(); const it = lastList[[...grid.children].indexOf(c)]; if (!it) return; if (selSet.has(it.id)) selSet.delete(it.id); else selSet.add(it.id); selPaint(); }, true);
+$('selBtn').onclick = () => selToggle(!selMode); $('selOff').onclick = () => selToggle(false);
+$('selSt').replaceChildren(new Option('Сменить статус…', ''), ...STATS.map(x => new Option(x, x)));
+$('selSt').onchange = () => { const v = $('selSt').value; $('selSt').value = ''; if (!v || !selSet.size) return; const hit = items.filter(i => selSet.has(i.id)); hit.forEach(i => { i.status = v; cloudSave(i); }); refresh(); toast(`Статус «${v}» у тайтлов: ${hit.length}`); };
+$('selList').onclick = () => { if (!selSet.size) return toast('Сначала выбери тайтлы (нажимай на карточки)'); const nm = (prompt('В какую подборку добавить выбранные тайтлы?') || '').trim(); if (!nm) return; const hit = items.filter(i => selSet.has(i.id)); hit.forEach(i => { i.lists = i.lists || []; if (!i.lists.includes(nm)) i.lists.push(nm); cloudSave(i); }); refresh(); toast(`В подборку «${nm}» добавлено: ${hit.length}`); };
+$('selDel').onclick = () => { if (!selSet.size) return toast('Сначала выбери тайтлы (нажимай на карточки)'); if (!confirm(`Удалить выбранные тайтлы (${selSet.size})? Отменить это нельзя — лучше сначала скачать бэкап.`)) return; [...selSet].forEach(id => removeItem(id)); selToggle(false); };
+document.querySelectorAll('#botnav button').forEach(b => b.onclick = () => { const g = b.dataset.go; if (g === 'add') { openAdd(null); draftRestore(); } else if (g === 'profile') document.querySelector('.tab[data-v="profile"]').click(); else document.querySelector('.tab:not([data-v="profile"])').click(); window.scrollTo({top: 0, behavior: 'smooth'}); });
+let uiT = 0; const uiSync = () => { clearTimeout(uiT); uiT = setTimeout(profCloud, 1500); };
+const _setTheme = setTheme; setTheme = (t, quiet) => { _setTheme(t); if (!quiet) { prof.theme = t; profSaveLocal(); uiSync(); } };
+const _setAcc = setAcc; setAcc = (k, quiet) => { _setAcc(k); if (!quiet) { prof.acc = k; profSaveLocal(); uiSync(); } };
 const LBL = {inputCategory: 'Категория', inputStatus: 'Статус', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (например: Лучшее аниме, На выходные)', inputDescription: 'Синопсис / описание'};
 Object.entries(LBL).forEach(([id, t]) => { const e = $(id), w = el('div', 'fld'); e.replaceWith(w); w.append(el('label', null, t), e); });
 const DF = Object.keys(LBL).concat('inputExtSrc');
@@ -843,7 +918,7 @@ const RU = {Action:'Экшен',Adventure:'Приключения',Comedy:'Ко�
 const TG = {28:'Боевик',12:'Приключения',16:'Мультфильм',35:'Комедия',80:'Криминал',99:'Документальный',18:'Драма',10751:'Семейный',14:'Фэнтези',36:'История',27:'Ужасы',10402:'Музыка',9648:'Детектив',10749:'Мелодрама',878:'Фантастика',53:'Триллер',10752:'Военный',37:'Вестерн',10759:'Боевик и приключения',10765:'Фантастика и фэнтези',10768:'Война и политика'};
 
 async function anilist(search, type, o = {}) {
-  if (hasRu(search)) { try { for (const kk of type === 'ANIME' ? ['animes'] : ['mangas', 'ranobe']) { const l = await ruJson(`https://shikimori.one/api/${kk}?search=${encodeURIComponent(search)}&limit=1`); if (l[0]) { search = l[0].name; break; } } } catch (e) {} }
+  if (hasRu(search)) { let en = ''; if (shikiOk()) { try { for (const kk of type === 'ANIME' ? ['animes'] : ['mangas', 'ranobe']) { const l = await shiki(`/api/${kk}?search=${encodeURIComponent(search)}&limit=1`); if (l[0]) { en = l[0].name; break; } } } catch (e) {} } if (!en) { try { en = await ruToEn(search); } catch (e) {} } if (en) search = en; }
   const gql = 'query($s:String,$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int,$g:[String],$sg:FuzzyDateInt,$sl:FuzzyDateInt){Page(page:$p,perPage:$pp){media(search:$s,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg,genre_in:$g,startDate_greater:$sg,startDate_lesser:$sl){idMal format siteUrl countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore genres status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
   const r = await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'}, body: JSON.stringify({query: gql, variables: {s: search, t: type, p: o.page || 1, pp: o.per || 10, so: o.sort || ['SEARCH_MATCH'], st: o.status, f: o.format, fn: o.fn, c: o.country, ad: o.ad, pg: o.pg, g: o.genre, sg: o.sg, sl: o.sl}})});
   const j = await r.json(); if (j.errors) throw new Error(j.errors[0].message);
@@ -993,18 +1068,21 @@ function profDash() {
   { const p = mk('lists', 'Мои подборки'), l = topBy(i => i.lists || []);
     if (!l.length) p.append(el('div', 'meta', 'Подборок пока нет. Впиши название в поле «Подборки» при добавлении или редактировании тайтла — один тайтл может быть в нескольких подборках.'));
     l.forEach(([n, c]) => { const r = el('div', 'sr go'), b = el('div', 'bar'), nm = el('span', null, '📁 ' + n), ed = el('button', 'chip', '✏'); b.style.width = (c / l[0][1] * 100) + '%'; ed.title = 'Переименовать или удалить подборку'; ed.onclick = e => { e.stopPropagation(); listEdit(n); }; nm.append(' ', ed); r.append(nm, b, el('span', 'meta', c)); r.onclick = () => goList(n); p.append(r); }); }
-  { const p = mk('ach', 'Достижения'), n = c => items.filter(i => i.category === c).length, dn = items.filter(i => i.status === 'Просмотрено/Прочитано' || i.status === 'Любимое').length, gn = new Set(items.flatMap(i => i.tags || [])).size, cn = new Set(items.map(i => i.category)).size;
-    const A = [['🌱', 'Первый шаг', items.length, 1], ['📚', 'Коллекционер', items.length, 50], ['🏛', 'Архивариус', items.length, 200], ['🌸', 'Аниме-фанат', n('Аниме'), 50], ['📖', 'Книжный червь', n('Манга') + n('Ранобэ'), 50], ['🎬', 'Киноман', n('Фильм') + n('Мультфильм'), 50], ['📺', 'Сериальный марафон', n('Сериал'), 25], ['✅', 'Завершатель', dn, 50], ['🧭', 'Разносторонний', cn, 5], ['🎭', 'Ценитель жанров', gn, 15]], g = el('div', 'ach');
-    A.forEach(([ic, nm, v, need]) => { const d = el('div', 'ab' + (v >= need ? ' ok' : '')); d.title = `${nm}: ${Math.min(v, need)} из ${need}`; d.append(el('b', null, ic), el('span', null, nm), el('small', null, v >= need ? 'получено' : `${v} / ${need}`)); g.append(d); }); p.append(g); }
+  { const p = mk('ach', 'Достижения — нажми, чтобы узнать условие'), n = c => items.filter(i => i.category === c).length, dn = items.filter(i => i.status === 'Просмотрено/Прочитано' || i.status === 'Любимое').length, gn = new Set(items.flatMap(i => i.tags || [])).size, cn = new Set(items.map(i => i.category)).size, fv = items.filter(i => i.status === 'Любимое').length;
+    const A = [['🌱', 'Первый шаг', items.length, 1, 'Добавь в коллекцию свой первый тайтл.'], ['📚', 'Коллекционер', items.length, 50, 'Собери коллекцию из 50 тайтлов (любые категории).'], ['🏛', 'Архивариус', items.length, 200, 'Собери коллекцию из 200 тайтлов.'], ['🏆', 'Легенда', items.length, 500, 'Собери коллекцию из 500 тайтлов.'],
+      ['🌸', 'Аниме-фанат', n('Аниме'), 50, 'Добавь 50 аниме.'], ['⭐', 'Аниме-эксперт', n('Аниме'), 100, 'Добавь 100 аниме.'], ['📖', 'Книжный червь', n('Манга') + n('Ранобэ'), 50, 'Добавь 50 тайтлов манги и ранобэ (они считаются вместе).'],
+      ['🎬', 'Киноман', n('Фильм') + n('Мультфильм'), 50, 'Добавь 50 фильмов и мультфильмов (считаются вместе).'], ['📺', 'Сериальный марафон', n('Сериал'), 25, 'Добавь 25 сериалов.'], ['✅', 'Завершатель', dn, 50, 'Поставь 50 тайтлам статус «Завершено» или «Любимое».'],
+      ['❤', 'Любимчики', fv, 10, 'Поставь 10 тайтлам статус «Любимое».'], ['🧭', 'Разносторонний', cn, 5, 'Держи в коллекции тайтлы минимум из 5 разных категорий (аниме, манга, ранобэ, фильм, сериал, мультфильм).'], ['🎭', 'Ценитель жанров', gn, 15, 'Собери в коллекции тайтлы минимум из 15 разных жанров.']];
+    const g = el('div', 'ach'), info = el('div', 'achinfo', 'Нажми на достижение, чтобы увидеть, что для него нужно.');
+    A.forEach(([ic, nm, v, need, ds]) => { const d = el('button', 'ab' + (v >= need ? ' ok' : '')); d.type = 'button'; d.append(el('b', null, ic), el('span', null, nm), el('small', null, v >= need ? 'получено' : `${v} / ${need}`));
+      d.onclick = () => { const bar = el('div', 'bar'), tr = el('div', 'track'); bar.style.width = Math.min(100, v / need * 100) + '%'; tr.append(bar); info.replaceChildren(el('b', null, `${ic} ${nm}`), el('div', 'meta', ds), tr, el('div', 'meta', v >= need ? 'Достижение получено ✓' : `Прогресс: ${v} из ${need} — осталось ${need - v}`)); }; g.append(d); });
+    p.append(g, info); }
   { const yr = new Date().getFullYear(), p = mk('year', 'Итоги ' + yr + ' года'), cur = items.filter(i => born(i) && new Date(born(i)).getFullYear() === yr);
     if (!cur.length) p.append(el('div', 'meta', `В ${yr} году ты пока ничего не добавлял.`)); else {
       const top1 = f => { const c = {}; cur.forEach(i => f(i).forEach(x => c[x] = (c[x] || 0) + 1)); return Object.entries(c).sort((a, b) => b[1] - a[1])[0]; }, mo = {}, h = el('div', 'hl');
       cur.forEach(i => { const m = new Date(born(i)).getMonth(); mo[m] = (mo[m] || 0) + 1; });
       const bm = Object.entries(mo).sort((a, b) => b[1] - a[1])[0], tg = top1(i => i.tags || []), ct = top1(i => [i.category]), ex = cur.filter(i => num(i.extRating)).sort((a, b) => num(b.extRating) - num(a.extRating))[0];
       kv(h, 'Добавлено тайтлов', String(cur.length)); kv(h, 'Больше всего', ct && `${ct[0]} (${ct[1]})`); kv(h, 'Любимый жанр года', tg && tg[0]); kv(h, 'Самый активный месяц', bm && MON[bm[0]]); kv(h, 'Лучший по оценке', ex && `${ex.title} — ${ex.extRating}`); p.append(h); } }
-  { const p = mk('dec', 'Лучшее по десятилетиям'), best = {};
-    items.forEach(i => { const y = parseInt(i.year), sc = num(i.rating) || num(i.extRating); if (!y || !sc) return; const k = Math.floor(y / 10) * 10; if (!best[k] || sc > best[k][0]) best[k] = [sc, i]; });
-    Object.entries(best).sort((a, b) => b[0] - a[0]).forEach(([k, [sc, i]]) => { const r = el('div', 'sr go'); r.style.gridTemplateColumns = '56px 1fr 40px'; r.append(el('span', 'meta', k + '-е'), el('span', null, i.title), el('span', 'meta', sc)); r.onclick = () => goFind(i.title); p.append(r); }); }
   { const p = mk('cmp', 'Моя оценка и внешняя'), both = items.filter(i => num(i.rating) && num(i.extRating));
     if (both.length >= 3) { const df = i => num(i.rating) - num(i.extRating), srt = both.slice().sort((a, b) => df(b) - df(a)), avg = both.reduce((a, i) => a + df(i), 0) / both.length, h = el('div', 'hl'), lo = srt[srt.length - 1], tx = i => `${i.title} (моя ${i.rating}, внешняя ${i.extRating})`;
       kv(h, 'В среднем ты оцениваешь', (avg >= 0 ? 'на ' + avg.toFixed(1) + ' выше' : 'на ' + Math.abs(avg).toFixed(1) + ' ниже') + ' внешних оценок'); kv(h, 'Щедрее всего', tx(srt[0])); kv(h, 'Строже всего', tx(lo)); p.append(h); } }
@@ -1014,12 +1092,11 @@ function profDash() {
     items.forEach(i => { const t = born(i); if (!t) return; const d = new Date(t), x = m.find(r => r.y === d.getFullYear() && r.m === d.getMonth()); if (x) x.c++; });
     columns(p, m.map(r => r.c), m.map(r => MON[r.m]), m.map(r => MON[r.m] + ' ' + r.y));
     const yr = now.getFullYear(); p.append(el('div', 'meta', `В ${yr} году добавлено: ${items.filter(i => born(i) && new Date(born(i)).getFullYear() === yr).length}`)); }
-  { const p = mk('years', 'По десятилетиям выхода'), d = {}; items.forEach(i => { const y = parseInt(i.year); if (y) { const k = Math.floor(y / 10) * 10; d[k] = (d[k] || 0) + 1; } }); bars(p, Object.entries(d).sort((a, b) => a[0] - b[0]).map(([k, v]) => [k + '-е', v])); }
   { const p = mk('studios', 'Любимые студии'); bars(p, topBy(i => spl(i.studio)).slice(0, 6), goFind); }
   { const p = mk('authors', 'Любимые авторы и режиссёры'); bars(p, topBy(i => spl(i.author)).slice(0, 6), goFind); }
   grid.querySelectorAll('.pb').forEach(p => { if (p.children.length < 2) p.remove(); });
   const set = el('details', 'pset'); set.append(el('summary', null, '⚙ Какие блоки показывать'));
-  [['cats', 'Типы'], ['hl', 'Коротко о тебе'], ['hist', 'Оценки'], ['genres', 'Жанры'], ['months', 'Месяцы'], ['years', 'Десятилетия'], ['studios', 'Студии'], ['authors', 'Авторы'], ['lists', 'Подборки'], ['ach', 'Достижения'], ['year', 'Итоги года'], ['dec', 'Лучшее по десятилетиям'], ['cmp', 'Моя оценка и внешняя']].forEach(([k, t]) => {
+  [['cats', 'Типы'], ['hl', 'Коротко о тебе'], ['hist', 'Оценки'], ['genres', 'Жанры'], ['months', 'Месяцы'], ['studios', 'Студии'], ['authors', 'Авторы'], ['lists', 'Подборки'], ['ach', 'Достижения'], ['year', 'Итоги года'], ['cmp', 'Моя оценка и внешняя']].forEach(([k, t]) => {
     const l = el('label'), c = el('input'); c.type = 'checkbox'; c.checked = !hid.includes(k);
     c.onchange = () => { const h = hidNow().filter(x => x !== k); if (!c.checked) h.push(k); try { localStorage.setItem('profHide', JSON.stringify(h)); } catch (e) {} const q = grid.querySelector(`[data-k="${k}"]`); if (q) q.style.display = c.checked ? '' : 'none'; };
     l.append(c, document.createTextNode(' ' + t)); set.append(l);
@@ -1058,6 +1135,7 @@ function profStrips() {
   };
   const by = (f, d) => items.filter(f).sort(d).slice(0, 12), ex = (a, b) => num(b.extRating) - num(a.extRating);
   strip('🕒 Недавно добавлено', by(() => true, (a, b) => b.id - a.id));
+  { const pl = items.filter(i => i.status === 'В планах'); if (pl.length) { const d = new Date(); strip('🎯 Рекомендация дня', [pl[(d.getFullYear() * 366 + d.getMonth() * 31 + d.getDate()) % pl.length]]); } }
   strip('▶ Продолжаю', by(i => i.status === 'Смотрю/Читаю', (a, b) => b.id - a.id));
   strip('🏆 Топ-10 по оценке', items.filter(i => num(i.rating) || num(i.extRating)).sort((a, b) => (num(b.rating) || num(b.extRating)) - (num(a.rating) || num(a.extRating))).slice(0, 10));
   strip('❤ Любимое', by(i => i.status === 'Любимое', ex));

@@ -8,6 +8,9 @@
 <meta name="theme-color" content="#0a0b12">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Мой Медиа Трекер</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0d0f14;--card:#171a22;--inp:#1b1e27;--bd:#262a36;--ac:#7c5cff;--ach:#9478ff;--mu:#9aa0b4}
 *{box-sizing:border-box}
@@ -287,14 +290,87 @@ body.rt-ext .mine{display:none}body.rt-mine .star{display:none}body.rt-none .min
 :root{--ac:#7a5af8}
 .btn:not(.btn-s):not(.btn-d):not(.btn-g),.btn:not(.btn-s):not(.btn-d):not(.btn-g):hover,.fb.on,.kb.on,.tb.on,.tab.on{background:linear-gradient(135deg,var(--ac),color-mix(in srgb,var(--ac) 78%,#000))}
 html[data-theme=white] .fs{color:#5b3fd1}
+
+/* ===== Улучшенный дизайн, темы, рамки аватара, прогресс серий и диалоги ===== */
+body{font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;letter-spacing:-0.01em}
+h1,h2,h3,.logo,.pinfo b,.tile b{font-family:'Plus Jakarta Sans','Inter',sans-serif;letter-spacing:-0.02em}
+#authScreen{background:radial-gradient(circle at 50% 20%,rgba(122,90,248,.18),transparent 60%);border:1px solid var(--bd);border-radius:24px;max-width:520px;margin:6vh auto;height:auto;padding:48px 32px;box-shadow:0 24px 64px rgba(0,0,0,.45);backdrop-filter:blur(20px)}
+.auth-logo{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,var(--ac),var(--ach));display:grid;place-items:center;font-size:28px;box-shadow:0 12px 30px rgba(122,90,248,.4);margin-bottom:4px}
+.auth-btns{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;width:100%;margin-top:8px}
+
+/* Новые темы: Киберпанк Неон и Уютный Мокко */
+html[data-theme=neon]{--bg:#070510;--card:rgba(20,14,38,.72);--inp:rgba(255,0,128,.07);--bd:rgba(0,240,255,.22);--ac:#ff2a85;--ach:#00f0ff;--mu:#b4a5d9}
+html[data-theme=neon] body::before{background:radial-gradient(900px 520px at 12% 0%,rgba(255,42,133,.28),transparent 60%),radial-gradient(850px 520px at 95% 10%,rgba(0,240,255,.22),transparent 60%),radial-gradient(700px 500px at 50% 100%,rgba(139,92,246,.2),transparent 60%)}
+html[data-theme=neon] .pc{border-color:rgba(0,240,255,.18);box-shadow:0 8px 26px rgba(255,42,133,.18)}
+html[data-theme=mocha]{--bg:#14110f;--card:rgba(36,30,27,.78);--inp:rgba(255,235,215,.06);--bd:rgba(255,220,190,.12);--ac:#e07a5f;--ach:#f2cc8f;--mu:#b5a698}
+html[data-theme=mocha] body::before{background:radial-gradient(900px 520px at 15% -5%,rgba(224,122,95,.24),transparent 62%),radial-gradient(800px 520px at 90% 10%,rgba(242,204,143,.14),transparent 60%)}
+
+/* Шапка профиля и уровень */
+.pcard{position:relative;overflow:hidden;padding:26px 24px;border-radius:22px;gap:20px;box-shadow:0 16px 40px rgba(0,0,0,.3);transition:all .25s ease}
+.pcard.hascover{min-height:190px;align-items:flex-end}
+.av-wrap{position:relative;flex:none;display:grid;place-items:center}
+.pcard .av-wrap img{width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid var(--ac);transition:transform .25s ease}
+.pcard .av-wrap:hover img{transform:scale(1.04)}
+.av-wrap[data-frame=neon] img{border-color:#00f0ff;box-shadow:0 0 18px #00f0ff,0 0 32px rgba(255,42,133,.6)}
+.av-wrap[data-frame=gold] img{border-color:#fbbf24;box-shadow:0 0 20px rgba(251,191,36,.65),inset 0 0 10px rgba(251,191,36,.4)}
+.av-wrap[data-frame=cyber] img{border-radius:22%;border-color:#f43f5e;box-shadow:0 0 18px rgba(244,63,94,.7)}
+.av-wrap[data-frame=sakura] img{border-color:#f472b6;box-shadow:0 0 20px rgba(244,114,182,.65)}
+.av-wrap[data-frame=fire] img{border-color:#f97316;box-shadow:0 0 22px rgba(249,115,22,.75),0 -4px 14px rgba(239,68,68,.5)}
+.lvl-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(122,90,248,.22);border:1px solid rgba(255,255,255,.18);padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;margin-left:8px;vertical-align:middle}
+html[data-theme=white] .pcard:not(.hascover) .lvl-pill{color:#14161f;background:rgba(122,90,248,.14);border-color:rgba(122,90,248,.3)}
+.xp-wrap{margin-top:8px;max-width:340px;display:flex;flex-direction:column;gap:4px}
+.xp-bar{height:6px;border-radius:999px;background:rgba(255,255,255,.14);overflow:hidden}
+html[data-theme=white] .pcard:not(.hascover) .xp-bar{background:rgba(0,0,0,.1)}
+.xp-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--ac),var(--ach));transition:width .4s ease}
+.xp-txt{font-size:11px;color:var(--mu);display:flex;justify-content:space-between}
+.pcard.hascover .xp-txt{color:#e2e6f3}
+
+/* Переключатель разделов внутри профиля */
+.prof-nav{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin:14px 0 18px;padding:8px 12px;background:var(--card);border:1px solid var(--bd);border-radius:16px}
+.prof-subtabs{display:flex;gap:6px;flex-wrap:wrap}
+.pstab{background:transparent;border:1px solid transparent;color:var(--mu);padding:7px 14px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;transition:.18s}
+.pstab:hover{color:#fff;background:rgba(255,255,255,.06)}
+html[data-theme=white] .pstab:hover{color:#14161f;background:rgba(0,0,0,.05)}
+.pstab.on{background:linear-gradient(135deg,var(--ac),color-mix(in srgb,var(--ac) 78%,#000));color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.22)}
+
+/* Прогресс серий на карточке и кнопка +1 */
+.ep-pill{position:absolute;left:10px;bottom:10px;z-index:2;background:rgba(12,14,22,.86);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.15);color:#e2e8f0;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:5px;transition:opacity .2s}
+.ep-plus{background:var(--ac);color:#fff;border:0;border-radius:999px;padding:1px 6px;font-size:11px;font-weight:800;cursor:pointer;line-height:1.3}
+.ep-plus:hover{filter:brightness(1.15);transform:scale(1.06)}
+.ep-line{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(0,0,0,.5);z-index:2}
+.ep-line i{display:block;height:100%;background:linear-gradient(90deg,var(--ac),#22c55e)}
+.pin-badge{position:absolute;top:10px;right:10px;z-index:2;background:rgba(251,191,36,.92);color:#000;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.pc .ong + .pin-badge{top:38px}
+
+/* Стили карточек (кастомизация) */
+body.cs-sharp .pc,body.cs-sharp .card{border-radius:6px}
+body.cs-minimal .ci .tg,body.cs-minimal .ci .cm{display:none}
+body.cs-minimal .title{font-size:14px;margin-top:8px}
+
+/* Заметка / личный отзыв в окне деталей */
+.my-note{background:linear-gradient(135deg,rgba(122,90,248,.12),rgba(255,255,255,.03));border-left:3px solid var(--ac);padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.5;color:#e2e8f0;white-space:pre-wrap}
+html[data-theme=white] .my-note{color:#1e293b;background:rgba(122,90,248,.08)}
+
+/* Панель фильтров каталога и коллекции */
+#cgFilters,#colToolbar{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:12px 14px}
+.sw-pick{width:24px;height:24px;border-radius:50%;border:0;padding:0;cursor:pointer;background:none}
+.c-swatches{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.c-sw{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:transform .15s}
+.c-sw.on{border-color:#fff;transform:scale(1.12);box-shadow:0 0 0 2px var(--ac)}
+
 </style>
 </head>
 <body>
 
 <div id="authScreen">
-  <h1>Мой Медиа Трекер</h1>
-  <p style="color:var(--mu)">Войдите под своим аккаунтом Google, чтобы синхронизировать коллекцию</p>
-  <button class="btn btn-g" id="loginBtn">Войти через Google</button>
+  <div class="auth-logo">▶</div>
+  <h1 style="margin:0">Мой Медиа Трекер</h1>
+  <p style="color:var(--mu);max-width:400px;margin:0;line-height:1.5">Твоя персональная коллекция фильмов, сериалов, аниме, манги и ранобэ с умной статистикой и кастомизацией</p>
+  <div class="auth-btns">
+    <button class="btn btn-g" id="loginBtn">Войти через Google</button>
+    <button class="btn btn-s" id="guestBtn" type="button" style="padding:12px 20px;font-size:15px">🚀 Локальный режим (без входа)</button>
+  </div>
+  <div class="meta" style="margin:4px 0 0">В локальном режиме все данные сохраняются в браузере на этом устройстве</div>
 </div>
 
 <div id="appScreen">
@@ -314,7 +390,7 @@ html[data-theme=white] .fs{color:#5b3fd1}
     <div class="filters" id="cgCats">
       <button class="tb on" data-g="Аниме">Аниме</button><button class="tb" data-g="Манга">Манга</button><button class="tb" data-g="Ранобэ">Ранобэ</button><button class="tb" data-g="Фильм">Фильмы</button><button class="tb" data-g="Сериал">Сериалы</button>
     </div>
-    <div class="row" id="cgFilters" style="margin-top:12px">\1<input id="cgSearch" placeholder="Найти в каталоге..." style="flex:1;max-width:340px"><button class="tb" id="cgClear" title="Очистить поиск" style="display:none">✕</button><button class="tb" id="cgFltBtn" type="button">🔎 Фильтры</button>
+    <div class="row" id="cgFilters" style="margin-top:12px"><input id="cgSearch" placeholder="Найти в каталоге..." style="flex:1;max-width:340px"><button class="tb" id="cgClear" title="Очистить поиск" style="display:none">✕</button><button class="tb" id="cgFltBtn" type="button">🔎 Фильтры</button>
       <select id="cgMode"><option value="pop">Популярное</option><option value="top">Топ рейтинга</option><option value="new">Новинки / онгоинги</option><option value="soon">Скоро выйдет</option><option value="trend">🔥 В тренде на неделе</option><option value="month">🆕 Новинки месяца</option><option value="date">📅 По дате выхода</option><option value="votes">👥 По числу голосов</option><option value="hidden">💎 Недооценённые</option><option value="classic">🏛 Классика</option><option value="rare">🔭 Малоизвестные</option></select>
       <select id="cgKind" style="display:none"><option value="">Все виды</option><option value="JP">Манга</option><option value="KR">Манхва</option><option value="CN">Маньхуа</option></select>
       <select id="cgGenre"></select>
@@ -329,17 +405,35 @@ html[data-theme=white] .fs{color:#5b3fd1}
 
   <div id="profileView" style="display:none">
     <div class="pcard">
-      <img id="avatar" referrerpolicy="no-referrer" alt="">
-      <div class="pinfo"><b id="profName"></b><div class="meta" id="profMail"></div><div class="meta" id="profSince"></div><div class="pbio" id="profBio"></div></div>
+      <div class="av-wrap" id="avWrap"><img id="avatar" referrerpolicy="no-referrer" alt=""></div>
+      <div class="pinfo">
+        <div><b id="profName"></b><span class="lvl-pill" id="profLvl">Ур. 1 · Новичок</span></div>
+        <div class="meta" id="profMail"></div><div class="meta" id="profSince"></div>
+        <div class="pbio" id="profBio"></div>
+        <div class="xp-wrap"><div class="xp-bar"><div class="xp-fill" id="profXpFill" style="width:0%"></div></div><div class="xp-txt"><span id="profXpTxt">0 XP</span><span id="profNextTxt">До ур. 2: 100 XP</span></div></div>
+      </div>
       <div class="ring" id="profRing" title="Доля завершённых и любимых"><span id="profRingTxt">0%</span></div>
-      <button class="btn btn-s" id="profEditBtn">✏ Редактировать</button>
-      <button class="btn btn-s" id="statsBtn">📊 Подробная статистика</button>
+      <div class="row" style="gap:8px">
+        <button class="btn btn-s" id="profEditBtn">✏ Редактировать</button>
+        <button class="btn btn-s" id="statsBtn">📊 Подробная статистика</button>
+      </div>
     </div>
-    <div class="tiles" id="profStats"></div>
-    <div id="profDash"></div>
-    <div id="profStrips"></div>
+    <div class="prof-nav">
+      <div class="prof-subtabs" id="profSubTabs">
+        <button class="pstab on" data-pv="all" type="button">✨ Весь профиль</button>
+        <button class="pstab" data-pv="col" type="button">📚 Только коллекция</button>
+        <button class="pstab" data-pv="dash" type="button">📊 Дашборд и витрина</button>
+      </div>
+      <span class="meta" style="margin:0" id="profTimeSummary"></span>
+    </div>
+    <div id="profOverviewWrap">
+      <div class="tiles" id="profStats"></div>
+      <div id="profDash"></div>
+      <div id="profStrips"></div>
+    </div>
 
-  <div class="row">
+  <div id="profColWrap">
+  <div class="row" id="colToolbar">
     <input type="text" id="searchInput" placeholder="Поиск: название, автор, студия, год...">
     <button class="btn btn-s" id="rndBtn">🎲 Случайный</button>
     <button class="btn btn-s" id="viewBtn">☰ Список</button>
@@ -370,6 +464,7 @@ html[data-theme=white] .fs{color:#5b3fd1}
   </div>
   <div class="filters" id="kindFilters" style="display:none;margin-top:8px"><button class="kb on" data-k="Все">Все виды</button><button class="kb" data-k="Манга">Манга</button><button class="kb" data-k="Манхва">Манхва</button><button class="kb" data-k="Маньхуа">Маньхуа</button><button class="kb" data-k="Комикс">Комикс</button></div>
   <div class="grid" id="itemsGrid"></div>
+  </div>
   </div>
 </div>
 
@@ -405,12 +500,13 @@ html[data-theme=white] .fs{color:#5b3fd1}
   <div class="row2"><input id="inputAuthor" placeholder="Автор / режиссёр"><input id="inputStudio" placeholder="Студия"></div>
   <div class="row2"><select id="inputSource"><option value="">Источник: не указан</option><option>Оригинал</option><option>Манга</option><option>Ранобэ</option><option>Визуальная новелла</option><option>Игра</option><option>Книга</option><option>Комикс</option><option>Другое</option></select><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" id="inputOngoing" style="flex:none;width:18px;height:18px;padding:0"> Онгоинг (выходит сейчас)</label></div>
   <div class="fs">Объём</div>
-  <div class="row2"><input type="number" id="inputEps" placeholder="Серий или глав" min="0"><input type="number" id="inputDur" placeholder="Минут на серию или фильм" min="0"></div>
+  <div class="row2"><input type="number" id="inputWatchedEps" placeholder="Просмотрено серий/глав" min="0"><input type="number" id="inputEps" placeholder="Всего серий или глав" min="0"><input type="number" id="inputDur" placeholder="Минут на серию/фильм" min="0"></div>
   <div class="fs">Жанры и описание</div>
   <input id="inputTags" placeholder="Жанры и теги (через запятую)">
   <input id="inputLists" placeholder="Подборки (через запятую)">
   <input id="inputRecBy" placeholder="Кто посоветовал (необязательно)">
   <textarea id="inputDescription" placeholder="Синопсис / Описание..."></textarea>
+  <textarea id="inputMyNote" placeholder="Личная заметка / мой отзыв (видно только тебе)..." style="min-height:60px"></textarea>
   <div class="fs">Как будет выглядеть</div><div id="pvCard" class="pv"></div>
   <div class="mb" style="justify-content:flex-end">
     <button class="btn btn-s" id="closeAddBtn" type="button">Отмена</button>
@@ -429,6 +525,7 @@ html[data-theme=white] .fs{color:#5b3fd1}
   <div class="ratings" id="detailRating" style="font-size:15px"></div>
   <div class="chips" id="detailTags"></div>
   <select id="detailStatusSel" style="max-width:240px"></select>
+  <div id="detailMyNote" class="my-note" style="display:none"></div>
   <div id="detailDescription"></div>
   <div class="mb">
     <button class="btn btn-d" id="deleteItemBtn">Удалить</button>
@@ -467,6 +564,20 @@ html[data-theme=white] .fs{color:#5b3fd1}
   <div class="row"><button class="btn btn-s" id="pfCvBtn" type="button">Загрузить картинку</button><button class="btn btn-s" id="pfCvDel" type="button">Убрать</button></div>
   <div class="row" id="pfGrad"></div>
   <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:14px"><input type="checkbox" id="pfBgAll"> Использовать этот фон на всём сайте</label>
+  <div class="fs">Кастомизация стиля и карточек</div>
+  <div class="row2">
+    <div class="fld"><label>Рамка аватара</label><select id="pfFrame"><option value="none">Без эффекта</option><option value="neon">⚡ Неоновый импульс</option><option value="gold">👑 Золотой ореол</option><option value="cyber">🤖 Киберпанк</option><option value="sakura">🌸 Сакура</option><option value="fire">🔥 Пламя</option></select></div>
+    <div class="fld"><label>Вид карточек</label><select id="pfCardStyle"><option value="">Стандартный</option><option value="sharp">Строгие углы</option><option value="minimal">Минимализм (постеры)</option></select></div>
+  </div>
+  <div class="row2">
+    <div class="fld"><label>Свой цвет акцента</label><input type="color" id="pfCustomColor" value="#7a5af8" style="height:40px;padding:4px;cursor:pointer"></div>
+    <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;padding-top:18px"><input type="checkbox" id="pfTilt" checked> 3D-наклон карточек при наведении</label>
+  </div>
+  <div class="fs">Мои вкусы для рекомендаций</div>
+  <div class="row2">
+    <div class="fld"><label>Любимые жанры</label><input id="pfLike" placeholder="Комедия, Фэнтези..."></div>
+    <div class="fld"><label>Скрывать жанры в каталоге</label><input id="pfDislike" placeholder="Ужасы..."></div>
+  </div>
   <input type="file" id="pfFile" accept="image/*" style="display:none">
   <div class="mb"><button class="btn btn-s" id="pfCancel" type="button">Отмена</button><button class="btn" id="pfSave" type="button">Сохранить</button></div>
 </div></div>
@@ -479,6 +590,15 @@ html[data-theme=white] .fs{color:#5b3fd1}
   <div id="calBody" style="display:flex;flex-direction:column;gap:6px"></div>
 </div></div>
 <button id="modalX" type="button">✕ Закрыть</button>
+<div id="dlgModal" class="modal" style="z-index:1500"><div class="mc" style="max-width:440px">
+  <h3 id="dlgTitle" style="margin:0">Подтверждение</h3>
+  <div id="dlgText" class="meta" style="margin:0;white-space:pre-line;font-size:13px;line-height:1.5"></div>
+  <div id="dlgBody" style="display:flex;flex-direction:column;gap:10px"></div>
+  <div class="mb" style="justify-content:flex-end">
+    <button class="btn btn-s" id="dlgCancel" type="button">Отмена</button>
+    <button class="btn" id="dlgOk" type="button">ОК</button>
+  </div>
+</div></div>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import {getAuth,signInWithPopup,signInWithRedirect,GoogleAuthProvider,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -506,6 +626,95 @@ const catLabel = i => i.category === 'Манга' && i.kind && i.kind !== 'Ма�
 const STATS = ['В планах','Смотрю/Читаю','Просмотрено/Прочитано','Любимое','Пересматриваю','Брошено'];
 const FALL = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280"><rect width="200" height="280" fill="%232c2c2c"/><text x="50%" y="50%" fill="%23777" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" dominant-baseline="middle">Нет постера</text></svg>';
 
+
+let localMode = false;
+function saveLocalItems() {
+  if (!localMode) return;
+  try { localStorage.setItem('localItems', JSON.stringify(items)); } catch (e) {}
+}
+function uiConfirm(msg, okLabel = 'Да, продолжить', danger = false) {
+  return new Promise(res => {
+    const m = $('dlgModal');
+    $('dlgTitle').textContent = 'Подтверждение действия';
+    $('dlgText').textContent = msg;
+    $('dlgBody').replaceChildren();
+    $('dlgCancel').style.display = '';
+    const ok = $('dlgOk');
+    ok.textContent = okLabel;
+    ok.className = 'btn' + (danger ? ' btn-d' : '');
+    const done = val => { m.style.display = 'none'; res(val); };
+    ok.onclick = () => done(true);
+    $('dlgCancel').onclick = () => done(false);
+    m.style.display = 'flex';
+  });
+}
+function uiPrompt(title, defVal = '', placeholder = '') {
+  return new Promise(res => {
+    const m = $('dlgModal'), inp = el('input');
+    inp.value = defVal || ''; inp.placeholder = placeholder;
+    $('dlgTitle').textContent = title;
+    $('dlgText').textContent = '';
+    $('dlgBody').replaceChildren(inp);
+    $('dlgCancel').style.display = '';
+    const ok = $('dlgOk'); ok.textContent = 'Сохранить'; ok.className = 'btn';
+    const done = val => { m.style.display = 'none'; res(val); };
+    ok.onclick = () => done(inp.value);
+    $('dlgCancel').onclick = () => done(null);
+    inp.onkeydown = e => { if (e.key === 'Enter') done(inp.value); };
+    m.style.display = 'flex';
+    setTimeout(() => inp.focus(), 40);
+  });
+}
+function uiListDialog(name, desc, cn, cols) {
+  return new Promise(res => {
+    const m = $('dlgModal'), iName = el('input'), iDesc = el('input'), swWrap = el('div', 'c-swatches');
+    iName.value = name || ''; iName.placeholder = 'Название подборки (пусто — удалить)';
+    iDesc.value = desc || ''; iDesc.placeholder = 'Описание подборки (необязательно)';
+    let curCol = cn || '';
+    const drawSw = () => [...swWrap.children].forEach(b => b.classList.toggle('on', b.dataset.c === curCol));
+    [['', '#475569'], ...Object.entries(cols)].forEach(([k, hex]) => {
+      const b = el('button', 'c-sw'); b.type = 'button'; b.dataset.c = k; b.style.background = hex; b.title = k || 'Без цвета';
+      b.onclick = () => { curCol = k; drawSw(); }; swWrap.append(b);
+    });
+    drawSw();
+    const f1 = el('div', 'fld'), f2 = el('div', 'fld'), f3 = el('div', 'fld');
+    f1.append(el('label', null, 'Название (оставь пустым, чтобы удалить подборку)'), iName);
+    f2.append(el('label', null, 'Краткое описание'), iDesc);
+    f3.append(el('label', null, 'Цвет метки'), swWrap);
+    $('dlgTitle').textContent = 'Настройка подборки';
+    $('dlgText').textContent = '';
+    $('dlgBody').replaceChildren(f1, f2, f3);
+    $('dlgCancel').style.display = '';
+    const ok = $('dlgOk'); ok.textContent = 'Сохранить'; ok.className = 'btn';
+    const done = val => { m.style.display = 'none'; res(val); };
+    ok.onclick = () => done({name: iName.value.trim(), desc: iDesc.value.trim(), cn: curCol});
+    $('dlgCancel').onclick = () => done(null);
+    m.style.display = 'flex';
+  });
+}
+const svgPoster = (t, sub, c1, c2, ic) => 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient></defs><rect width="300" height="450" fill="url(#g)"/><circle cx="240" cy="70" r="110" fill="rgba(255,255,255,0.08)"/><circle cx="50" cy="380" r="130" fill="rgba(0,0,0,0.2)"/><text x="150" y="185" font-size="68" text-anchor="middle">${ic}</text><text x="150" y="265" fill="#fff" font-family="sans-serif" font-weight="800" font-size="22" text-anchor="middle">${t}</text><text x="150" y="295" fill="rgba(255,255,255,0.75)" font-family="sans-serif" font-weight="600" font-size="13" text-anchor="middle">${sub}</text></svg>`);
+const DEMO_ITEMS = [
+  {id: 1710000001000, title: 'Провожающая в последний путь Фрирен', poster: svgPoster('ФРИРЕН', 'Sousou no Frieren', '#1e1b4b', '#4338ca', '🪄'), titleEn: 'Sousou no Frieren', titleOrig: '葬送のフリーレン', category: 'Аниме', kind: '', status: 'Любимое', year: '2023', rating: '10', extRating: '9.1', extSrc: 'AniList', eps: 28, watchedEps: 28, dur: 24, author: 'Канэхито Ямада', studio: 'Madhouse', source: 'Манга', ongoing: false, pin: true, tags: ['Фэнтези', 'Приключения', 'Драма'], lists: ['Шедевры', 'Уютное фэнтези'], myNote: 'Невероятная атмосфера, музыка Эвана Колла и очень глубокая история о времени и памяти.', description: 'После десятилетнего путешествия отряд героев победил Короля Демонов. Эльфийка-маг Фрирен отправляется в новое странствие, чтобы лучше понять людей.'},
+  {id: 1710000002000, title: 'Поднятие уровня в одиночку', poster: svgPoster('SOLO LEVELING', 'Поднятие уровня', '#0f172a', '#6d28d9', '⚔️'), titleEn: 'Solo Leveling', titleOrig: '나 혼자만 레벨업', category: 'Манга', kind: 'Манхва', status: 'Просмотрено/Прочитано', year: '2018', rating: '9', extRating: '8.7', extSrc: 'AniList', eps: 179, watchedEps: 179, dur: 0, author: 'Chugong, DUBU', studio: 'REDICE STUDIO', source: 'Ранобэ', ongoing: false, pin: true, tags: ['Экшен', 'Фэнтези', 'Приключения'], lists: ['Топ манхвы'], myNote: 'Прочитал на одном дыхании за пару выходных, рисовка боёв эталонная.', description: 'Сон Джину — самый слабый охотник E-ранга, который после выживания в двойном подземелье получает уникальную Систему прокачки.'},
+  {id: 1710000003000, title: 'Аркейн', poster: svgPoster('ARCANE', 'League of Legends', '#3b0764', '#be185d', '⚙️'), titleEn: 'Arcane', titleOrig: 'Arcane', category: 'Мультфильм', kind: '', status: 'Смотрю/Читаю', year: '2021', rating: '10', extRating: '8.8', extSrc: 'TMDB', eps: 18, watchedEps: 12, dur: 41, author: 'Кристиан Линке', studio: 'Fortiche', source: 'Игра', ongoing: false, pin: false, tags: ['Фантастика и фэнтези', 'Драма', 'Боевик'], lists: ['Шедевры'], myNote: 'Каждый кадр можно ставить на обои.', description: 'История двух сестёр — Вай и Паудер — на фоне конфликта между богатым городом Пилтовер и мрачным подземельем Заун.'},
+  {id: 1710000004000, title: 'Дюна: Часть вторая', poster: svgPoster('DUNE: PART TWO', 'Дюна: Часть вторая', '#78350f', '#d97706', '🏜️'), titleEn: 'Dune: Part Two', titleOrig: 'Dune: Part Two', category: 'Фильм', kind: '', status: 'Просмотрено/Прочитано', year: '2024', rating: '9', extRating: '8.3', extSrc: 'TMDB', eps: 1, watchedEps: 1, dur: 166, author: 'Дени Вильнёв', studio: 'Legendary Pictures', source: 'Книга', ongoing: false, pin: false, tags: ['Фантастика', 'Приключения', 'Драма'], lists: ['Кино с крутым визуалом'], myNote: 'Звук и масштаб в финале просто космические.', description: 'Пол Атрейдес объединяется с фрименами пустынной планеты Арракис, чтобы отомстить заговорщикам, уничтожившим его семью.'},
+  {id: 1710000005000, title: 'Дандадан', poster: svgPoster('DANDADAN', 'Дандадан', '#4c0519', '#e11d48', '🛸'), titleEn: 'Dandadan', titleOrig: 'ダンダダン', category: 'Аниме', kind: '', status: 'Смотрю/Читаю', year: '2024', rating: '9', extRating: '8.5', extSrc: 'AniList', eps: 12, watchedEps: 7, dur: 24, author: 'Юкинобу Тацу', studio: 'Science SARU', source: 'Манга', ongoing: true, pin: false, tags: ['Экшен', 'Комедия', 'Сверхъестественное'], lists: ['Смотрю сейчас'], myNote: 'Опенинг от Creepy Nuts — пушка!', description: 'Момо верит в призраков, но не в пришельцев, а Окарун — наоборот. Их спор приводит к безумным сверхъестественным приключениям.'},
+  {id: 1710000006000, title: 'Разделение', poster: svgPoster('SEVERANCE', 'Разделение', '#064e3b', '#0284c7', '🏢'), titleEn: 'Severance', titleOrig: 'Severance', category: 'Сериал', kind: '', status: 'В планах', year: '2022', rating: '', extRating: '8.7', extSrc: 'TMDB', eps: 19, watchedEps: 0, dur: 50, author: 'Дэн Эриксон, Бен Стиллер', studio: 'Apple TV+', source: 'Оригинал', ongoing: true, pin: false, tags: ['Детектив', 'Драма', 'Фантастика'], lists: ['На выходные'], myNote: '', description: 'Сотрудники корпорации Lumon соглашаются на процедуру разделения рабочих и личных воспоминаний.'}
+];
+function enterLocalMode() {
+  localMode = true;
+  user = {uid: 'local', displayName: prof.name || 'Локальный коллекционер', email: 'Локальное хранилище браузера', photoURL: '', metadata: {creationTime: new Date().toISOString()}};
+  $('authScreen').style.display = 'none'; $('appScreen').style.display = 'block';
+  $('syncState').className = 'sync'; $('syncState').textContent = '💾 Локальный режим';
+  $('profName').textContent = prof.name || user.displayName; $('profMail').textContent = user.email;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('localItems') || 'null'); } catch (e) {}
+  items = (Array.isArray(saved) && saved.length ? saved : DEMO_ITEMS).map(fix);
+  saveLocalItems();
+  loaded = true; refresh(); profPaint(); homeTab();
+  if (!cgGrid.children.length) cgLoad(true);
+}
+
 let user = null, items = [], loaded = false, cat = 'Всё', kind = 'Все', curId = null, unsub = null, posterValue = '', view = localStorage.getItem('view') || 'grid', ongOnly = false, xf = null, lastList = [], afTok = 0;
 const grid = $('itemsGrid');
 
@@ -515,7 +724,8 @@ $('loginBtn').onclick = () => signInWithPopup(auth, provider).catch(e => {
   if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(e.code))
     toast('Ошибка входа: ' + e.message + '\nЕсли открыл ссылку из Telegram или другого приложения — открой сайт в обычном браузере.');
 });
-$('logoutBtn').onclick = () => signOut(auth);
+$('guestBtn').onclick = enterLocalMode;
+$('logoutBtn').onclick = () => { if (localMode) { localMode = false; user = null; items = []; loaded = false; $('appScreen').style.display = 'none'; $('authScreen').style.display = 'flex'; } else signOut(auth); };
 
 onAuthStateChanged(auth, u => {
   user = u;
@@ -527,6 +737,7 @@ onAuthStateChanged(auth, u => {
       snap => { const all = snap.docs.map(d => d.data()), pd = all.find(x => x.isProfile); if (pd) { const {isProfile, userId, ...rest} = pd; Object.assign(prof, rest); profSaveLocal(); } else if (!profTried && (prof.name || prof.bio || prof.avatar || prof.cover || prof.coverColor)) { profTried = true; profCloud(); } const nx = all.filter(x => !x.isProfile).map(fix); actDiff(items, nx, loaded); items = nx; loaded = true; refresh(); profPaint(); homeTab(); },
       err => toast('Не удалось загрузить данные: ' + err.message));
   } else {
+    if (localMode) return;
     if (unsub) unsub(); unsub = null; items = []; loaded = false;
     $('appScreen').style.display = 'none'; $('authScreen').style.display = 'flex';
   }
@@ -542,7 +753,7 @@ const setSync = () => {
 };
 const track = p => { pend++; setSync(); return p.then(() => { pend--; if (!pend) syncBad = false; setSync(); }, e => { pend--; syncBad = true; setSync(); throw e; }); };
 addEventListener('online', setSync); addEventListener('offline', setSync);
-const cloudSave = it => track(setDoc(doc(db, 'items', String(it.id)), {...it, userId: user.uid})).catch(e => toast('Не удалось сохранить в облако: ' + e.message, true));
+const cloudSave = it => { if (localMode) { saveLocalItems(); return Promise.resolve(); } return track(setDoc(doc(db, 'items', String(it.id)), {...it, userId: user.uid})).catch(e => toast('Не удалось сохранить в облако: ' + e.message, true)); };
 
 // ---------- Отрисовка ----------
 const names = i => [i.title, i.titleEn, i.titleOrig, i.alt, i.author, i.studio, i.source, i.year, (i.tags || []).join(' ')].join(' ').toLowerCase();
@@ -603,13 +814,42 @@ function render() {
     const ov = el('div', 'ov'); ov.append(el('p', null, i.description || 'Описание отсутствует.'));
     pc.append(img, ov, st);
     if (i.ongoing) pc.append(el('div', 'ong', 'ОНГОИНГ'));
+    if (i.pin) { const pb = el('div', 'pin-badge', '📌'); pb.title = 'Закреплено в коллекции'; pc.append(pb); }
     if (i.rating) pc.append(el('div', 'mine', '★ ' + i.rating));
+    if (i.eps > 0 || i.watchedEps > 0) {
+      const unit = i.category === 'Манга' || i.category === 'Ранобэ' ? 'гл.' : 'эп.';
+      const w = i.watchedEps || (i.status === 'Просмотрено/Прочитано' ? i.eps : 0);
+      const pill = el('div', 'ep-pill');
+      pill.append(el('span', null, i.eps ? `${w}/${i.eps} ${unit}` : `${w} ${unit}`));
+      if (i.status === 'Смотрю/Читаю' && (!i.eps || w < i.eps)) {
+        const plus = el('button', 'ep-plus', '+1');
+        plus.type = 'button'; plus.title = 'Добавить +1 серию / главу';
+        plus.onclick = e => {
+          e.stopPropagation();
+          i.watchedEps = (i.watchedEps || 0) + 1;
+          if (i.eps && i.watchedEps >= i.eps) {
+            i.watchedEps = i.eps;
+            toast(`Все серии (${i.eps}) просмотрены! Перевести «${i.title}» в Завершено?`, false, {label: 'Завершить ✓', fn: () => { i.status = 'Просмотрено/Прочитано'; cloudSave(i); refresh(); }});
+          } else {
+            toast(`${i.title}: ${i.watchedEps}${i.eps ? ' из ' + i.eps : ''} ${unit}`);
+          }
+          cloudSave(i); refresh();
+        };
+        pill.append(plus);
+      }
+      pc.append(pill);
+      if (i.eps > 0 && w > 0) {
+        const ln = el('div', 'ep-line'), fill = el('i');
+        fill.style.width = Math.min(100, Math.round(w / i.eps * 100)) + '%';
+        ln.append(fill); pc.append(ln);
+      }
+    }
     const info = el('div', 'ci'), row = el('div', 'cm');
     row.append(el('span', null, [i.year, catLabel(i)].filter(Boolean).join('  |  ')), el('span', 'star', i.extRating ? '★ ' + i.extRating : ''));
     const bd = el('div', 'bd2'), st2 = el('div', 'status', SHORT[i.status] || i.status); st2.dataset.s = i.status; bd.append(st2); if (i.ongoing) bd.append(el('div', 'ong', 'ОНГОИНГ'));
     info.append(Object.assign(el('h3', 'title', i.title), {title: i.title}), row, el('div', 'tg', (i.tags || []).slice(0, 3).join(', ')), bd);
     card.append(pc, info); card.tabIndex = 0; card.onclick = () => openDetail(i.id); card.onkeydown = e => { if (e.key === 'Enter') openDetail(i.id); };
-    card.onmousemove = e => { if (view === 'list') return; const r = pc.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5; pc.style.transform = `perspective(700px) rotateY(${x * 10}deg) rotateX(${-y * 10}deg) translateY(-6px)`; };
+    card.onmousemove = e => { if (view === 'list' || prof.tilt === false) return; const r = pc.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5; pc.style.transform = `perspective(700px) rotateY(${x * 10}deg) rotateX(${-y * 10}deg) translateY(-6px)`; };
     card.onmouseleave = () => { pc.style.transform = ''; };
     grid.append(card);
   });
@@ -629,7 +869,7 @@ const setSize = v => { document.documentElement.style.setProperty('--cw', v + 'p
 $('sizeSel').value = localStorage.getItem('cw') || '190'; setSize($('sizeSel').value || '190'); $('sizeSel').onchange = e => setSize(e.target.value);
 
 // ---------- Окна ----------
-const closeAll = () => ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'calModal'].forEach(id => $(id).style.display = 'none');
+const closeAll = () => ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'calModal', 'dlgModal'].forEach(id => $(id).style.display = 'none');
 ['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'rndClose'].forEach(id => $(id).onclick = closeAll);
 window.onclick = e => { if (e.target.classList.contains('modal')) closeAll(); };
 window.onkeydown = e => { if (e.key === 'Escape') closeAll(); };
@@ -759,7 +999,7 @@ async function ruBulk() {   // перевод уже добавленной ко
   if (ruBusy) return toast('Перевод уже идёт — подожди, пожалуйста.');
   const todo = items.filter(i => !hasRu(i.title) || (i.description && !hasRu(i.description)));
   if (!todo.length) return toast('Всё уже на русском 🙂');
-  if (!confirm(`Тайтлов с английским названием или описанием: ${todo.length}.\nСначала скачается бэкап, потом всё переведётся по очереди (несколько минут, вкладку лучше не закрывать).\nПродолжить?`)) return;
+  if (!(await uiConfirm(`Тайтлов с английским названием или описанием: ${todo.length}.\nСначала скачается бэкап, потом всё переведётся по очереди (несколько минут, вкладку лучше не закрывать).\nПродолжить?`, 'Перевести'))) return;
   ruBusy = true; exportData(); let ok = 0, n = 0;
   try {
     for (const i of todo) {
@@ -785,7 +1025,7 @@ async function ruBulk() {   // перевод уже добавленной ко
 }
 $('accRu').onclick = ruBulk;
 // ---- Темы оформления
-const THEMES = [['', '🌌 Стекло'], ['black', '⬛ Чёрная'], ['white', '⬜ Белая']];
+const THEMES = [['', '🌌 Стекло'], ['black', '⬛ Чёрная'], ['white', '⬜ Белая'], ['neon', '🌸 Неон'], ['mocha', '☕ Мокко']];
 function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem('theme', t); } catch (e) {} [...$('accTh').children].forEach(b => b.classList.toggle('on', b.dataset.t === t)); }
 THEMES.forEach(([t, n]) => { const b = el('button', null, n); b.dataset.t = t; b.onclick = e => { e.stopPropagation(); setTheme(t); }; $('accTh').append(b); });
 try { setTheme(localStorage.getItem('theme') || ''); } catch (e) {}
@@ -794,8 +1034,8 @@ let profTried = false;
 let prof = {name: '', bio: '', avatar: '', cover: '', coverColor: 0, bgAll: false}, pf = null, pfTarget = '';
 try { Object.assign(prof, JSON.parse(localStorage.getItem('prof') || '{}')); } catch (e) {}
 const profSaveLocal = () => { try { localStorage.setItem('prof', JSON.stringify(prof)); } catch (e) {} };
-const profCloud = () => { profSaveLocal(); if (user) track(setDoc(doc(db, 'items', 'prof_' + user.uid), {isProfile: true, ...prof, userId: user.uid})).catch(e => toast('Профиль сохранён только на этом устройстве: ' + e.message, true)); };
-const GRAD = ['linear-gradient(135deg,#6a4cf0,#38bdf8)', 'linear-gradient(135deg,#ff5d8f,#f59e0b)', 'linear-gradient(135deg,#0f766e,#2dd4bf)', 'linear-gradient(135deg,#111827,#4b5563)', 'linear-gradient(135deg,#7c2d12,#f59e0b)', 'linear-gradient(135deg,#1e3a8a,#a78bfa)'];
+const profCloud = () => { profSaveLocal(); if (user && !localMode) track(setDoc(doc(db, 'items', 'prof_' + user.uid), {isProfile: true, ...prof, userId: user.uid})).catch(e => toast('Профиль сохранён только на этом устройстве: ' + e.message, true)); };
+const GRAD = ['linear-gradient(135deg,#6a4cf0,#38bdf8)', 'linear-gradient(135deg,#ff5d8f,#f59e0b)', 'linear-gradient(135deg,#0f766e,#2dd4bf)', 'linear-gradient(135deg,#111827,#4b5563)', 'linear-gradient(135deg,#7c2d12,#f59e0b)', 'linear-gradient(135deg,#1e3a8a,#a78bfa)', 'linear-gradient(135deg,#ec4899,#8b5cf6,#06b6d4)', 'linear-gradient(135deg,#059669,#10b981,#a7f3d0)'];
 function profPaint() {
   rtApply();
   const lsAcc = () => { try { return +localStorage.getItem('acc') || 0; } catch (e) { return 0; } };
@@ -804,6 +1044,13 @@ function profPaint() {
   const u = user || {}, av = prof.avatar || u.photoURL || '', bg = prof.cover ? `url("${prof.cover}")` : prof.coverColor ? GRAD[prof.coverColor - 1] : '';
   $('avatar').src = av; $('hdrAvatar').src = av; if (prof.name) $('profName').textContent = prof.name;
   $('profBio').textContent = prof.bio || ''; $('profBio').style.display = prof.bio ? '' : 'none';
+  if ($('avWrap')) $('avWrap').dataset.frame = prof.frame || 'none';
+  document.body.classList.remove('cs-sharp', 'cs-minimal');
+  if (prof.cardStyle) document.body.classList.add('cs-' + prof.cardStyle);
+  if (prof.customColor) {
+    document.documentElement.style.setProperty('--ac', prof.customColor);
+    document.documentElement.style.setProperty('--ach', prof.customColor);
+  }
   const pc = document.querySelector('.pcard'); if (pc) { pc.classList.toggle('hascover', !!bg); pc.style.backgroundImage = prof.cover ? `linear-gradient(rgba(8,9,16,.4),rgba(8,9,16,.75)),${bg}` : bg; }
   document.documentElement.style.setProperty('--bgimg', bg || 'none'); document.body.classList.toggle('bgimg', !!(prof.bgAll && bg));
 }
@@ -811,7 +1058,7 @@ function imgData(file, w, h, q) {   // обрезка по центру до w×
   return new Promise((ok, no) => { const fr = new FileReader(); fr.onerror = no; fr.onload = () => { const im = new Image(); im.onerror = no; im.onload = () => { const c = document.createElement('canvas'); c.width = w; c.height = h; const k = Math.max(w / im.width, h / im.height), sw = w / k, sh = h / k; c.getContext('2d').drawImage(im, (im.width - sw) / 2, (im.height - sh) / 2, sw, sh, 0, 0, w, h); ok(c.toDataURL('image/jpeg', q)); }; im.src = fr.result; }; fr.readAsDataURL(file); });
 }
 function pfDraw() { $('pfAv').src = pf.avatar || (user && user.photoURL) || ''; [...$('pfGrad').children].forEach((b, k) => b.classList.toggle('on', pf.coverColor === k + 1 && !pf.cover)); }
-function pfOpen() { pf = {...prof}; $('pfName').value = pf.name || ''; $('pfBio').value = pf.bio || ''; $('pfBgAll').checked = !!pf.bgAll; pfDraw(); $('profModal').style.display = 'flex'; }
+function pfOpen() { pf = {...prof}; $('pfName').value = pf.name || ''; $('pfBio').value = pf.bio || ''; $('pfBgAll').checked = !!pf.bgAll; $('pfFrame').value = pf.frame || 'none'; $('pfCardStyle').value = pf.cardStyle || ''; $('pfCustomColor').value = pf.customColor || '#7a5af8'; $('pfTilt').checked = pf.tilt !== false; $('pfLike').value = pf.like || ''; $('pfDislike').value = pf.dislike || ''; pfDraw(); $('profModal').style.display = 'flex'; }
 GRAD.forEach((g, k) => { const b = el('button', 'gsw'); b.type = 'button'; b.style.background = g; b.title = 'Цвет фона'; b.onclick = () => { pf.coverColor = k + 1; pf.cover = ''; pfDraw(); }; $('pfGrad').append(b); });
 $('profEditBtn').onclick = pfOpen;
 ['pfAvBtn', 'pfCvBtn'].forEach(id => $(id).onclick = () => { pfTarget = id; $('pfFile').value = ''; $('pfFile').click(); });
@@ -823,7 +1070,7 @@ $('pfFile').onchange = async () => {
 $('pfAvDel').onclick = () => { pf.avatar = ''; pfDraw(); };
 $('pfCvDel').onclick = () => { pf.cover = ''; pf.coverColor = 0; pfDraw(); };
 $('pfCancel').onclick = () => { $('profModal').style.display = 'none'; };
-$('pfSave').onclick = () => { Object.assign(prof, {name: $('pfName').value.trim(), bio: $('pfBio').value.trim(), avatar: pf.avatar || '', cover: pf.cover || '', coverColor: pf.coverColor || 0, bgAll: $('pfBgAll').checked}); profCloud(); profPaint(); $('profModal').style.display = 'none'; toast('Профиль сохранён'); };
+$('pfSave').onclick = () => { const cc = $('pfCustomColor').value; Object.assign(prof, {name: $('pfName').value.trim(), bio: $('pfBio').value.trim(), avatar: pf.avatar || '', cover: pf.cover || '', coverColor: pf.coverColor || 0, bgAll: $('pfBgAll').checked, frame: $('pfFrame').value, cardStyle: $('pfCardStyle').value, customColor: cc !== '#7a5af8' ? cc : (prof.customColor || ''), tilt: $('pfTilt').checked, like: $('pfLike').value.trim(), dislike: $('pfDislike').value.trim()}); profCloud(); profPaint(); refresh(); $('profModal').style.display = 'none'; toast('Профиль и стиль сохранены ✨'); };
 const kv = (h, l, v) => { if (!v) return; const d = el('div'); d.append(el('span', null, l + ': '), document.createTextNode(v)); h.append(d); };
 const goList = n => { $('listFilter').value = n.toLowerCase(); render(); toList(); };
 function refreshLists() {
@@ -834,11 +1081,15 @@ function refreshLists() {
 }
 $('listFilter').onchange = render;
 const LCOL = {красный: '#ef4444', оранжевый: '#f59e0b', жёлтый: '#eab308', зелёный: '#22c55e', голубой: '#38bdf8', синий: '#3b82f6', фиолетовый: '#8b5cf6', розовый: '#ec4899'};
-function listEdit(name) {
+async function listEdit(name) {
   const hit = items.filter(i => (i.lists || []).includes(name)); if (!hit.length) return;
-  const v = prompt('Название подборки (пусто — удалить подборку, тайтлы останутся в коллекции):', name); if (v === null) return;
-  const nn = v.trim(); prof.listMeta = prof.listMeta || {};
-  if (nn) { const lm = prof.listMeta[name] || {}, d = prompt('Описание подборки (необязательно):', lm.desc || ''); if (d === null) return; const c = prompt('Цвет метки: ' + Object.keys(LCOL).join(', ') + ' (или пусто):', lm.cn || ''); if (c === null) return; delete prof.listMeta[name]; prof.listMeta[nn] = {desc: d.trim(), cn: (c || '').trim().toLowerCase()}; } else delete prof.listMeta[name];
+  prof.listMeta = prof.listMeta || {};
+  const lm = prof.listMeta[name] || {};
+  const res = await uiListDialog(name, lm.desc || '', lm.cn || '', LCOL);
+  if (!res) return;
+  const nn = res.name;
+  delete prof.listMeta[name];
+  if (nn) prof.listMeta[nn] = {desc: res.desc, cn: res.cn};
   if (nn !== name) hit.forEach(i => { i.lists = i.lists.filter(x => x !== name); if (nn && !i.lists.includes(nn)) i.lists.push(nn); cloudSave(i); });
   profCloud(); refresh(); toast(nn ? 'Подборка сохранена: ' + nn : 'Подборка «' + name + '» удалена');
 }
@@ -862,8 +1113,8 @@ grid.addEventListener('click', e => { if (!selMode) return; const c = e.target.c
 $('selBtn').onclick = () => selToggle(!selMode); $('selOff').onclick = () => selToggle(false);
 $('selSt').replaceChildren(new Option('Сменить статус…', ''), ...STATS.map(x => new Option(x, x)));
 $('selSt').onchange = () => { const v = $('selSt').value; $('selSt').value = ''; if (!v || !selSet.size) return; const hit = items.filter(i => selSet.has(i.id)); hit.forEach(i => { i.status = v; cloudSave(i); }); refresh(); toast(`Статус «${v}» у тайтлов: ${hit.length}`); };
-$('selList').onclick = () => { if (!selSet.size) return toast('Сначала выбери тайтлы (нажимай на карточки)'); const nm = (prompt('В какую подборку добавить выбранные тайтлы?') || '').trim(); if (!nm) return; const hit = items.filter(i => selSet.has(i.id)); hit.forEach(i => { i.lists = i.lists || []; if (!i.lists.includes(nm)) i.lists.push(nm); cloudSave(i); }); refresh(); toast(`В подборку «${nm}» добавлено: ${hit.length}`); };
-$('selDel').onclick = () => { if (!selSet.size) return toast('Сначала выбери тайтлы (нажимай на карточки)'); if (!confirm(`Удалить выбранные тайтлы (${selSet.size})? Отменить это нельзя — лучше сначала скачать бэкап.`)) return; [...selSet].forEach(id => removeItem(id)); selToggle(false); };
+$('selList').onclick = async () => { if (!selSet.size) return toast('Сначала выбери тайтлы (нажимай на карточки)'); const raw = await uiPrompt('Добавить в подборку', '', 'Название подборки...'); const nm = (raw || '').trim(); if (!nm) return; const hit = items.filter(i => selSet.has(i.id)); hit.forEach(i => { i.lists = i.lists || []; if (!i.lists.includes(nm)) i.lists.push(nm); cloudSave(i); }); refresh(); toast(`В подборку «${nm}» добавлено: ${hit.length}`); };
+$('selDel').onclick = async () => { if (!selSet.size) return toast('Сначала выбери тайтлы (нажимай на карточки)'); if (!(await uiConfirm(`Удалить выбранные тайтлы (${selSet.size})? Отменить это нельзя — лучше сначала скачать бэкап.`, 'Удалить', true))) return; [...selSet].forEach(id => removeItem(id)); selToggle(false); };
 document.querySelectorAll('#botnav button').forEach(b => b.onclick = () => { const g = b.dataset.go; if (g === 'add') { openAdd(null); draftRestore(); } else if (g === 'profile') document.querySelector('.tab[data-v="profile"]').click(); else document.querySelector('.tab:not([data-v="profile"])').click(); window.scrollTo({top: 0, behavior: 'smooth'}); });
 let uiT = 0; const uiSync = () => { clearTimeout(uiT); uiT = setTimeout(profCloud, 1500); };
 const _setTheme = setTheme; setTheme = (t, quiet) => { _setTheme(t); if (!quiet) { prof.theme = t; profSaveLocal(); uiSync(); } };
@@ -900,7 +1151,7 @@ $('cgThree').onclick = cgThree; $('cgPick').onclick = cgPickMe;
 let importReplace = false;
 $('accImpR').onclick = () => { importReplace = true; $('importFile').addEventListener('cancel', () => { importReplace = false; }, {once: true}); $('importFile').click(); };
 { const nb = document.querySelector('button[onclick="importFile.click()"]'); if (nb) nb.addEventListener('click', () => { importReplace = false; }); }
-$('accKey').onclick = () => { let cur = ''; try { cur = localStorage.getItem('tmdbKey') || ''; } catch (e) {} const v = prompt('Ключ TMDB (API Key v3) для фильмов и сериалов.\nПусто — удалить ключ с этого устройства:', cur); if (v === null) return; try { if (v.trim()) localStorage.setItem('tmdbKey', v.trim()); else localStorage.removeItem('tmdbKey'); } catch (e) {} toast(v.trim() ? 'Ключ TMDB сохранён' : 'Ключ TMDB удалён'); };
+$('accKey').onclick = async () => { let cur = ''; try { cur = localStorage.getItem('tmdbKey') || ''; } catch (e) {} const v = await uiPrompt('Ключ TMDB (API Key v3) для фильмов и сериалов', cur, 'Вставь API Key v3 (пусто — удалить)'); if (v === null) return; try { if (v.trim()) localStorage.setItem('tmdbKey', v.trim()); else localStorage.removeItem('tmdbKey'); } catch (e) {} toast(v.trim() ? 'Ключ TMDB сохранён' : 'Ключ TMDB удалён'); };
 function rtApply() { document.body.classList.remove('rt-ext', 'rt-mine', 'rt-none'); if (prof.rt) document.body.classList.add('rt-' + prof.rt); $('accRt').value = prof.rt || ''; $('accAuto').checked = !!prof.autoBak; }
 $('accRt').onchange = () => { prof.rt = $('accRt').value; profCloud(); rtApply(); };
 $('accAuto').onchange = () => { prof.autoBak = $('accAuto').checked; profCloud(); };
@@ -921,7 +1172,7 @@ async function simPreview(r) {
     ns.forEach(x => { const b = el('button', 'chip', ru[x.mal] || x.en); b.type = 'button'; b.onclick = () => { closeAll(); $('cgSearch').value = x.en; $('cgClear').style.display = ''; cgGo(); }; box.append(b); });
   } catch (e) {}
 }
-const LBL = {inputCategory: 'Категория', inputStatus: 'Статус', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (например: Лучшее аниме, На выходные)', inputRecBy: 'Кто посоветовал', inputEps: 'Серий или глав', inputDur: 'Минут на серию или фильм', inputDescription: 'Синопсис / описание'};
+const LBL = {inputCategory: 'Категория', inputStatus: 'Статус', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (например: Лучшее аниме, На выходные)', inputRecBy: 'Кто посоветовал', inputWatchedEps: 'Просмотрено (серий/глав)', inputEps: 'Всего серий или глав', inputDur: 'Минут на серию или фильм', inputDescription: 'Синопсис / описание', inputMyNote: 'Личная заметка / мой отзыв'};
 Object.entries(LBL).forEach(([id, t]) => { const e = $(id), w = el('div', 'fld'); e.replaceWith(w); w.append(el('label', null, t), e); });
 const DF = Object.keys(LBL).concat('inputExtSrc');
 const draftClear = () => { try { localStorage.removeItem('draft'); } catch (e) {} };
@@ -950,7 +1201,7 @@ $('addModal').addEventListener('input', pvDraw); $('addModal').addEventListener(
 const CATL = {'Аниме': ['Режиссёр / автор оригинала', 'Студия'], 'Манга': ['Автор / художник', 'Издатель'], 'Ранобэ': ['Автор', 'Издатель'], 'Фильм': ['Режиссёр', 'Студия / компания'], 'Сериал': ['Создатель / режиссёр', 'Студия / канал'], 'Мультфильм': ['Режиссёр', 'Студия']};
 function catFields() { const c = $('inputCategory').value, l = CATL[c], a = $('inputAuthor').previousSibling, t = $('inputStudio').previousSibling; if (l && a && t) { a.textContent = l[0]; t.textContent = l[1]; } const o = $('inputOngoing').parentElement; if (o) o.style.display = c === 'Фильм' ? 'none' : ''; }
 $('inputCategory').addEventListener('change', catFields);
-const _oa2 = openAdd; openAdd = function (item) { _oa2(item); $('inputEps').value = (item && item.eps) || ''; $('inputDur').value = (item && item.dur) || ''; starPaint(); catFields(); pvDraw(); };
+const _oa2 = openAdd; openAdd = function (item) { _oa2(item); $('inputWatchedEps').value = (item && item.watchedEps) || ''; $('inputEps').value = (item && item.eps) || ''; $('inputDur').value = (item && item.dur) || ''; $('inputMyNote').value = (item && item.myNote) || ''; starPaint(); catFields(); pvDraw(); };
 ['dragover', 'drop'].forEach(ev => $('posterPreview').addEventListener(ev, async e => {
   e.preventDefault(); if (ev !== 'drop') return; const f = e.dataTransfer && e.dataTransfer.files[0];
   if (!f || !f.type.startsWith('image/')) return toast('Перетащи сюда картинку (jpg, png, webp)', true);
@@ -1042,7 +1293,7 @@ document.addEventListener('load', e => { if (e.target && e.target.tagName === 'I
 document.addEventListener('error', e => { if (e.target && e.target.tagName === 'IMG') e.target.classList.add('ld'); }, true);
 
 const UIK = ['acc', 'cw', 'profHide', 'view'];
-$('accReset').onclick = () => { if (!confirm('Сбросить оформление (цвет, размер карточек, вид, скрытые блоки профиля, скрытое в каталоге)? Коллекция не пострадает.')) return; try { UIK.concat('cgHid', 'draft', 'theme').forEach(k => localStorage.removeItem(k)); } catch (e) {} location.reload(); };
+$('accReset').onclick = async () => { if (!(await uiConfirm('Сбросить оформление (цвет, размер карточек, вид, скрытые блоки профиля, скрытое в каталоге)? Коллекция не пострадает.', 'Сбросить'))) return; try { UIK.concat('cgHid', 'draft', 'theme').forEach(k => localStorage.removeItem(k)); } catch (e) {} location.reload(); };
 let recI = 0;
 $('cgRec').onclick = () => {
   const opts = [...$('cgGenre').options].filter(o => o.value), mine = [...spl(prof.like).map(x => [x]), ...topBy(i => i.tags || [])].map(r => opts.find(o => o.textContent.trim().toLowerCase() === r[0].toLowerCase())).filter(Boolean);
@@ -1062,12 +1313,12 @@ $('saveItemBtn').onclick = async () => {
   if (year && (year < 1900 || year > 2100)) return toast('Год должен быть между 1900 и 2100');
   const category = $('inputCategory').value;
   if (!editId && items.some(i => same(i, {title, titleEn: $('inputTitleEn').value, titleOrig: $('inputTitleOrig').value, alt: $('inputAlt').value, category})) &&
-      !confirm('Похожий тайтл уже есть в коллекции. Всё равно добавить?')) return;
+      !(await uiConfirm('Похожий тайтл уже есть в коллекции. Всё равно добавить?', 'Всё равно добавить'))) return;
   const it = {
     id: editId ? Number(editId) : newId(), title, category, kind: category === 'Манга' ? $('inputKind').value : '', status: $('inputStatus').value, poster: posterValue, year,
     rating: $('inputRating').value, extRating: $('inputExtRating').value, extSrc: $('inputExtSrc').value, description: $('inputDescription').value.trim(),
     titleEn: $('inputTitleEn').value.trim(), titleOrig: $('inputTitleOrig').value.trim(), alt: $('inputAlt').value.trim(), author: $('inputAuthor').value.trim(), studio: $('inputStudio').value.trim(), source: $('inputSource').value, ongoing: $('inputOngoing').checked,
-    tags: parseTags($('inputTags').value), lists: parseTags($('inputLists').value), recBy: $('inputRecBy').value.trim(), eps: +$('inputEps').value || 0, dur: +$('inputDur').value || 0
+    tags: parseTags($('inputTags').value), lists: parseTags($('inputLists').value), recBy: $('inputRecBy').value.trim(), watchedEps: +$('inputWatchedEps').value || 0, eps: +$('inputEps').value || 0, dur: +$('inputDur').value || 0, myNote: $('inputMyNote').value.trim()
   };
   { const old = items.find(x => x.id === it.id); if (old) ['pin', 'archived', 'prevSt', 'seasons'].forEach(k => { if (old[k]) it[k] = old[k]; }); }
   const k = items.findIndex(x => x.id === it.id);
@@ -1081,7 +1332,7 @@ $('saveItemBtn').onclick = async () => {
 function openDetail(id) {
   const i = items.find(x => x.id === id); if (!i) return; curId = id;
   $('detailPoster').src = i.poster || FALL; $('detailTitle').textContent = i.title; $('detailStatus').textContent = i.status; $('detailStatus').dataset.s = i.status;
-  $('detailMeta').textContent = `${catLabel(i)} • ${i.year || 'Год не указан'}${i.ongoing ? ' • ● Онгоинг' : ''}${born(i) ? ' • Добавлено ' + new Date(born(i)).toLocaleDateString('ru-RU') : ''}${i.eps ? ' • ' + i.eps + (i.category === 'Манга' || i.category === 'Ранобэ' ? ' гл.' : ' эп.') : ''}${i.seasons ? ' • сезонов: ' + i.seasons : ''}${i.dur ? ' • ' + i.dur + ' мин' : ''}`;
+  $('detailMeta').textContent = `${catLabel(i)} • ${i.year || 'Год не указан'}${i.ongoing ? ' • ● Онгоинг' : ''}${born(i) ? ' • Добавлено ' + new Date(born(i)).toLocaleDateString('ru-RU') : ''}${(i.eps || i.watchedEps) ? ' • ' + (i.watchedEps ? i.watchedEps + '/' + (i.eps || '?') : i.eps) + (i.category === 'Манга' || i.category === 'Ранобэ' ? ' гл.' : ' эп.') : ''}${i.seasons ? ' • сезонов: ' + i.seasons : ''}${i.dur ? ' • ' + i.dur + ' мин' : ''}`;
   $('detailNames').textContent = [i.titleEn, i.titleOrig, i.alt].filter(Boolean).join(' / ');
   const cr = $('detailCredits'); cr.replaceChildren();
   [['Автор', 'author'], ['Студия', 'studio'], ['Источник', 'source']].forEach(([lab, k]) => {
@@ -1094,14 +1345,15 @@ function openDetail(id) {
   const tg = $('detailTags'); tg.replaceChildren();
   (i.tags || []).forEach(t => { const c = el('button', 'chip', t); c.onclick = () => { closeAll(); $('tagFilter').value = t.toLowerCase(); render(); }; tg.append(c); });
   (i.lists || []).forEach(t => { const c = el('button', 'chip', '📁 ' + t); c.onclick = () => { closeAll(); $('listFilter').value = t.toLowerCase(); render(); }; tg.append(c); });
+  const mn = $('detailMyNote'); if (mn) { mn.style.display = i.myNote ? '' : 'none'; mn.textContent = i.myNote ? '💬 Моя заметка: ' + i.myNote : ''; }
   $('detailDescription').textContent = i.description || 'Описание отсутствует.';
   const ds = $('detailStatusSel'); ds.replaceChildren(...STATS.map(x => new Option(x, x))); ds.value = i.status;
   ds.onchange = () => { i.status = ds.value; $('detailStatus').textContent = i.status; $('detailStatus').dataset.s = i.status; cloudSave(i); refresh(); toast('Статус изменён: ' + i.status); };
   $('detailModal').style.display = 'flex';
 }
 $('editItemBtn').onclick = () => { const i = items.find(x => x.id === curId); if (i) { closeAll(); openAdd(i); } };
-$('deleteItemBtn').onclick = () => {
-  if (!confirm('Точно удалить этот тайтл из коллекции?')) return;
+$('deleteItemBtn').onclick = async () => {
+  if (!(await uiConfirm('Точно удалить этот тайтл из коллекции?', 'Удалить', true))) return;
   const id = curId; closeAll(); removeItem(id, true);
 };
 
@@ -1135,7 +1387,7 @@ async function anilist(search, type, o = {}) {
 async function tmdb(search, path, media, page = 1) {
   let k = TMDB_KEY || localStorage.getItem('tmdbKey');
   if (!k) {
-    k = (prompt('Для поиска фильмов нужен бесплатный ключ TMDB (API Key v3). Вставь его — он сохранится на этом устройстве:') || '').trim();
+    k = ((await uiPrompt('Ключ TMDB (API Key v3)', '', 'Вставь бесплатный ключ TMDB для фильмов и сериалов')) || '').trim();
     if (!k) throw new Error('нужен ключ TMDB');
     localStorage.setItem('tmdbKey', k);
   }
@@ -1294,6 +1546,18 @@ function profStats() {
   const pct = items.length ? Math.round((c('Просмотрено/Прочитано') + c('Любимое')) / items.length * 100) : 0;
   $('profRing').style.setProperty('--p', pct); $('profRingTxt').textContent = pct + '%';
   const d = user?.metadata?.creationTime; $('profSince').textContent = d ? 'Ведёт коллекцию с ' + new Date(d).toLocaleDateString('ru-RU', {month: 'long', year: 'numeric'}) : '';
+  // Расчёт уровня и ранга коллекционера (XP)
+  const xp = items.reduce((s, i) => s + 15 + (i.status === 'Просмотрено/Прочитано' || i.status === 'Любимое' ? 25 : 0) + (i.rating ? 10 : 0) + (i.myNote ? 15 : 0) + Math.min(50, (i.watchedEps || 0) * 2), 0);
+  const lvl = Math.max(1, Math.floor(Math.sqrt(xp / 25)) + 1);
+  const prevXp = 25 * Math.pow(lvl - 1, 2), nextXp = 25 * Math.pow(lvl, 2);
+  const RANKS = ['Новичок', 'Зритель', 'Искатель сюжетов', 'Ценитель жанров', 'Хранитель тайтлов', 'Магистр экранов', 'Архивариус миров', 'Легенда коллекции'];
+  const rank = RANKS[Math.min(RANKS.length - 1, Math.floor((lvl - 1) / 2))];
+  if ($('profLvl')) $('profLvl').textContent = `⚡ Ур. ${lvl} · ${rank}`;
+  if ($('profXpFill')) $('profXpFill').style.width = Math.min(100, Math.round((xp - prevXp) / Math.max(1, nextXp - prevXp) * 100)) + '%';
+  if ($('profXpTxt')) $('profXpTxt').textContent = `${xp} XP`;
+  if ($('profNextTxt')) $('profNextTxt').textContent = `До ур. ${lvl + 1}: ${ Math.max(0, nextXp - xp) } XP`;
+  const totMins = items.reduce((a, i) => a + ((i.watchedEps || i.eps || 1) * (i.dur || 0)), 0);
+  if ($('profTimeSummary')) $('profTimeSummary').textContent = totMins >= 60 ? `⏱ В копилке ~${Math.round(totMins / 60)} ч просмотра` : `📚 В коллекции: ${items.length}`;
   profDash(); profStrips();
 }
 $('accBtn').onclick = e => { e.stopPropagation(); $('accMenu').classList.toggle('open'); };
@@ -1301,8 +1565,16 @@ addEventListener('click', () => $('accMenu').classList.remove('open'));
 addEventListener('keydown', e => { if (e.key === 'Escape') $('accMenu').classList.remove('open'); });
 $('accProfile').onclick = () => document.querySelector('.tab[data-v="profile"]').click();
 const ACC = [['#7a5af8', '#a48dff'], ['#e0245e', '#ff86ad'], ['#0d7d73', '#5eead4'], ['#c2410c', '#fbbf24'], ['#0369a1', '#7dd3fc']];
-function setAcc(k) { const [a, h] = ACC[k] || ACC[0], r = document.documentElement.style; r.setProperty('--ac', a); r.setProperty('--ach', h); try { localStorage.setItem('acc', k); } catch (e) {} }
-try { setAcc(+localStorage.getItem('acc') || 0); } catch (e) { setAcc(0); }
+function setAcc(k) { prof.customColor = ''; const [a, h] = ACC[k] || ACC[0], r = document.documentElement.style; r.setProperty('--ac', a); r.setProperty('--ach', h); try { localStorage.setItem('acc', k); } catch (e) {} }
+try { setAcc(+localStorage.getItem('acc') || 0, true); } catch (e) { setAcc(0, true); }
+
+document.querySelectorAll('#profSubTabs .pstab').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#profSubTabs .pstab').forEach(x => x.classList.toggle('on', x === b));
+  const v = b.dataset.pv;
+  $('profOverviewWrap').style.display = v === 'col' ? 'none' : '';
+  $('profColWrap').style.display = v === 'dash' ? 'none' : '';
+});
+
 ACC.forEach(([a], k) => { const b = el('button'); b.style.background = a; b.title = 'Цвет оформления'; b.onclick = e => { e.stopPropagation(); setAcc(k); }; $('accSw').append(b); });
 [['openModalBtn', 'Добавить свой тайтл'], ['cgHide', 'Не показывать то, что уже в коллекции'], ['cgReset', 'Сбросить поиск и фильтры'], ['sizeSel', 'Размер карточек']].forEach(([i, t]) => { const e = document.getElementById(i); if (e) e.title = t; });
 function profStrips() {
@@ -1393,6 +1665,7 @@ async function quickAdd(r) {
 function removeItem(id, undo) {
   const old = items.find(i => i.id === id); items = items.filter(i => i.id !== id); refresh();
   if (undo && old) toast('Удалено: ' + old.title, false, {label: 'Вернуть', fn: () => { if (!items.some(i => i.id === old.id)) { items.push(old); refresh(); cloudSave(old); } }});
+  if (localMode) { saveLocalItems(); return; }
   track(deleteDoc(doc(db, 'items', String(id)))).catch(e => {
     if (old && !items.some(i => i.id === id)) { items.push(old); refresh(); }
     toast('Не удалось удалить в облаке: ' + e.message, true);
@@ -1521,14 +1794,14 @@ window.importData = e => {
           category: x.category === 'Кино' ? 'Фильм' : x.category === 'Манхва' ? 'Манга' : CATS.includes(x.category) ? x.category : 'Фильм', kind: x.category === 'Манхва' ? 'Манхва' : (x.kind || ''),
           status: STATS.includes(x.status) ? x.status : 'В планах', poster: x.poster || '', year: x.year || '', rating: x.rating || '',
           extRating: x.extRating || '', extSrc: x.extSrc || '', description: x.description || '', titleEn: x.titleEn || '', titleOrig: x.titleOrig || '',
-          alt: x.alt || '', author: x.author || '', studio: x.studio || '', source: x.source || '', ongoing: !!x.ongoing, tags: Array.isArray(x.tags) ? x.tags : [], lists: Array.isArray(x.lists) ? x.lists : [], recBy: x.recBy || '', pin: !!x.pin, archived: !!x.archived, eps: +x.eps || 0, dur: +x.dur || 0, seasons: +x.seasons || 0
+          alt: x.alt || '', author: x.author || '', studio: x.studio || '', source: x.source || '', ongoing: !!x.ongoing, tags: Array.isArray(x.tags) ? x.tags : [], lists: Array.isArray(x.lists) ? x.lists : [], recBy: x.recBy || '', pin: !!x.pin, archived: !!x.archived, watchedEps: +x.watchedEps || 0, eps: +x.eps || 0, dur: +x.dur || 0, seasons: +x.seasons || 0, myNote: x.myNote || ''
         };
         if (!it.title || dup(it)) return;
         while (!it.id || ids.has(String(it.id))) it.id = newId();
         ids.add(String(it.id)); put(it); add.push(it);
       });
       const gone = rep ? items.filter(i => !ids.has(String(i.id))) : [];
-      if (!confirm(rep ? `ВНИМАНИЕ: коллекция будет полностью заменена содержимым файла.\nСейчас в ней: ${items.length}, в файле: ${add.length}.\nПеред заменой автоматически скачается резервная копия текущей коллекции. Продолжить?` : `В файле записей: ${arr.length}. Будет добавлено: ${add.length}, пропущено повторов: ${arr.length - add.length}. Продолжить?`)) { e.target.value = ''; return; }
+      if (!(await uiConfirm(rep ? `ВНИМАНИЕ: коллекция будет полностью заменена содержимым файла.\nСейчас в ней: ${items.length}, в файле: ${add.length}.\nПеред заменой автоматически скачается резервная копия текущей коллекции. Продолжить?` : `В файле записей: ${arr.length}. Будет добавлено: ${add.length}, пропущено повторов: ${arr.length - add.length}. Продолжить?`, 'Импортировать', rep))) { e.target.value = ''; return; }
       if (rep) exportData();
       const ops = [...gone.map(i => ['d', i]), ...add.map(i => ['s', i])];
       for (let i = 0; i < ops.length; i += 400) {

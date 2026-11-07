@@ -351,11 +351,72 @@ html[data-theme=mocha] .menu{background:#241e1b}html[data-theme=mocha] .toast{ba
   header { background: rgba(14, 15, 26, 0.96); }
   .mc { background: #161826; }
 }
+
 header {
-  position: sticky; top: 10px; z-index: 60; margin: 0 auto 18px; padding: 10px 18px;
-  border-radius: 999px; border: 1px solid var(--bd);
-  box-shadow: 0 10px 30px rgba(0,0,0,.38);
+  position: sticky; top: 0; z-index: 60; margin: -20px -20px 16px; padding: 12px 20px;
+  border-radius: 0; border-bottom: 1px solid var(--bd);
+  background: rgba(14, 15, 26, 0.94);
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
 }
+@media (max-width: 600px) {
+  header { margin: -12px -12px 12px; padding: 10px 12px; }
+  .hdr-actions { width: 100%; justify-content: space-between; gap: 6px; }
+  #sizeSel { max-width: 138px; font-size: 12px; padding: 6px 8px; }
+  #openModalBtn { padding: 8px 12px; font-size: 13px; }
+}
+
+/* Исправление сжатых значков рядом с именем в профиле на мобильном */
+.pinfo > div:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-bottom: 4px;
+}
+.lvl-pill, .creator-badge, .nick-hist-btn {
+  margin-left: 0 !important;
+}
+@media (max-width: 640px) {
+  .pcard {
+    padding: 18px 14px !important;
+    gap: 12px !important;
+    min-height: auto !important;
+  }
+  .pcard.hascover { min-height: 185px !important; }
+  .pinfo > div:first-child { justify-content: flex-start; }
+  .pinfo b#profName { width: 100%; font-size: 19px; margin-bottom: 2px; }
+  .anix-big-time { font-size: 24px; }
+  .anix-counters { gap: 10px 16px; font-size: 12.5px; }
+  .anix-counters div b { font-size: 15px; }
+
+  /* На телефоне карточки тайтлов (#detailModal и #rndModal) компактные и всегда имеют закреплённую кнопку Закрыть сверху */
+  .modal .mc {
+    max-height: 85vh !important;
+    padding: 14px 14px calc(18px + env(safe-area-inset-bottom)) !important;
+    border-radius: 20px 20px 0 0 !important;
+  }
+  #detailModal #detailPoster, #rndModal #rndPoster {
+    width: 125px !important;
+    max-width: 125px !important;
+    margin: 0 auto 6px !important;
+  }
+  #modalX.show {
+    display: block !important;
+    top: 10px !important;
+    bottom: auto !important;
+    right: 12px !important;
+    left: auto !important;
+    transform: none !important;
+    z-index: 2100 !important;
+    padding: 7px 14px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    background: rgba(20, 22, 34, 0.96) !important;
+    border: 1px solid rgba(255,255,255,.25) !important;
+    box-shadow: 0 6px 20px rgba(0,0,0,.6) !important;
+  }
+}
+
 
 /* Верхняя панель: реальный онлайн + кнопка «Пользователи» + поиск людей */
 .top-social-bar {
@@ -3480,8 +3541,112 @@ document.querySelectorAll('#mainTabs .tab').forEach(b => {
   };
 });
 
+
+// Полное переопределение profStrips: оставляем ТОЛЬКО «❤ Любимое» (убираем Недавно добавлено, Рекомендация дня, Продолжаю, Топ-10, Следующие в планах)
+profStrips = function () {
+  const box = $('profStrips');
+  if (!box) return;
+  box.replaceChildren();
+  const isGuest = !!window._viewingGuestUid;
+  const activeP = isGuest ? (window._guestProf || {}) : prof;
+  if (isGuest && activeP.hideFavorites && !window._creatorBypassActive) return;
+
+  const favList = items
+    .filter(i => !i.archived && i.status === 'Любимое')
+    .sort((a, b) => (num(b.rating) || num(b.extRating)) - (num(a.rating) || num(a.extRating)))
+    .slice(0, 18);
+
+  if (!favList.length) return;
+  box.append(el('h4', 'sec', '❤ Любимое'));
+  const w = el('div', 'strip');
+  favList.forEach(i => {
+    const m = el('div', 'mini'), im = el('img');
+    im.loading = 'lazy';
+    im.src = i.poster || FALL;
+    im.onerror = () => { im.onerror = null; im.src = FALL; };
+    m.append(im, el('span', null, i.title));
+    m.onclick = () => openDetail(i.id);
+    w.append(m);
+  });
+  box.append(w);
+};
+
+// Эксклюзивный ID «123456» ТОЛЬКО для Создателя сайта, и гарантированно уникальные ID для всех остальных пользователей
+function assignUniquePublicId() {
+  if (window._viewingGuestUid) return;
+  if (isCreatorAdmin()) {
+    prof.publicId = '123456';
+    prof.isCreator = true;
+    return;
+  }
+  const takenIds = new Set(['123456']);
+  allRegisteredProfiles.forEach(p => {
+    if (p.userId !== (user && user.uid) && p.publicId) takenIds.add(String(p.publicId));
+  });
+  if (!prof.publicId || prof.publicId === '123456' || takenIds.has(String(prof.publicId))) {
+    let candidate = '';
+    do {
+      candidate = String(Math.floor(100000 + Math.random() * 900000));
+    } while (takenIds.has(candidate));
+    prof.publicId = candidate;
+    profCloud();
+  }
+}
+
+// Гарантированный выход из локального режима и вызов окна выбора аккаунта Google (даже на мобильном!)
+if ($('loginBtn')) {
+  $('loginBtn').onclick = async () => {
+    try { localStorage.removeItem('useLocalMode'); } catch (e) {}
+    const freshProvider = new GoogleAuthProvider();
+    freshProvider.setCustomParameters({ prompt: 'select_account' });
+    if (location.protocol === 'file:') {
+      return startLocalMode('При запуске файла напрямую из папки (file://) браузер блокирует окно Google. Открой сайт через хостинг или локальный сервер для входа в Google.');
+    }
+    try {
+      await signInWithPopup(auth, freshProvider);
+    } catch (e) {
+      if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment'].includes(e.code)) {
+        return signInWithRedirect(auth, freshProvider);
+      }
+      if (e.code === 'auth/unauthorized-domain') {
+        return startLocalMode('Домен не добавлен в список разрешённых в Firebase Console (' + location.hostname + '). Включён локальный режим.');
+      }
+      if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(e.code)) {
+        toast('Ошибка входа Google: ' + e.message, true);
+      }
+    }
+  };
+}
+
+// Добавляем в меню аккаунта отдельную кнопку «🔄 Сменить аккаунт Google», чтобы с телефона можно было в 1 тап переключить почту
+{
+  const menu = $('accMenu');
+  if (menu && !$('switchGoogleAccBtn')) {
+    const swBtn = el('button', null, '🔄 Сменить аккаунт Google');
+    swBtn.id = 'switchGoogleAccBtn';
+    swBtn.onclick = async () => {
+      try { localStorage.removeItem('useLocalMode'); } catch (e) {}
+      try { await signOut(auth); } catch (e) {}
+      user = null;
+      $('appScreen').style.display = 'none';
+      $('authScreen').style.display = 'flex';
+      if (location.protocol !== 'file:') {
+        const freshProvider = new GoogleAuthProvider();
+        freshProvider.setCustomParameters({ prompt: 'select_account' });
+        signInWithPopup(auth, freshProvider).catch(err => {
+          if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment'].includes(err.code)) {
+            signInWithRedirect(auth, freshProvider);
+          }
+        });
+      }
+    };
+    menu.insertBefore(swBtn, $('logoutBtn'));
+  }
+}
+
 const _coreRefresh = refresh;
 refresh = function () {
+  assignUniquePublicId();
   _coreRefresh();
   renderAnixartHeroAndCategoryCards();
   renderSmartInsights();

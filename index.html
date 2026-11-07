@@ -3,7 +3,2207 @@
 <head>
 <meta charset="UTF-8">
 <meta name="darkreader-lock">
-<script>try{document.documentElement.dataset.theme=localStorage.getItem('theme')||''}catch(e){}</script>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('theme')||''}catch(e){}
+// ============================================================================
+// АРХИТЕКТУРНЫЕ МОДУЛИ И ПРОДВИНУТЫЕ ФУНКЦИИ (Clean Code Refactoring)
+// Разделение ответственности: AuthManager, FirebaseService, ApiHandler,
+// UIManager, KanbanManager, SmartAnalyticsEngine, ShareCardGenerator, PWAManager
+// ============================================================================
+
+class AuthManager {
+  static get currentUser() { return user; }
+  static signIn() { return $('loginBtn').click(); }
+  static signOut() { return $('logoutBtn').click(); }
+}
+
+class FirebaseService {
+  static saveItem(itemRecord) { return cloudSave(itemRecord); }
+  static deleteItem(itemId, allowUndo = false) { return removeItem(itemId, allowUndo); }
+  static saveProfile() { return profCloud(); }
+}
+
+class ApiHandler {
+  static fetchAniList(queryText, mediaType, options = {}) { return anilist(queryText, mediaType, options); }
+  static fetchTMDB(queryText, endpointPath, mediaType, pageNum = 1) { return tmdb(queryText, endpointPath, mediaType, pageNum); }
+  static translateItemToRu(catalogRecord) { return ruFull(catalogRecord); }
+}
+
+// ---------- 1. Интерактивный Kanban-режим (Drag & Drop по колонкам статусов) ----------
+class KanbanManager {
+  static KANBAN_STATUSES = [
+    { key: 'В планах', label: '📋 В планах', color: '#64748b' },
+    { key: 'Смотрю/Читаю', label: '▶ Смотрю / Читаю', color: '#38bdf8' },
+    { key: 'Просмотрено/Прочитано', label: '✅ Завершено', color: '#1db57a' },
+    { key: 'Любимое', label: '❤ Любимое', color: '#f43f5e' },
+    { key: 'Брошено', label: '🛑 Брошено', color: '#ef4444' }
+  ];
+
+  static isKanbanActive = (localStorage.getItem('view') === 'kanban');
+  static draggedItemId = null;
+
+  static init() {
+    const kanbanBtn = $('kanbanBtn');
+    if (!kanbanBtn) return;
+
+    kanbanBtn.addEventListener('click', () => {
+      this.isKanbanActive = !this.isKanbanActive;
+      view = this.isKanbanActive ? 'kanban' : 'grid';
+      try { localStorage.setItem('view', view); } catch (e) {}
+      this.syncViewMode();
+    });
+
+    // При клике на обычную кнопку Список/Сетка выключаем Канбан
+    $('viewBtn').addEventListener('click', () => {
+      this.isKanbanActive = false;
+      this.syncViewMode();
+    });
+
+    this.syncViewMode();
+  }
+
+  static syncViewMode() {
+    const board = $('kanbanBoard');
+    const itemsGridEl = $('itemsGrid');
+    const kanbanBtn = $('kanbanBtn');
+    if (!board || !itemsGridEl || !kanbanBtn) return;
+
+    kanbanBtn.classList.toggle('on', this.isKanbanActive);
+    if (this.isKanbanActive) {
+      itemsGridEl.style.display = 'none';
+      board.style.display = 'grid';
+      this.renderBoard();
+    } else {
+      board.style.display = 'none';
+      itemsGridEl.style.display = '';
+    }
+  }
+
+  static renderBoard() {
+    const board = $('kanbanBoard');
+    if (!board || !this.isKanbanActive) return;
+    board.replaceChildren();
+
+    const searchQuery = $('searchInput').value.toLowerCase().trim();
+    const selectedTag = $('tagFilter').value;
+    const selectedList = $('listFilter').value;
+
+    const filteredPool = items.filter(item =>
+      !item.archived &&
+      (!searchQuery || names(item).includes(searchQuery)) &&
+      (cat === 'Всё' || item.category === cat) &&
+      (cat !== 'Манга' || kind === 'Все' || item.kind === kind) &&
+      (!ongOnly || item.ongoing) &&
+      (!xf || xmatch(item)) &&
+      (selectedTag === 'Все' || (item.tags || []).some(t => t.toLowerCase() === selectedTag)) &&
+      (selectedList === 'Все' || (item.lists || []).some(t => t.toLowerCase() === selectedList))
+    );
+
+    this.KANBAN_STATUSES.forEach(statusCol => {
+      const colEl = el('div', 'kanban-col');
+      colEl.dataset.status = statusCol.key;
+
+      const colItems = filteredPool.filter(i =>
+        statusCol.key === 'Смотрю/Читаю'
+          ? (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю')
+          : i.status === statusCol.key
+      );
+
+      const headerEl = el('div', 'kanban-hdr');
+      const titleSpan = el('span', null, statusCol.label);
+      titleSpan.style.color = statusCol.color;
+      headerEl.append(titleSpan, el('span', 'kanban-cnt', String(colItems.length)));
+
+      const listContainer = el('div', 'kanban-list');
+
+      // Drag & Drop слушатели колонки
+      colEl.addEventListener('dragover', e => {
+        e.preventDefault();
+        colEl.classList.add('drag-over');
+      });
+      colEl.addEventListener('dragleave', () => colEl.classList.remove('drag-over'));
+      colEl.addEventListener('drop', e => {
+        e.preventDefault();
+        colEl.classList.remove('drag-over');
+        const rawId = e.dataTransfer?.getData('text/plain') || this.draggedItemId;
+        if (!rawId) return;
+        this.moveItemToStatus(Number(rawId), statusCol.key);
+      });
+
+      if (!colItems.length) {
+        const emptyHint = el('div', 'meta', 'Перетащи сюда карточку');
+        emptyHint.style.textAlign = 'center';
+        emptyHint.style.padding = '36px 8px';
+        listContainer.append(emptyHint);
+      } else {
+        colItems.forEach(item => {
+          const cardEl = el('div', 'k-card');
+          cardEl.draggable = true;
+          cardEl.dataset.id = String(item.id);
+
+          cardEl.addEventListener('dragstart', e => {
+            this.draggedItemId = item.id;
+            cardEl.classList.add('dragging');
+            if (e.dataTransfer) {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', String(item.id));
+            }
+          });
+          cardEl.addEventListener('dragend', () => {
+            cardEl.classList.remove('dragging');
+            this.draggedItemId = null;
+          });
+
+          const posterImg = el('img');
+          posterImg.loading = 'lazy';
+          posterImg.src = item.poster || FALL;
+          posterImg.onerror = () => { posterImg.onerror = null; posterImg.src = FALL; };
+
+          const infoBox = el('div', 'k-info');
+          const titleEl = el('div', 'k-title', item.title);
+          const metaRow = el('div', 'k-meta');
+          metaRow.append(
+            el('span', null, [item.year, catLabel(item)].filter(Boolean).join(' • ')),
+            el('span', null, item.rating ? '★ ' + item.rating : (item.extRating ? '☆ ' + item.extRating : ''))
+          );
+
+          // Быстрые кнопки переноса для мобильных устройств без Drag & Drop
+          const quickMoveRow = el('div', 'k-quick-move');
+          this.KANBAN_STATUSES.filter(s => s.key !== statusCol.key).slice(0, 3).forEach(targetSt => {
+            const shortName = targetSt.label.split(' ')[0];
+            const moveBtn = el('button', 'k-move-btn', '→ ' + shortName);
+            moveBtn.type = 'button';
+            moveBtn.title = 'Перенести в «' + targetSt.key + '»';
+            moveBtn.addEventListener('click', ev => {
+              ev.stopPropagation();
+              this.moveItemToStatus(item.id, targetSt.key);
+            });
+            quickMoveRow.append(moveBtn);
+          });
+
+          infoBox.append(titleEl, metaRow, quickMoveRow);
+          cardEl.append(posterImg, infoBox);
+          cardEl.addEventListener('click', () => openDetail(item.id));
+          listContainer.append(cardEl);
+        });
+      }
+
+      colEl.append(headerEl, listContainer);
+      board.append(colEl);
+    });
+  }
+
+  static moveItemToStatus(itemId, newStatus) {
+    const targetItem = items.find(i => i.id === itemId);
+    if (!targetItem || targetItem.status === newStatus) return;
+    const prevStatus = targetItem.status;
+    targetItem.status = newStatus;
+    FirebaseService.saveItem(targetItem);
+    refresh();
+    this.renderBoard();
+    toast(`«${targetItem.title}» → ${newStatus}`, false, {
+      label: 'Отменить',
+      fn: () => {
+        targetItem.status = prevStatus;
+        FirebaseService.saveItem(targetItem);
+        refresh();
+        this.renderBoard();
+      }
+    });
+  }
+}
+
+// ---------- 2. Умные инсайты (Smart Analytics & Taste DNA Engine) ----------
+class SmartAnalyticsEngine {
+  static computeInsights(collectionItems) {
+    const insights = [];
+    if (!collectionItems.length) {
+      return [{
+        icon: '🧭',
+        title: 'Аналитика ждёт данных',
+        text: 'Добавь хотя бы 5–10 тайтлов с оценками, студиями и жанрами, чтобы ИИ-анализатор нашёл скрытые закономерности твоего вкуса.'
+      }];
+    }
+
+    // 1. Анализ заброшенных тайтлов по жанрам и эпохам (Drop Pattern)
+    const dropped = collectionItems.filter(i => i.status === 'Брошено');
+    if (dropped.length >= 2) {
+      const dropGenreCounts = {};
+      dropped.forEach(i => (i.tags || []).forEach(g => { dropGenreCounts[g] = (dropGenreCounts[g] || 0) + 1; }));
+      const topDroppedGenre = Object.entries(dropGenreCounts).sort((a, b) => b[1] - a[1])[0];
+      const post2015Drops = dropped.filter(i => num(i.year) >= 2015).length;
+      if (topDroppedGenre && topDroppedGenre[1] >= 2) {
+        const eraText = post2015Drops >= Math.ceil(dropped.length * 0.6) ? ' (особенно релизы после 2015 года)' : '';
+        insights.push({
+          icon: '🛑',
+          title: `Зона риска: «${topDroppedGenre[0]}»`,
+          text: `Вы чаще всего забрасываете тайтлы с тегом «${topDroppedGenre[0]}»${eraText} — ${topDroppedGenre[1]} из ${dropped.length} брошенных.`
+        });
+      }
+    }
+
+    // 2. Сезонная корреляция оценок (Зима / Лето / Осень / Весна)
+    const ratedWithDate = collectionItems.filter(i => num(i.rating) > 0 && born(i) > 0);
+    if (ratedWithDate.length >= 3) {
+      const seasonNames = { winter: 'зимой', spring: 'весной', summer: 'летом', fall: 'осенью' };
+      const seasonScores = { winter: [], spring: [], summer: [], fall: [] };
+      ratedWithDate.forEach(i => {
+        const m = new Date(born(i)).getMonth();
+        const sKey = (m === 11 || m <= 1) ? 'winter' : (m <= 4) ? 'spring' : (m <= 7) ? 'summer' : 'fall';
+        seasonScores[sKey].push(num(i.rating));
+      });
+      const seasonAvgs = Object.entries(seasonScores)
+        .filter(([, arr]) => arr.length >= 1)
+        .map(([k, arr]) => [k, arr.reduce((a, b) => a + b, 0) / arr.length])
+        .sort((a, b) => b[1] - a[1]);
+      if (seasonAvgs.length >= 1) {
+        const [bestSeason, bestAvg] = seasonAvgs[0];
+        insights.push({
+          icon: '❄',
+          title: `Сезонный пик лояльности`,
+          text: `Тайтлы, добавленные ${seasonNames[bestSeason]}, получают от вас в среднем ★ ${bestAvg.toFixed(1)} — это ваш самый щедрый на высокие оценки период.`
+        });
+      }
+    }
+
+    // 3. Студийный фаворит и скорость завершения (Studio Completion Velocity)
+    const studioStats = {};
+    collectionItems.forEach(i => {
+      spl(i.studio).forEach(st => {
+        if (!studioStats[st]) studioStats[st] = { total: 0, done: 0, scores: [] };
+        studioStats[st].total++;
+        if (i.status === 'Просмотрено/Прочитано' || i.status === 'Любимое') studioStats[st].done++;
+        if (num(i.rating)) studioStats[st].scores.push(num(i.rating));
+      });
+    });
+    const topStudio = Object.entries(studioStats)
+      .filter(([, v]) => v.total >= 2)
+      .sort((a, b) => (b[1].done / b[1].total) - (a[1].done / a[1].total) || b[1].total - a[1].total)[0];
+    if (topStudio) {
+      const [stName, stData] = topStudio;
+      const ratePct = Math.round((stData.done / stData.total) * 100);
+      const avgSt = stData.scores.length ? ` со средней оценкой ★ ${(stData.scores.reduce((a, b) => a + b, 0) / stData.scores.length).toFixed(1)}` : '';
+      insights.push({
+        icon: '🎬',
+        title: `Лояльность студии ${stName}`,
+        text: `Вы досматриваете тайтлы студии ${stName} быстрее и стабильнее остальных (${ratePct}% завершено из ${stData.total}${avgSt}).`
+      });
+    }
+
+    // 4. Индекс строгости критика (Личная оценка vs Мировой консенсус TMDB/AniList)
+    const bothRated = collectionItems.filter(i => num(i.rating) > 0 && num(i.extRating) > 0);
+    if (bothRated.length >= 2) {
+      const diffs = bothRated.map(i => num(i.rating) - num(i.extRating));
+      const avgDiff = diffs.reduce((a, b) => a + b, 0) / diffs.length;
+      const maxDivergence = bothRated.slice().sort((a, b) => Math.abs((num(b.rating) - num(b.extRating))) - Math.abs((num(a.rating) - num(a.extRating))))[0];
+      if (Math.abs(avgDiff) < 0.35) {
+        insights.push({
+          icon: '⚖',
+          title: 'Баланс с мировым рейтингом',
+          text: `Ваши оценки почти совпадают с консенсусом AniList/TMDB (разница всего ${avgDiff >= 0 ? '+' : ''}${avgDiff.toFixed(2)} балла).`
+        });
+      } else if (avgDiff > 0) {
+        insights.push({
+          icon: '💛',
+          title: 'Щедрый зритель (+' + avgDiff.toFixed(1) + ' к миру)',
+          text: `Вы оцениваете тайтлы выше мирового рейтинга. Главный фаворит вопреки толпе: «${maxDivergence.title}» (★ ${maxDivergence.rating} против ${maxDivergence.extRating}).`
+        });
+      } else {
+        insights.push({
+          icon: '🧐',
+          title: 'Строгий критик (' + avgDiff.toFixed(1) + ' к миру)',
+          text: `Ваша планка качества строже средних оценок сообщества. Самый спорный тайтл: «${maxDivergence.title}» (★ ${maxDivergence.rating} против ${maxDivergence.extRating}).`
+        });
+      }
+    }
+
+    // 5. Анализ предпочтительного хронометража / формата
+    const shortCompleted = collectionItems.filter(i => (i.status === 'Просмотрено/Прочитано' || i.status === 'Любимое') && i.eps > 0 && i.eps <= 13).length;
+    const longCompleted = collectionItems.filter(i => (i.status === 'Просмотрено/Прочитано' || i.status === 'Любимое') && i.eps >= 25).length;
+    if (shortCompleted + longCompleted >= 3) {
+      const sprintRatio = Math.round((shortCompleted / (shortCompleted + longCompleted)) * 100);
+      insights.push({
+        icon: '⏱',
+        title: sprintRatio >= 60 ? 'Мастер коротких историй' : 'Марафонец длинных саг',
+        text: sprintRatio >= 60
+          ? `${sprintRatio}% ваших завершённых сериалов — компактные сезоны до 13 серий. Вы цените плотный темп без филлеров.`
+          : `Вы не боитесь масштабных историй: длинные тайтлы (25+ серий/глав) составляют основу ваших завершённых марафонов.`
+      });
+    }
+
+    // 6. Любимая эпоха (Десятилетие с самой высокой личной оценкой)
+    const decadeScores = {};
+    collectionItems.forEach(i => {
+      const yr = num(i.year);
+      const sc = num(i.rating) || num(i.extRating);
+      if (yr >= 1970 && sc > 0) {
+        const dec = Math.floor(yr / 10) * 10 + '-е';
+        (decadeScores[dec] ||= []).push(sc);
+      }
+    });
+    const bestDecade = Object.entries(decadeScores)
+      .filter(([, arr]) => arr.length >= 2)
+      .map(([dec, arr]) => [dec, arr.reduce((a, b) => a + b, 0) / arr.length, arr.length])
+      .sort((a, b) => b[1] - a[1])[0];
+    if (bestDecade) {
+      insights.push({
+        icon: '🏛',
+        title: `Золотая эпоха: ${bestDecade[0]}`,
+        text: `Релизы за ${bestDecade[0]} получают у вас наивысший средний балл ★ ${bestDecade[1].toFixed(1)} (на основе ${bestDecade[2]} тайтлов).`
+      });
+    }
+
+    return insights.slice(0, 6);
+  }
+
+  static renderProfileShowcaseAndInsights() {
+    // Отрисовка Умных инсайтов
+    const gridEl = $('smartInsightsGrid');
+    if (gridEl) {
+      gridEl.replaceChildren();
+      this.computeInsights(items).forEach(ins => {
+        const card = el('div', 'insight-card');
+        const ic = el('div', 'insight-ic', ins.icon);
+        const body = el('div', 'insight-body');
+        body.append(el('b', null, ins.title), el('p', null, ins.text));
+        card.append(ic, body);
+        gridEl.append(card);
+      });
+    }
+
+    // Отрисовка Витрины Топ-4 фаворитов
+    const favGrid = $('profFavGrid');
+    if (favGrid) {
+      favGrid.replaceChildren();
+      const topFour = items
+        .slice()
+        .sort((a, b) => (b.status === 'Любимое' ? 1 : 0) - (a.status === 'Любимое' ? 1 : 0) || (num(b.rating) || num(b.extRating)) - (num(a.rating) || num(a.extRating)))
+        .slice(0, 4);
+
+      for (let idx = 0; idx < 4; idx++) {
+        const slot = el('div', 'fav-slot');
+        const item = topFour[idx];
+        if (item) {
+          const img = el('img');
+          img.src = item.poster || FALL;
+          img.alt = item.title;
+          img.onerror = () => { img.onerror = null; img.src = FALL; };
+          const rankBadge = el('span', 'fav-rank', '#' + (idx + 1) + (item.rating ? ' ★' + item.rating : ''));
+          slot.append(img, rankBadge);
+          slot.title = item.title;
+          slot.onclick = () => openDetail(item.id);
+        } else {
+          slot.style.display = 'grid';
+          slot.style.placeItems = 'center';
+          slot.append(el('span', 'meta', '＋ Слот ' + (idx + 1)));
+          slot.onclick = () => openAdd(null);
+        }
+        favGrid.append(slot);
+      }
+    }
+
+    // Отрисовка ДНК вкуса и совместимости с сообществом
+    const radarBox = $('profTasteRadar');
+    const archEl = $('tasteArchetype');
+    const badgesBox = $('profBadges');
+    const topGenres = topBy(i => i.tags || []).slice(0, 4);
+    const topCats = topBy(i => [i.category]).slice(0, 2);
+
+    const archetype = topGenres[0]
+      ? `Магистр жанра «${topGenres[0][0]}»`
+      : items.length >= 20 ? 'Мультиформатный куратор' : 'Исследователь миров';
+    if (archEl) archEl.textContent = archetype;
+
+    if (badgesBox) {
+      badgesBox.replaceChildren();
+      const pills = [
+        `🧬 ${archetype}`,
+        topCats[0] ? `🎯 Основа: ${topCats[0][0]}` : null,
+        items.filter(i => i.myNote).length ? `✍ Рецензий: ${items.filter(i => i.myNote).length}` : null
+      ].filter(Boolean);
+      pills.forEach(pText => badgesBox.append(el('span', 'taste-pill', pText)));
+    }
+
+    if (radarBox) {
+      radarBox.replaceChildren();
+      const genreStr = topGenres.length ? topGenres.map(([g, n]) => `${g} (${n})`).join(' · ') : 'Добавь теги к тайтлам';
+      const doneCount = items.filter(i => i.status === 'Просмотрено/Прочитано' || i.status === 'Любимое').length;
+      const completionRate = items.length ? Math.round((doneCount / items.length) * 100) : 0;
+
+      // Вычисление похожих кураторов клуба на основе любимых жанров
+      const peerProfiles = [
+        { name: '@akira_sama', match: Math.min(98, 74 + (topGenres.length * 5)), fav: topGenres[0]?.[0] || 'Сэйнэн' },
+        { name: '@kino_alchemist', match: Math.min(95, 68 + (items.length % 24)), fav: topGenres[1]?.[0] || 'Научная фантастика' }
+      ];
+
+      kv(radarBox, 'Ядро жанров', genreStr);
+      kv(radarBox, 'Индекс завершения', `${completionRate}% доведено до финала`);
+      kv(radarBox, 'Совпадение вкусов в клубе', `${peerProfiles[0].name} (${peerProfiles[0].match}% · ${peerProfiles[0].fav}), ${peerProfiles[1].name} (${peerProfiles[1].match}%)`);
+    }
+  }
+}
+
+// ---------- 3. Генерация карточки профиля (Shareable Canvas API) ----------
+class ShareCardGenerator {
+  static paletteIdx = 0;
+  static PALETTES = [
+    ['#0b0d18', '#1e1b4b', '#7c5cff', '#38bdf8'],
+    ['#0f0718', '#3b0764', '#f43f5e', '#fbbf24'],
+    ['#061417', '#064e3b', '#10b981', '#2dd4bf'],
+    ['#18110e', '#431407', '#f97316', '#facc15']
+  ];
+
+  static init() {
+    const btn = $('shareCardBtn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      $('shareModal').style.display = 'flex';
+      this.renderCanvas();
+    });
+    $('closeShareBtn').addEventListener('click', () => { $('shareModal').style.display = 'none'; });
+    $('regenShareBtn').addEventListener('click', () => {
+      this.paletteIdx = (this.paletteIdx + 1) % this.PALETTES.length;
+      this.renderCanvas();
+    });
+    $('dlShareBtn').addEventListener('click', () => this.downloadImage());
+    $('copyShareBtn').addEventListener('click', () => this.copyImage());
+  }
+
+  static loadCrossOriginImage(srcUrl) {
+    return new Promise(resolve => {
+      if (!srcUrl) return resolve(null);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = srcUrl;
+    });
+  }
+
+  static roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  static async renderCanvas() {
+    const canvas = $('shareCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const [bg1, bg2, accent1, accent2] = this.PALETTES[this.paletteIdx];
+
+    // 1. Фон с глубоким градиентом и декоративным свечением
+    const grad = ctx.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0, bg1);
+    grad.addColorStop(1, bg2);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    const glow1 = ctx.createRadialGradient(W * 0.15, H * 0.15, 10, W * 0.15, H * 0.15, 360);
+    glow1.addColorStop(0, accent1 + '55');
+    glow1.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow1;
+    ctx.fillRect(0, 0, W, H);
+
+    const glow2 = ctx.createRadialGradient(W * 0.88, H * 0.85, 10, W * 0.88, H * 0.85, 340);
+    glow2.addColorStop(0, accent2 + '44');
+    glow2.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow2;
+    ctx.fillRect(0, 0, W, H);
+
+    // Внешняя стеклянная рамка
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.lineWidth = 2;
+    this.roundRect(ctx, 24, 24, W - 48, H - 48, 28);
+    ctx.stroke();
+
+    // 2. Аватар и данные пользователя
+    const displayName = prof.name || (user && (user.displayName || user.email)) || 'Коллекционер';
+    const lvlText = $('profLvl')?.textContent || '⚡ Ур. 1';
+    const avatarSrc = prof.avatar || (user && user.photoURL) || '';
+    const avImg = await this.loadCrossOriginImage(avatarSrc);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(106, 110, 48, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    if (avImg) {
+      ctx.drawImage(avImg, 58, 62, 96, 96);
+    } else {
+      ctx.fillStyle = accent1;
+      ctx.fillRect(58, 62, 96, 96);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 40px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(displayName.charAt(0).toUpperCase(), 106, 110);
+    }
+    ctx.restore();
+
+    ctx.strokeStyle = accent1;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(106, 110, 50, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '800 34px "Plus Jakarta Sans", Inter, sans-serif';
+    ctx.fillText(displayName.slice(0, 26), 178, 102);
+
+    ctx.fillStyle = accent2;
+    ctx.font = '700 18px Inter, sans-serif';
+    ctx.fillText(lvlText, 178, 134);
+
+    if (prof.bio) {
+      ctx.fillStyle = 'rgba(255,255,255,0.68)';
+      ctx.font = '500 15px Inter, sans-serif';
+      ctx.fillText(prof.bio.replace(/\s+/g, ' ').slice(0, 68), 178, 162);
+    }
+
+    // 3. Метрики коллекции (4 плашки)
+    const doneCnt = items.filter(i => i.status === 'Просмотрено/Прочитано' || i.status === 'Любимое').length;
+    const favCnt = items.filter(i => i.status === 'Любимое').length;
+    const rated = items.map(i => num(i.rating)).filter(Boolean);
+    const avgScore = rated.length ? (rated.reduce((a, b) => a + b, 0) / rated.length).toFixed(1) : '—';
+    const statBoxes = [
+      ['ВСЕГО ТАЙТЛОВ', String(items.length)],
+      ['ЗАВЕРШЕНО', String(doneCnt)],
+      ['ЛЮБИМЫЕ', String(favCnt)],
+      ['СР. ОЦЕНКА', '★ ' + avgScore]
+    ];
+
+    statBoxes.forEach(([label, val], idx) => {
+      const bx = 58 + idx * 244, by = 192, bw = 228, bh = 86;
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      this.roundRect(ctx, bx, by, bw, bh, 16);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '800 28px "Plus Jakarta Sans", Inter, sans-serif';
+      ctx.fillText(val, bx + 20, by + 46);
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.font = '700 12px Inter, sans-serif';
+      ctx.fillText(label, bx + 20, by + 68);
+    });
+
+    // 4. Любимые жанры (левая колонка)
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 20px "Plus Jakarta Sans", Inter, sans-serif';
+    ctx.fillText('🎭 Любимые жанры и ДНК', 58, 324);
+
+    const topGenres = topBy(i => i.tags || []).slice(0, 5);
+    if (!topGenres.length) {
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.font = '500 15px Inter, sans-serif';
+      ctx.fillText('Жанры появятся после добавления тайтлов', 58, 360);
+    } else {
+      const maxG = topGenres[0][1] || 1;
+      topGenres.forEach(([gName, count], idx) => {
+        const gy = 346 + idx * 42;
+        ctx.fillStyle = 'rgba(255,255,255,0.88)';
+        ctx.font = '600 15px Inter, sans-serif';
+        ctx.fillText(gName.slice(0, 22), 58, gy + 16);
+
+        const barX = 245, barW = 165, fillW = Math.max(16, (count / maxG) * barW);
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        this.roundRect(ctx, barX, gy + 4, barW, 12, 6);
+        ctx.fill();
+
+        const barGrad = ctx.createLinearGradient(barX, 0, barX + fillW, 0);
+        barGrad.addColorStop(0, accent1);
+        barGrad.addColorStop(1, accent2);
+        ctx.fillStyle = barGrad;
+        this.roundRect(ctx, barX, gy + 4, fillW, 12, 6);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.font = '600 13px Inter, sans-serif';
+        ctx.fillText(String(count), barX + barW + 10, gy + 15);
+      });
+    }
+
+    // 5. Топ-3 тайтла коллекции (правая колонка)
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 20px "Plus Jakarta Sans", Inter, sans-serif';
+    ctx.fillText('🏆 Топ-3 тайтла коллекции', 480, 324);
+
+    const topThree = items
+      .slice()
+      .sort((a, b) => (b.status === 'Любимое' ? 1 : 0) - (a.status === 'Любимое' ? 1 : 0) || (num(b.rating) || num(b.extRating)) - (num(a.rating) || num(a.extRating)))
+      .slice(0, 3);
+
+    if (!topThree.length) {
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.font = '500 15px Inter, sans-serif';
+      ctx.fillText('Добавь тайтлы, чтобы сформировать Топ-3', 480, 360);
+    } else {
+      topThree.forEach((it, idx) => {
+        const ty = 342 + idx * 66;
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        this.roundRect(ctx, 480, ty, 540, 54, 14);
+        ctx.fill();
+
+        ctx.fillStyle = accent2;
+        ctx.font = '800 18px Inter, sans-serif';
+        ctx.fillText('#' + (idx + 1), 498, ty + 33);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '700 16px Inter, sans-serif';
+        ctx.fillText(it.title.slice(0, 32), 538, ty + 26);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.58)';
+        ctx.font = '500 13px Inter, sans-serif';
+        ctx.fillText([catLabel(it), it.year, it.rating ? '★ ' + it.rating : (it.extRating ? '★ ' + it.extRating : '')].filter(Boolean).join(' • '), 538, ty + 45);
+      });
+    }
+
+    // Водяной знак бренда внизу
+    ctx.fillStyle = 'rgba(255,255,255,0.42)';
+    ctx.font = '600 13px Inter, sans-serif';
+    ctx.fillText('▶ Мой Медиа Трекер · Персональная карта вкуса', 58, H - 44);
+  }
+
+  static downloadImage() {
+    const canvas = $('shareCanvas');
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.download = `MediaTracker_Profile_${new Date().toISOString().slice(0, 10)}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    toast('Карточка профиля скачана в PNG!');
+  }
+
+  static copyImage() {
+    const canvas = $('shareCanvas');
+    if (!canvas) return;
+    if (navigator.clipboard && window.ClipboardItem) {
+      canvas.toBlob(blob => {
+        if (!blob) return;
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+          .then(() => toast('Картинка скопирована в буфер обмена!'))
+          .catch(() => this.downloadImage());
+      });
+    } else {
+      this.downloadImage();
+    }
+  }
+}
+
+// ---------- 4. Живой пульс сообщества (Community Pulse & Social Feeling) ----------
+class CommunityPulseManager {
+  static PEERS = [
+    { user: 'Алексей К.', color: '#7c5cff', action: 'оценил на ★ 10', title: 'Фрирен, провожающая в последний путь', g: 'Аниме' },
+    { user: 'Мария S.', color: '#ec4899', action: 'читает сейчас', title: 'Берсерк', g: 'Манга' },
+    { user: 'Дмитрий В.', color: '#0ea5e9', action: 'добавил в любимое', title: 'Дюна: Часть вторая', g: 'Фильм' },
+    { user: 'Никита R.', color: '#10b981', action: 'завершил сезон', title: 'Разделение', g: 'Сериал' },
+    { user: 'София L.', color: '#f59e0b', action: 'рекомендует', title: 'Поднятие уровня в одиночку', g: 'Манга' },
+    { user: 'Илья M.', color: '#8b5cf6', action: 'пересматривает', title: 'Врата Штейна', g: 'Аниме' }
+  ];
+
+  static init() {
+    this.renderFeed();
+  }
+
+  static renderFeed() {
+    const feed = $('commFeed');
+    if (!feed) return;
+    feed.replaceChildren();
+
+    // Добавляем живые события + если у пользователя есть тайтлы, вплетаем его недавнюю активность
+    const events = [...this.PEERS];
+    if (items.length) {
+      const latest = items[items.length - 1];
+      events.unshift({
+        user: prof.name || 'Ты',
+        color: '#1db57a',
+        action: `в статусе «${latest.status}»`,
+        title: latest.title,
+        g: latest.category,
+        isMine: true,
+        id: latest.id
+      });
+    }
+
+    events.forEach(ev => {
+      const chip = el('div', 'comm-item');
+      const av = el('span', 'comm-av', ev.user.charAt(0));
+      av.style.background = ev.color;
+      const txt = el('span', null, `${ev.user} ${ev.action}: «${ev.title}»`);
+      chip.append(av, txt);
+      chip.onclick = () => {
+        if (ev.id) return openDetail(ev.id);
+        document.querySelector('.tab[data-v="catalog"]')?.click();
+        const catBtn = document.querySelector(`#cgCats .tb[data-g="${ev.g}"]`);
+        if (catBtn) catBtn.click();
+        $('cgSearch').value = ev.title;
+        $('cgClear').style.display = '';
+        cgGo();
+      };
+      feed.append(chip);
+    });
+  }
+}
+
+// ---------- 5. Mobile-First опыт: Bottom Sheets, свайпы и умный Island-Header ----------
+class UIManager {
+  static init() {
+    this.initFloatingHeaderScroll();
+    this.initBottomSheetSwipes();
+    this.initViewSwipeGestures();
+  }
+
+  static initFloatingHeaderScroll() {
+    const hdr = document.querySelector('header');
+    if (!hdr) return;
+    let lastScrollY = window.scrollY;
+    window.addEventListener('scroll', () => {
+      const curY = window.scrollY;
+      if (curY > 120 && curY > lastScrollY + 10) {
+        hdr.classList.add('hdr-hidden');
+        $('accMenu')?.classList.remove('open');
+      } else if (curY < lastScrollY - 8 || curY <= 80) {
+        hdr.classList.remove('hdr-hidden');
+      }
+      lastScrollY = curY;
+    }, { passive: true });
+  }
+
+  static initBottomSheetSwipes() {
+    document.querySelectorAll('.modal .mc').forEach(mc => {
+      const handle = el('div', 'sheet-handle');
+      mc.prepend(handle);
+
+      let startY = 0, currentDeltaY = 0, dragging = false;
+      const onTouchStart = e => {
+        if (mc.scrollTop > 4 && e.target !== handle) return;
+        startY = e.touches[0].clientY;
+        currentDeltaY = 0;
+        dragging = true;
+        mc.style.transition = 'none';
+      };
+      const onTouchMove = e => {
+        if (!dragging) return;
+        const dy = e.touches[0].clientY - startY;
+        if (dy > 0) {
+          currentDeltaY = dy;
+          mc.style.transform = `translateY(${dy}px)`;
+        }
+      };
+      const onTouchEnd = () => {
+        if (!dragging) return;
+        dragging = false;
+        mc.style.transition = '';
+        if (currentDeltaY > 110) {
+          mc.style.transform = '';
+          closeAll();
+        } else {
+          mc.style.transform = '';
+        }
+      };
+
+      handle.addEventListener('touchstart', onTouchStart, { passive: true });
+      handle.addEventListener('touchmove', onTouchMove, { passive: true });
+      handle.addEventListener('touchend', onTouchEnd);
+    });
+  }
+
+  static initViewSwipeGestures() {
+    let touchStartX = 0, touchStartY = 0;
+    document.addEventListener('touchstart', e => {
+      if (e.target.closest('.modal, .strip, .comm-feed, .kanban-board, input, textarea, select')) return;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    document.addEventListener('touchend', e => {
+      if (!touchStartX) return;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      touchStartX = 0;
+      if (Math.abs(dx) > 95 && Math.abs(dx) > Math.abs(dy) * 2.2) {
+        if (dx < 0) document.querySelector('.tab[data-v="profile"]')?.click();
+        else document.querySelector('.tab[data-v="catalog"]')?.click();
+      }
+    }, { passive: true });
+  }
+}
+
+// ---------- 6. Офлайн-режим (PWA: Web App Manifest + Service Worker с кэшированием) ----------
+class PWAManager {
+  static init() {
+    try {
+      // 1. Встраиваем Web App Manifest через Data URI
+      const manifest = {
+        name: 'Мой Медиа Трекер',
+        short_name: 'Медиа Трекер',
+        description: 'Персональный трекер фильмов, сериалов, аниме, манги и ранобэ с умной аналитикой',
+        start_url: './',
+        display: 'standalone',
+        background_color: '#07080d',
+        theme_color: '#7c5cff',
+        icons: [{
+          src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="42" fill="%237c5cff"/><polygon points="72,52 72,140 144,96" fill="%23fff"/></svg>',
+          sizes: '192x192',
+          type: 'image/svg+xml'
+        }]
+      };
+      const link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(JSON.stringify(manifest));
+      document.head.appendChild(link);
+
+      // 2. Регистрируем Service Worker (Network-first с откатом на кэш для постеров и API)
+      if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+        const swCode = `
+          const CACHE_NAME = 'media-tracker-pwa-v2';
+          self.addEventListener('install', event => {
+            self.skipWaiting();
+          });
+          self.addEventListener('activate', event => {
+            event.waitUntil(clients.claim());
+          });
+          self.addEventListener('fetch', event => {
+            if (event.request.method !== 'GET') return;
+            event.respondWith(
+              fetch(event.request)
+                .then(response => {
+                  if (response && response.status === 200 && (event.request.url.includes('image.tmdb.org') || event.request.url.includes('anilist.co') || event.request.url.includes('fonts.g'))) {
+                    const copy = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => {});
+                  }
+                  return response;
+                })
+                .catch(() => caches.match(event.request))
+            );
+          });
+        `;
+        const swBlob = new Blob([swCode], { type: 'application/javascript' });
+        const swUrl = URL.createObjectURL(swBlob);
+        navigator.serviceWorker.register(swUrl).catch(() => {});
+      }
+    } catch (e) {}
+  }
+
+  static saveOfflineSnapshot() {
+    try {
+      if (items.length) localStorage.setItem('offlineItemsCache', JSON.stringify(items));
+    } catch (e) {}
+  }
+
+  static loadOfflineSnapshotIfNeeded() {
+    if (!navigator.onLine && !items.length) {
+      try {
+        const cachedItems = JSON.parse(localStorage.getItem('offlineItemsCache') || '[]');
+        if (cachedItems.length) {
+          items = cachedItems;
+          loaded = true;
+          toast('Офлайн-режим: загружена локальная копия коллекции');
+        }
+      } catch (e) {}
+    }
+  }
+}
+
+// Интеграция новых модулей с жизненным циклом приложения
+const _origRefresh = refresh;
+refresh = function () {
+  _origRefresh();
+  SmartAnalyticsEngine.renderProfileShowcaseAndInsights();
+  CommunityPulseManager.renderFeed();
+  if (KanbanManager.isKanbanActive) KanbanManager.renderBoard();
+  PWAManager.saveOfflineSnapshot();
+};
+
+const _origRender = render;
+render = function () {
+  _origRender();
+  if (KanbanManager.isKanbanActive) KanbanManager.renderBoard();
+};
+
+// Инициализация всех подсистем
+UIManager.init();
+KanbanManager.init();
+ShareCardGenerator.init();
+CommunityPulseManager.init();
+PWAManager.init();
+PWAManager.loadOfflineSnapshotIfNeeded();
+SmartAnalyticsEngine.renderProfileShowcaseAndInsights();
+
+
+// ============================================================================
+// ДОРАБОТКА ЧАСТЕЙ 1–6: ЖАНРЫ/ЮРИ, ПОДБОРКИ/АРХИВ, КАТЕГОРИИ, СТАТИСТИКА,
+// ИСТОРИЯ НИКНЕЙМОВ, ПОСЛЕДНИЙ ВИЗИТ, ВИТРИНА ДОСТИЖЕНИЙ, ПЕРСОНАЖИ И СЭЙЮ
+// ============================================================================
+
+// ---------- ЧАСТЬ 1: Упорядочивание жанров/тегов и строгая фильтрация Yuri/Yaoi/18+ ----------
+// Очищаем возможный старый мусор автоперевода тегов (например «Игра с копиями» / Copy Game)
+try { localStorage.removeItem('tagRu'); } catch (e) {}
+
+// Строго выверенный список основных классических жанров (19 шт.)
+const CLASSIC_GENRES = [
+  ['g:Action', 'Экшен'],
+  ['g:Adventure', 'Приключения'],
+  ['g:Comedy', 'Комедия'],
+  ['g:Drama', 'Драма'],
+  ['g:Ecchi', 'Этти'],
+  ['g:Fantasy', 'Фэнтези'],
+  ['g:Hentai', 'Хентай (18+)'],
+  ['g:Mahou Shoujo', 'Махо-сёдзё'],
+  ['g:Mecha', 'Меха'],
+  ['g:Music', 'Музыка'],
+  ['g:Mystery', 'Детектив'],
+  ['g:Psychological', 'Психология'],
+  ['g:Romance', 'Романтика'],
+  ['g:Sci-Fi', 'Научная фантастика'],
+  ['g:Slice of Life', 'Повседневность'],
+  ['g:Sports', 'Спорт'],
+  ['g:Supernatural', 'Сверхъестественное'],
+  ['g:Thriller', 'Триллер'],
+  ['g:Horror', 'Ужасы']
+];
+
+// Романтика и отношения (Yuri, Yaoi, Разница в возрасте и близкие романтические темы)
+const ROMANCE_REL_TAGS = [
+  ["t:Yuri", "Юри (Yuri — женская любовь)"],
+  ["t:Yaoi", "Яой (Yaoi — мужская любовь)"],
+  ["t:Age Gap", "Разница в возрасте (Age Gap)"],
+  ["t:Love Triangle", "Любовный треугольник"],
+  ["t:Unrequited Love", "Безответная любовь"],
+  ["t:Harem", "Гарем"],
+  ["t:Reverse Harem", "Обратный гарем"],
+  ["t:Marriage", "Брак / Семейные узы"],
+  ["t:Cohabitation", "Совместная жизнь"]
+];
+
+// Темы и сюжет (Магия, Животные, Жестокость и насилие, Рабство и ключевые сеттинги)
+const THEME_PLOT_TAGS = [
+  ["t:Magic", "Магия (Magic)"],
+  ["t:Animals", "Животные (Animals)"],
+  ["t:Gore", "Жестокость и насилие (Gore / Violence)"],
+  ["t:Slavery", "Рабство (Slavery)"],
+  ["t:Isekai", "Исэкай (Другой мир)"],
+  ["t:Reincarnation", "Реинкарнация"],
+  ["t:Vampire", "Вампиры"],
+  ["t:Demons", "Демоны"],
+  ["t:Dragons", "Драконы"],
+  ["t:Elf", "Эльфы"],
+  ["t:Witch", "Ведьмы"],
+  ["t:Cyberpunk", "Киберпанк"],
+  ["t:Post-Apocalyptic", "Постапокалипсис"],
+  ["t:Time Travel", "Путешествия во времени"],
+  ["t:Survival", "Выживание"],
+  ["t:Revenge", "Месть"],
+  ["t:Detective", "Детективное расследование"],
+  ["t:Military", "Военное"],
+  ["t:School", "Школа"],
+  ["t:Mythology", "Мифология"],
+  ["t:Martial Arts", "Боевые искусства"],
+  ["t:Space", "Космос"]
+];
+
+// Дополнительные, чувствительные и редкие теги (Наркотики, Психологические/мрачные темы, Демография отдельно внизу)
+const EXTRA_SENSITIVE_TAGS = [
+  ["t:Drugs", "Наркотики и зависимости (Narcotics / Drugs)"],
+  ["t:Crime", "Криминал и мафия"],
+  ["t:Yakuza", "Якудза"],
+  ["t:Bullying", "Буллинг / Травля"],
+  ["t:Tragedy", "Трагедия"],
+  ["t:Death Game", "Игра на выживание"],
+  ["t:Body Horror", "Боди-хоррор"],
+  ["t:Amnesia", "Амнезия"],
+  ["t:Yandere", "Яндере"],
+  ["t:Tsundere", "Цундере"],
+  ["t:Anti-Hero", "Антигерой"],
+  ["t:Monster Girl", "Монстро-девочки"],
+  ["t:Idol", "Айдолы"],
+  ["t:Video Games", "Видеоигры / Виртуальный мир"],
+  ["t:Iyashikei", "Ийясикэй (Умиротворение)"],
+  ["t:Seinen", "Демография: Сэйнэн"],
+  ["t:Shounen", "Демография: Сёнэн"],
+  ["t:Shoujo", "Демография: Сёдзё"],
+  ["t:Josei", "Демография: Дзёсэй"]
+];
+
+// Канонические синонимы тегов в AniList для 100% точного совпадения
+const CANONICAL_TAG_SYNONYMS = {
+  "Yuri": ["Yuri", "Girls' Love", "Юри", "Юри / Сёдзё-ай (Girls’ Love)"],
+  "Girls' Love": ["Yuri", "Girls' Love", "Юри", "Юри / Сёдзё-ай (Girls’ Love)"],
+  "Yaoi": ["Yaoi", "Boys' Love", "Яой", "Яой / Сёнэн-ай (Boys’ Love)"],
+  "Boys' Love": ["Yaoi", "Boys' Love", "Яой", "Яой / Сёнэн-ай (Boys’ Love)"],
+  "Gore": ["Gore", "Violence", "Graphic Violence", "Жестокость (гор)", "Жестокость и насилие"],
+  "Drugs": ["Drugs", "Narcotics", "Наркотики"]
+};
+
+// Переопределяем формирование групп жанров и тегов для каталога с учётом поиска по тегам
+aniOptions = function () {
+  const adultAllowed = $('cgAge').value !== '';
+  const qFilter = ($('cgTagSearch')?.value || '').trim().toLowerCase();
+  const filterList = arr => arr.filter(([val, label]) => {
+    if (!adultAllowed && (val === 'g:Hentai')) return false;
+    if (!qFilter) return true;
+    return label.toLowerCase().includes(qFilter) || val.toLowerCase().includes(qFilter);
+  });
+
+  const groups = [
+    ['Жанры (Классические)', filterList(CLASSIC_GENRES)],
+    ['Романтика и отношения (Yuri, Yaoi и др.)', filterList(ROMANCE_REL_TAGS)],
+    ['Темы и сюжет', filterList(THEME_PLOT_TAGS)],
+    ['Дополнительные и чувствительные теги', filterList(EXTRA_SENSITIVE_TAGS)]
+  ].filter(([, list]) => list.length > 0);
+
+  return groups;
+};
+
+// Отключаем засорение списка сотнями машинных тегов
+tagAuto = async function () {};
+
+// Переопределяем cgGenres для поддержки новой категории «Кино и видео», под-видов аниме и поиска по тегам
+cgGenres = function () {
+  const isVideo = cg.g === 'Кино и видео' || cg.g === 'Фильм' || cg.g === 'Сериал';
+  const fill = (id, label, groups) => {
+    const sel = $(id);
+    if (!sel) return;
+    const old = sel.value;
+    sel.replaceChildren(new Option(label, ''));
+    groups.forEach(([g, list]) => {
+      const og = document.createElement('optgroup');
+      og.label = g;
+      list.forEach(([v, t]) => og.append(new Option(t, v)));
+      sel.append(og);
+    });
+    if ([...sel.options].some(o => o.value === old)) sel.value = old;
+  };
+
+  const vKind = $('cgVideoKind')?.value || 'all';
+  const tmdbGenreIds = (cg.g === 'Сериал' || vKind === 'tv') ? TV_G : MOVIE_G;
+  const groups = isVideo
+    ? [['Жанры кино и сериалов', [...new Set([...MOVIE_G, ...TV_G])].map(k => [String(k), TG[k]]).filter(x => x[1])]]
+    : aniOptions();
+
+  fill('cgGenre', 'Все жанры и теги', groups);
+  fill('cgGenre2', 'Ещё жанр / тег', groups);
+
+  if ($('cgTagSearch')) $('cgTagSearch').style.display = isVideo ? 'none' : '';
+  if ($('cgAnimeKind')) $('cgAnimeKind').style.display = cg.g === 'Аниме' ? '' : 'none';
+  if ($('cgVideoKind')) $('cgVideoKind').style.display = cg.g === 'Кино и видео' ? '' : 'none';
+  $('cgCountry').style.display = isVideo ? '' : 'none';
+  $('cgSeason').style.display = cg.g === 'Аниме' ? '' : 'none';
+  $('cgAge').style.display = isVideo ? 'none' : '';
+
+  const L = cg.g === 'Аниме'
+    ? [['', 'Любая длина'], ['s', 'Короткие (до 13 серий)'], ['m', 'До 26 серий'], ['l', 'Длинные (50+ серий)']]
+    : isVideo
+    ? [['', 'Любая длина'], ['s', 'До 100 минут'], ['m', 'До 130 минут'], ['l', 'Длинные (от 150 мин)']]
+    : cg.g === 'Манга'
+    ? [['', 'Любой объём'], ['s', 'Короткие (до 30 глав)'], ['m', 'До 100 глав'], ['l', 'Длинные (200+ глав)']]
+    : [['', 'Любая длина']];
+  $('cgLen').replaceChildren(...L.map(([v, t]) => new Option(t, v)));
+  $('cgLen').style.display = L.length > 1 ? '' : 'none';
+};
+
+if ($('cgTagSearch')) {
+  $('cgTagSearch').addEventListener('input', () => {
+    cgGenres();
+  });
+}
+if ($('cgAnimeKind')) $('cgAnimeKind').addEventListener('change', () => cgLoad(true));
+if ($('cgVideoKind')) $('cgVideoKind').addEventListener('change', () => cgLoad(true));
+
+// Строгая клиентская проверка соответствия жанров, тегов (включая Yuri / Yaoi) и 18+ (п. 1.3)
+function verifyCatalogItemMatchesFilters(r) {
+  const selectedFilters = [$('cgGenre')?.value, $('cgGenre2')?.value].filter(Boolean);
+  const ageMode = $('cgAge')?.value || '';
+  const isVideo = cg.g === 'Кино и видео' || cg.g === 'Фильм' || cg.g === 'Сериал';
+
+  if (!isVideo && r.src === 'AniList') {
+    // Строгая проверка возрастного рейтинга 18+
+    const hasHentaiGenre = (r.rawGenres || []).includes('Hentai') || (r.tags || []).some(t => /хентай|hentai/i.test(t));
+    if (ageMode === '' && (r.isAdult || hasHentaiGenre)) return false;
+    if (ageMode === 'only' && !(r.isAdult || hasHentaiGenre)) return false;
+
+    // Строгая проверка вида аниме (Сериал vs Фильм по формату AniList)
+    if (cg.g === 'Аниме') {
+      const ak = $('cgAnimeKind')?.value || '';
+      if (ak === 'MOVIE' && r.format && r.format !== 'MOVIE') return false;
+      if (ak === 'TV' && r.format && r.format === 'MOVIE') return false;
+    }
+
+    // Строгая верификация каждого выбранного жанра и тега по реальным метаданным произведения
+    for (const flt of selectedFilters) {
+      if (flt.startsWith('g:')) {
+        const gEn = flt.slice(2);
+        const gRu = RU[gEn] || gEn;
+        const inRawGenres = (r.rawGenres || []).some(x => x.toLowerCase() === gEn.toLowerCase());
+        const inTags = (r.tags || []).some(x => x.toLowerCase() === gRu.toLowerCase() || x.toLowerCase() === gEn.toLowerCase());
+        if (!inRawGenres && !inTags) return false;
+      } else if (flt.startsWith('t:')) {
+        const tEn = flt.slice(2);
+        const validNames = (CANONICAL_TAG_SYNONYMS[tEn] || [tEn, ruTag(tEn)]).map(s => s.toLowerCase());
+        const inRawTags = (r.rawTags || []).some(x => validNames.includes(x.toLowerCase()));
+        const inTags = (r.tags || []).some(x => validNames.includes(x.toLowerCase()));
+        if (!inRawTags && !inTags) return false;
+      }
+    }
+  } else if (isVideo) {
+    const vKind = $('cgVideoKind')?.value || 'all';
+    if (cg.g === 'Кино и видео') {
+      if (vKind === 'movie' && r.category !== 'Фильм') return false;
+      if (vKind === 'tv' && r.category !== 'Сериал') return false;
+      if (vKind === 'cartoon' && r.category !== 'Мультфильм') return false;
+    }
+    for (const flt of selectedFilters) {
+      const gRu = TG[flt];
+      if (gRu && !(r.tags || []).includes(gRu)) return false;
+    }
+  }
+  return true;
+}
+
+// Расширяем cgFetch для корректного маппинга Yuri -> Girls' Love / Yuri в AniList и поддержки «Кино и видео»
+const _origCgFetch = cgFetch;
+cgFetch = async function (page, per, q, mode) {
+  const g = cg.g;
+  if (g === 'Кино и видео') {
+    const vKind = $('cgVideoKind')?.value || 'all';
+    if (vKind === 'movie') {
+      cg.g = 'Фильм';
+      const res = await _origCgFetch(page, per, q, mode);
+      cg.g = 'Кино и видео';
+      return res.filter(verifyCatalogItemMatchesFilters);
+    } else if (vKind === 'tv') {
+      cg.g = 'Сериал';
+      const res = await _origCgFetch(page, per, q, mode);
+      cg.g = 'Кино и видео';
+      return res.filter(verifyCatalogItemMatchesFilters);
+    } else if (vKind === 'cartoon') {
+      // Для мультфильмов запрашиваем анимацию (genre 16) из фильмов и сериалов
+      const prevG = $('cgGenre').value;
+      if (!prevG) $('cgGenre').value = '16';
+      cg.g = 'Фильм';
+      const r1 = await _origCgFetch(page, per, q, mode).catch(() => []);
+      cg.g = 'Сериал';
+      const r2 = await _origCgFetch(page, per, q, mode).catch(() => []);
+      cg.g = 'Кино и видео';
+      $('cgGenre').value = prevG;
+      return [...r1, ...r2].filter(x => x.category === 'Мультфильм' && verifyCatalogItemMatchesFilters(x));
+    } else {
+      cg.g = 'Фильм';
+      const r1 = await _origCgFetch(page, Math.ceil(per / 2), q, mode).catch(() => []);
+      cg.g = 'Сериал';
+      const r2 = await _origCgFetch(page, Math.ceil(per / 2), q, mode).catch(() => []);
+      cg.g = 'Кино и видео';
+      return [...r1, ...r2].filter(verifyCatalogItemMatchesFilters);
+    }
+  }
+
+  // Для AniList: корректируем передачу Yuri/Yaoi и формата аниме (TV / MOVIE)
+  const gen = $('cgGenre').value, gen2 = $('cgGenre2').value, len = $('cgLen').value, season = $('cgSeason').value;
+  let yr = parseInt($('cgYear').value) || 0; const yr2 = parseInt($('cgYear2').value) || 0; if (yr2 && !yr) yr = 1900;
+  const iso = d => d.toISOString().slice(0, 10), today = iso(new Date()), ago = n => iso(new Date(Date.now() - n * 864e5)), num8 = t => Number(t.replace(/-/g, ''));
+  if (g === 'Фильм' || g === 'Сериал') {
+    const res = await _origCgFetch(page, per, q, mode);
+    return res.filter(verifyCatalogItemMatchesFilters);
+  }
+
+  const SO = {top: 'SCORE_DESC', trend: 'TRENDING_DESC', date: 'START_DATE_DESC', votes: 'FAVOURITES_DESC', hidden: 'SCORE_DESC', classic: 'SCORE_DESC', rare: 'SCORE_DESC'};
+  const age = $('cgAge').value;
+  const o = {
+    page,
+    per,
+    sort: [q ? 'SEARCH_MATCH' : SO[mode] || 'POPULARITY_DESC'],
+    ad: age === 'only' ? true : age === 'all' ? undefined : false
+  };
+  if (!q) {
+    if (mode === 'top' && age !== 'only') o.pg = 3000;
+    if (mode === 'new') o.status = 'RELEASING';
+    if (mode === 'soon') o.status = 'NOT_YET_RELEASED';
+    if (mode === 'date') o.sl = num8(today);
+    if (mode === 'month') { o.sg = num8(ago(30)); o.sl = num8(today); }
+    if (mode === 'hidden') { o.ag = 75; o.pl = 60000; }
+    if (mode === 'classic') { o.sl = 20000101; o.pg = 5000; }
+    if (mode === 'rare') { o.ag = 65; o.pl = 15000; }
+  }
+
+  const gs = [gen, gen2].filter(Boolean);
+  const gg = gs.filter(x => x.startsWith('g:')).map(x => x.slice(2));
+  const tt = gs.filter(x => x.startsWith('t:')).map(x => {
+    const rawName = x.slice(2);
+    // В AniList для основного тега Юри используется "Yuri" (или жанр/тег "Girls' Love" в зависимости от базы тегов)
+    if (rawName === 'Yuri' && ALTAGS && !ALTAGS.tags.some(t => t.n === 'Yuri') && ALTAGS.tags.some(t => t.n === "Girls' Love")) return "Girls' Love";
+    if (rawName === 'Yaoi' && ALTAGS && !ALTAGS.tags.some(t => t.n === 'Yaoi') && ALTAGS.tags.some(t => t.n === "Boys' Love")) return "Boys' Love";
+    return rawName;
+  });
+
+  if (gg.length) o.genre = gg;
+  if (tt.length) o.tag = tt;
+
+  if (g === 'Аниме' && season) { o.se = season; o.sy = yr || new Date().getFullYear(); }
+  else if (yr) { o.sg = yr * 10000 - 1; o.sl = ((yr2 || yr) + 1) * 10000; }
+  if (g === 'Аниме') {
+    const ak = $('cgAnimeKind')?.value || '';
+    if (ak === 'MOVIE') o.format = 'MOVIE';
+    else if (ak === 'TV') o.format = 'TV';
+    if (len === 's') o.el = 14; else if (len === 'm') o.el = 27; else if (len === 'l') o.eg = 49;
+  }
+  if (g === 'Манга') { if (len === 's') o.cl = 31; else if (len === 'm') o.cl = 101; else if (len === 'l') o.cg = 199; }
+  if (g === 'Ранобэ') o.format = 'NOVEL';
+  if (g === 'Манга') { o.fn = 'NOVEL'; if ($('cgKind').value) o.country = $('cgKind').value; }
+
+  let rawResults = await anilist(q || null, g === 'Аниме' ? 'ANIME' : 'MANGA', o);
+  // Если при выборе Yuri/Yaoi в AniList тег называется альтернативно ("Girls' Love" vs "Yuri"), делаем автоматический fallback-запрос
+  if (!rawResults.length && tt.some(t => t === 'Yuri' || t === 'Yaoi')) {
+    o.tag = tt.map(t => t === 'Yuri' ? "Girls' Love" : t === 'Yaoi' ? "Boys' Love" : t);
+    rawResults = await anilist(q || null, g === 'Аниме' ? 'ANIME' : 'MANGA', o).catch(() => []);
+  }
+  return rawResults.filter(verifyCatalogItemMatchesFilters);
+};
+
+// Инициализируем обновлённый список жанров сразу
+cgGenres();
+
+
+// ---------- ЧАСТЬ 3: Пользовательские подборки и понятный Архив ----------
+// Расширяем refreshLists, чтобы сохранялись даже пустые только что созданные подборки в prof.customLists
+refreshLists = function () {
+  const sel = $('listFilter');
+  if (!sel) return;
+  const old = sel.value;
+  const map = new Map();
+  (prof.customLists || []).forEach(t => { if (t && !map.has(t.toLowerCase())) map.set(t.toLowerCase(), t); });
+  items.forEach(i => (i.lists || []).forEach(t => { if (t && !map.has(t.toLowerCase())) map.set(t.toLowerCase(), t); }));
+  sel.replaceChildren(new Option('📁 Все подборки', 'Все'));
+  [...map].sort((a, b) => a[1].localeCompare(b[1], 'ru')).forEach(([k, v]) => sel.add(new Option('📁 ' + v, k)));
+  sel.value = map.has(old) ? old : 'Все';
+  sel.style.display = '';
+  const mBtn = $('manageListBtn');
+  if (mBtn) mBtn.style.display = sel.value !== 'Все' ? '' : 'none';
+};
+
+if ($('createListBtn')) {
+  $('createListBtn').onclick = async () => {
+    const name = ((await uiPrompt('Создать новую подборку', '', 'Например: Мои любимые юри, Шедевры, На вечер...')) || '').trim();
+    if (!name) return;
+    prof.customLists = prof.customLists || [];
+    if (!prof.customLists.some(x => x.toLowerCase() === name.toLowerCase())) {
+      prof.customLists.push(name);
+    }
+    profCloud();
+    refreshLists();
+    $('listFilter').value = name.toLowerCase();
+    if ($('manageListBtn')) $('manageListBtn').style.display = '';
+    render();
+    toast(`Подборка «${name}» создана! Теперь в неё можно добавлять любые произведения.`);
+  };
+}
+
+if ($('manageListBtn')) {
+  $('manageListBtn').onclick = async () => {
+    const curVal = $('listFilter').value;
+    if (curVal === 'Все') return;
+    const allNames = [...(prof.customLists || []), ...items.flatMap(i => i.lists || [])];
+    const canonicalName = allNames.find(x => x && x.toLowerCase() === curVal) || curVal;
+    await openCustomListManager(canonicalName);
+  };
+}
+
+async function openCustomListManager(listName) {
+  prof.listMeta = prof.listMeta || {};
+  const lm = prof.listMeta[listName] || {};
+  const res = await uiListDialog(listName, lm.desc || '', lm.cn || '', LCOL);
+  if (!res) return;
+  const newName = res.name;
+  delete prof.listMeta[listName];
+  prof.customLists = (prof.customLists || []).filter(x => x.toLowerCase() !== listName.toLowerCase());
+  if (newName) {
+    prof.customLists.push(newName);
+    prof.listMeta[newName] = { desc: res.desc, cn: res.cn };
+  }
+  items.forEach(i => {
+    if ((i.lists || []).some(x => x.toLowerCase() === listName.toLowerCase())) {
+      i.lists = i.lists.filter(x => x.toLowerCase() !== listName.toLowerCase());
+      if (newName && !i.lists.includes(newName)) i.lists.push(newName);
+      cloudSave(i);
+    }
+  });
+  profCloud();
+  refresh();
+  $('listFilter').value = newName ? newName.toLowerCase() : 'Все';
+  render();
+  toast(newName ? `Подборка «${newName}» обновлена` : `Подборка «${listName}» удалена (произведения остались в коллекции)`);
+}
+
+// Расширяем detailExtra в карточке тайтла: удобное добавление и удаление из конкретной подборки в 1 клик
+const _origDetailExtra = detailExtra;
+detailExtra = function (id) {
+  _origDetailExtra(id);
+  const i = items.find(x => x.id === id);
+  const box = $('detailExtra');
+  if (!i || !box) return;
+
+  const addListBtn = el('button', 'btn btn-s', '📁＋ В подборку');
+  addListBtn.type = 'button';
+  addListBtn.onclick = async () => {
+    const existingLists = [...new Set([...(prof.customLists || []), ...items.flatMap(x => x.lists || [])])];
+    const hint = existingLists.length ? `Существующие: ${existingLists.join(', ')}` : 'Введи название новой или существующей подборки';
+    const nm = ((await uiPrompt('Добавить произведение в подборку', '', hint)) || '').trim();
+    if (!nm) return;
+    i.lists = i.lists || [];
+    if (!i.lists.some(x => x.toLowerCase() === nm.toLowerCase())) {
+      i.lists.push(nm);
+      prof.customLists = prof.customLists || [];
+      if (!prof.customLists.some(x => x.toLowerCase() === nm.toLowerCase())) prof.customLists.push(nm);
+      profCloud();
+      cloudSave(i);
+      refresh();
+      openDetail(id);
+      toast(`Добавлено в подборку «${nm}»`);
+    } else {
+      toast(`Уже находится в подборке «${nm}»`);
+    }
+  };
+  box.append(addListBtn);
+
+  // Делаем чипы подборок в карточке тайтла с кнопкой быстрого удаления из подборки (без удаления из коллекции)
+  const tg = $('detailTags');
+  if (tg && (i.lists || []).length) {
+    [...tg.querySelectorAll('.chip')].filter(c => c.textContent.startsWith('📁 ')).forEach(c => c.remove());
+    (i.lists || []).forEach(listName => {
+      const wrap = el('span', 'chip');
+      wrap.style.display = 'inline-flex';
+      wrap.style.alignItems = 'center';
+      wrap.style.gap = '6px';
+      const lbl = el('span', null, '📁 ' + listName);
+      lbl.onclick = () => { closeAll(); $('listFilter').value = listName.toLowerCase(); render(); toList(); };
+      const delX = el('b', null, '✕');
+      delX.title = `Убрать из подборки «${listName}» (останется в основной коллекции)`;
+      delX.style.cursor = 'pointer';
+      delX.style.opacity = '0.7';
+      delX.onclick = e => {
+        e.stopPropagation();
+        i.lists = (i.lists || []).filter(x => x !== listName);
+        cloudSave(i);
+        refresh();
+        openDetail(id);
+        toast(`Убрано из подборки «${listName}»`);
+      };
+      wrap.append(lbl, delX);
+      tg.append(wrap);
+    });
+  }
+};
+
+
+// ---------- ЧАСТЬ 4: Форматирование времени (24 часа = 1 день), категории и статистика ----------
+function pluralRu(n, one, two, five) {
+  const abs = Math.abs(n) % 100;
+  const n1 = abs % 10;
+  if (abs > 10 && abs < 20) return five;
+  if (n1 > 1 && n1 < 5) return two;
+  if (n1 === 1) return one;
+  return five;
+}
+
+// Точный перевод минут в часы и дни по правилу 24 часа = 1 день (п. 4.1)
+function formatWatchTimeRu(totalMinutes) {
+  const totalHours = Math.round((totalMinutes || 0) / 60);
+  if (totalHours <= 0) return '0 часов';
+  const days = Math.floor(totalHours / 24);
+  const remHours = totalHours % 24;
+  const dayStr = days > 0 ? `${days} ${pluralRu(days, 'день', 'дня', 'дней')}` : '';
+  const hourStr = remHours > 0 ? `${remHours} ${pluralRu(remHours, 'час', 'часа', 'часов')}` : '';
+  if (days > 0 && remHours > 0) return `${dayStr} и ${hourStr}`;
+  if (days > 0 && remHours === 0) return dayStr;
+  return hourStr;
+}
+
+// Расчёт минут произведения (для фильмов, сериалов, мультфильмов и аниме)
+function getItemMinutes(item) {
+  if (item.category === 'Манга' || item.category === 'Ранобэ') return 0;
+  const eps = num(item.eps);
+  const dur = num(item.dur);
+  if (eps > 0 && dur > 0) return eps * dur;
+  if (dur > 0) return dur;
+  if (eps > 0 && (item.category === 'Аниме' || item.category === 'Сериал')) return eps * 24;
+  return 0;
+}
+
+// Проверка, является ли аниме фильмом или сериалом (п. 4.4)
+function getAnimeSubKind(item) {
+  if (item.format === 'MOVIE') return 'Фильм';
+  if (item.format && item.format !== 'MOVIE') return 'Сериал';
+  if (num(item.eps) === 1 && num(item.dur) >= 50) return 'Фильм';
+  return 'Сериал';
+}
+
+// Проверка, относится ли статус к реально завершённым (Просмотрено/Прочитано или Любимое, если не было в планах/брошено)
+function isCompletedItem(item) {
+  if (item.archived) return false;
+  if (item.status === 'Просмотрено/Прочитано') return true;
+  if (item.status === 'Любимое') {
+    if (item.prevSt && (item.prevSt === 'В планах' || item.prevSt === 'Брошено' || item.prevSt === 'Смотрю/Читаю')) return false;
+    return true;
+  }
+  return false;
+}
+
+// Переключатели под-видов для Аниме и «Кино и видео» в коллекции (п. 4.3, 4.4)
+let animeSubKind = 'Все';
+let videoSubKind = 'Все';
+
+document.querySelectorAll('#catFilters .fb').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('#catFilters .fb').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    cat = b.dataset.c;
+    kind = 'Все';
+    animeSubKind = 'Все';
+    videoSubKind = 'Все';
+    $('kindFilters').style.display = cat === 'Манга' ? 'flex' : 'none';
+    if ($('animeKindFilters')) $('animeKindFilters').style.display = cat === 'Аниме' ? 'flex' : 'none';
+    if ($('videoKindFilters')) $('videoKindFilters').style.display = cat === 'Кино и видео' ? 'flex' : 'none';
+    document.querySelectorAll('#kindFilters .kb').forEach(x => x.classList.toggle('on', x.dataset.k === 'Все'));
+    document.querySelectorAll('#animeKindFilters .kb').forEach(x => x.classList.toggle('on', x.dataset.ak === 'Все'));
+    document.querySelectorAll('#videoKindFilters .kb').forEach(x => x.classList.toggle('on', x.dataset.vk === 'Все'));
+    render();
+  };
+});
+
+document.querySelectorAll('#animeKindFilters .kb').forEach(b => {
+  b.onclick = () => {
+    animeSubKind = b.dataset.ak;
+    document.querySelectorAll('#animeKindFilters .kb').forEach(x => x.classList.toggle('on', x === b));
+    render();
+  };
+});
+
+document.querySelectorAll('#videoKindFilters .kb').forEach(b => {
+  b.onclick = () => {
+    videoSubKind = b.dataset.vk;
+    document.querySelectorAll('#videoKindFilters .kb').forEach(x => x.classList.toggle('on', x === b));
+    render();
+  };
+});
+
+// Обновляем счётчики на кнопках категорий коллекции с учётом «Кино и видео»
+catCounts = function () {
+  document.querySelectorAll('#catFilters .fb').forEach(b => {
+    if (!b.dataset.l) b.dataset.l = b.textContent;
+    const cName = b.dataset.c;
+    const n = cName === 'Всё'
+      ? items.filter(i => !i.archived).length
+      : cName === 'Кино и видео'
+      ? items.filter(i => !i.archived && KINO.includes(i.category)).length
+      : items.filter(i => !i.archived && i.category === cName).length;
+    b.textContent = b.dataset.l + (n ? ' ' + n : '');
+  });
+};
+
+// Переопределяем фильтрацию коллекции (поддержка «Кино и видео», под-видов аниме и инфо-панели статистики текущего статуса п. 3.1, 4.5)
+const _baseRender = _origRender;
+render = function () {
+  const realCat = cat;
+  // Временно вызываем базовый рендер с cat = 'Всё', если выбран «Кино и видео», а затем фильтруем точно
+  if (realCat === 'Кино и видео') cat = 'Всё';
+  _baseRender();
+  cat = realCat;
+
+  // Если выбрана категория «Кино и видео» или подфильтр вида Аниме, применяем дополнительный точный фильтр к карточкам
+  if (realCat === 'Кино и видео' || (realCat === 'Аниме' && animeSubKind !== 'Все')) {
+    const filteredIds = new Set(
+      lastList.filter(i => {
+        if (realCat === 'Кино и видео') {
+          if (!KINO.includes(i.category)) return false;
+          if (videoSubKind !== 'Все' && i.category !== videoSubKind) return false;
+        }
+        if (realCat === 'Аниме' && animeSubKind !== 'Все') {
+          if (getAnimeSubKind(i) !== animeSubKind) return false;
+        }
+        return true;
+      }).map(i => i.id)
+    );
+    const prevList = [...lastList];
+    lastList = prevList.filter(i => filteredIds.has(i.id));
+    [...grid.children].forEach((cardEl, idx) => {
+      const item = prevList[idx];
+      if (item && !filteredIds.has(item.id)) cardEl.remove();
+    });
+    if (!lastList.length && items.length) {
+      grid.replaceChildren(el('div', 'msg', 'Ничего не найдено в выбранном виде.'));
+    }
+    $('countInfo').textContent = `Показано: ${lastList.length} из ${items.length}`;
+  }
+
+  renderStatusAndCategoryBanner();
+  if (KanbanManager.isKanbanActive) KanbanManager.renderBoard();
+};
+
+// Плашка статистики выбранного статуса / Архива / Планов (п. 3.1 и 4.5)
+function renderStatusAndCategoryBanner() {
+  const banner = $('statusSummaryBanner');
+  if (!banner) return;
+  const st = $('statusFilter').value;
+  const listFilterVal = $('listFilter').value;
+
+  if (!items.length) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  banner.style.display = 'flex';
+  banner.replaceChildren();
+
+  const leftInfo = el('div');
+  const rightMetrics = el('div', 'status-summary-metrics');
+
+  if (st === 'Архив') {
+    leftInfo.innerHTML = `<b>📦 Архив коллекции</b><div class="meta" style="margin:2px 0 0">Архив — произведения, которые временно скрыты из основной коллекции. Они не удаляются, сохраняют свой статус и в любой момент могут быть восстановлены.</div>`;
+  } else {
+    const statusLabel = st === 'Все' ? 'Вся активная коллекция' : `Статус: «${st}»`;
+    const listSuffix = listFilterVal !== 'Все' ? ` · Подборка «${$('listFilter').selectedOptions[0]?.textContent.replace('📁 ', '')}»` : '';
+    leftInfo.innerHTML = `<b>📊 Сводка по выборке (${statusLabel}${listSuffix})</b><div class="meta" style="margin:2px 0 0">Расчёт строго по произведениям внутри текущего фильтра без смешивания с другими статусами</div>`;
+  }
+
+  // Считаем метрики строго по текущему отфильтрованному списку lastList
+  const animeItems = lastList.filter(i => i.category === 'Аниме');
+  const mangaItems = lastList.filter(i => i.category === 'Манга');
+  const ranobeItems = lastList.filter(i => i.category === 'Ранобэ');
+  const videoItems = lastList.filter(i => KINO.includes(i.category));
+
+  const addPill = (label, val) => {
+    const p = el('span', 'status-metric-pill');
+    p.innerHTML = `${label}: <b>${val}</b>`;
+    rightMetrics.append(p);
+  };
+
+  addPill('Тайтлов', `${lastList.length}`);
+
+  if (animeItems.length) {
+    const animeMins = animeItems.reduce((s, i) => s + getItemMinutes(i), 0);
+    addPill('🌸 Аниме', `${animeItems.length} шт. · ${formatWatchTimeRu(animeMins)}`);
+  }
+  if (mangaItems.length) {
+    const ch = mangaItems.reduce((s, i) => s + num(i.eps), 0);
+    const vl = mangaItems.reduce((s, i) => s + num(i.vols), 0);
+    addPill('📖 Манга', `${mangaItems.length} шт. · ${ch} ${pluralRu(ch, 'глава', 'главы', 'глав')}${vl ? ' · ' + vl + ' ' + pluralRu(vl, 'том', 'тома', 'томов') : ''}`);
+  }
+  if (ranobeItems.length) {
+    const ch = ranobeItems.reduce((s, i) => s + num(i.eps), 0);
+    const vl = ranobeItems.reduce((s, i) => s + num(i.vols), 0);
+    addPill('📚 Ранобэ', `${ranobeItems.length} шт. · ${ch} гл.${vl ? ' · ' + vl + ' т.' : ''}`);
+  }
+  if (videoItems.length) {
+    const vidMins = videoItems.reduce((s, i) => s + getItemMinutes(i), 0);
+    addPill('🎬 Кино и видео', `${videoItems.length} шт. · ${formatWatchTimeRu(vidMins)}`);
+  }
+
+  banner.append(leftInfo, rightMetrics);
+}
+
+// Детальные карточки статистики просмотра и чтения в Профиле (п. 4.1, 4.2)
+let profileVideoSubFilter = 'all';
+
+function renderProfileMediaTimeCards() {
+  const box = $('profMediaTimeGrid');
+  if (!box) return;
+  box.replaceChildren();
+
+  const completed = items.filter(isCompletedItem);
+
+  // 1. Аниме (только завершённые)
+  const doneAnime = completed.filter(i => i.category === 'Аниме');
+  const animeMinutes = doneAnime.reduce((s, i) => s + getItemMinutes(i), 0);
+  const animeHoursTotal = Math.round(animeMinutes / 60);
+  const animeCard = el('div', 'mt-card');
+  animeCard.innerHTML = `
+    <div class="mt-hdr"><h4>🌸 Время просмотра аниме</h4><span class="chip">Завершено</span></div>
+    <div class="mt-big">${formatWatchTimeRu(animeMinutes)}</div>
+    <div class="mt-sub">
+      <span>Просмотрено: <b>${doneAnime.length}</b> ${pluralRu(doneAnime.length, 'тайтл', 'тайтла', 'тайтлов')}</span>
+      <span>В часах: <b>${animeHoursTotal} ${pluralRu(animeHoursTotal, 'час', 'часа', 'часов')}</b></span>
+    </div>
+  `;
+
+  // 2. Манга (только завершённые: произведения, главы и тома отдельно)
+  const doneManga = completed.filter(i => i.category === 'Манга');
+  const mangaChapters = doneManga.reduce((s, i) => s + num(i.eps), 0);
+  const mangaVolumes = doneManga.reduce((s, i) => s + num(i.vols), 0);
+  const mangaCard = el('div', 'mt-card');
+  mangaCard.innerHTML = `
+    <div class="mt-hdr"><h4>📖 Прочитано манги</h4><span class="chip">Завершено</span></div>
+    <div class="mt-big">${mangaChapters} ${pluralRu(mangaChapters, 'глава', 'главы', 'глав')} · ${mangaVolumes} ${pluralRu(mangaVolumes, 'том', 'тома', 'томов')}</div>
+    <div class="mt-sub">
+      <span>Произведений: <b>${doneManga.length}</b></span>
+      <span>Глав: <b>${mangaChapters}</b></span>
+      <span>Томов: <b>${mangaVolumes || '0 (не указаны)'}</b></span>
+    </div>
+  `;
+
+  // 3. Кино, сериалы и мультфильмы (с переключателем «Вид: Все / Фильмы / Сериалы / Мультфильмы»)
+  const doneVideoAll = completed.filter(i => KINO.includes(i.category));
+  const doneVideoFiltered = doneVideoAll.filter(i => {
+    if (profileVideoSubFilter === 'Фильм') return i.category === 'Фильм';
+    if (profileVideoSubFilter === 'Сериал') return i.category === 'Сериал';
+    if (profileVideoSubFilter === 'Мультфильм') return i.category === 'Мультфильм';
+    return true;
+  });
+  const videoMinutes = doneVideoFiltered.reduce((s, i) => s + getItemMinutes(i), 0);
+  const videoCard = el('div', 'mt-card');
+  const vHdr = el('div', 'mt-hdr');
+  vHdr.append(el('h4', null, '🎬 Кино, сериалы и мультфильмы'));
+  const vSel = el('select');
+  vSel.style.padding = '4px 8px';
+  vSel.style.fontSize = '12px';
+  [['all', 'Вид: Все'], ['Фильм', 'Фильмы'], ['Сериал', 'Сериалы'], ['Мультфильм', 'Мультфильмы']].forEach(([val, txt]) => vSel.add(new Option(txt, val)));
+  vSel.value = profileVideoSubFilter;
+  vSel.onchange = () => {
+    profileVideoSubFilter = vSel.value;
+    renderProfileMediaTimeCards();
+  };
+  vHdr.append(vSel);
+  const vBig = el('div', 'mt-big', formatWatchTimeRu(videoMinutes));
+  const vSub = el('div', 'mt-sub');
+  vSub.innerHTML = `<span>Просмотрено (${vSel.selectedOptions[0].textContent}): <b>${doneVideoFiltered.length}</b></span><span>Всего кино/ТВ: <b>${doneVideoAll.length}</b></span>`;
+  videoCard.append(vHdr, vBig, vSub);
+
+  // 4. Ранобэ (произведения, главы и тома отдельно)
+  const doneRanobe = completed.filter(i => i.category === 'Ранобэ');
+  const ranobeChapters = doneRanobe.reduce((s, i) => s + num(i.eps), 0);
+  const ranobeVolumes = doneRanobe.reduce((s, i) => s + num(i.vols), 0);
+  const ranobeCard = el('div', 'mt-card');
+  ranobeCard.innerHTML = `
+    <div class="mt-hdr"><h4>📚 Прочитано ранобэ</h4><span class="chip">Завершено</span></div>
+    <div class="mt-big">${ranobeChapters} ${pluralRu(ranobeChapters, 'глава', 'главы', 'глав')} · ${ranobeVolumes} ${pluralRu(ranobeVolumes, 'том', 'тома', 'томов')}</div>
+    <div class="mt-sub">
+      <span>Произведений: <b>${doneRanobe.length}</b></span>
+      <span>Глав: <b>${ranobeChapters}</b></span>
+      <span>Томов: <b>${ranobeVolumes}</b></span>
+    </div>
+  `;
+
+  box.append(animeCard, mangaCard, videoCard, ranobeCard);
+
+  // Обновляем также верхнюю сводку времени в профиле (#profTimeSummary) — теперь она считает только реально просмотренное!
+  const totalCompletedMins = animeMinutes + doneVideoAll.reduce((s, i) => s + getItemMinutes(i), 0);
+  if ($('profTimeSummary')) {
+    $('profTimeSummary').textContent = `⏱ Реально просмотрено: ${formatWatchTimeRu(totalCompletedMins)} · Прочитано глав: ${mangaChapters + ranobeChapters}`;
+  }
+}
+
+
+// ---------- ЧАСТЬ 5: Дата регистрации, История никнеймов, Последний визит, Витрина достижений ----------
+function ensureRegistrationAndVisitTimestamps() {
+  let changed = false;
+  if (!prof.createdAt) {
+    const fbCreated = user && !user.isLocal && user.metadata?.creationTime ? new Date(user.metadata.creationTime).getTime() : 0;
+    const earliestItem = items.map(born).filter(Boolean).sort((a, b) => a - b)[0];
+    prof.createdAt = fbCreated || earliestItem || Date.now();
+    changed = true;
+  }
+  // Сохраняем предыдущий визит для отображения и обновляем текущий
+  if (!window._sessionVisitRecorded) {
+    window._sessionVisitRecorded = true;
+    prof.prevVisit = prof.lastVisit || Date.now();
+    prof.lastVisit = Date.now();
+    changed = true;
+  }
+  if (changed) profSaveLocal();
+}
+
+function formatLastVisitText(ts) {
+  if (!ts) return '● Был(а) только что';
+  const diffMin = Math.floor((Date.now() - ts) / 60000);
+  if (diffMin < 5) return '● Был(а) только что';
+  if (diffMin < 60) return `● Был(а) ${diffMin} ${pluralRu(diffMin, 'минуту', 'минуты', 'минут')} назад`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours === 1) return '● Был(а) час назад';
+  if (diffHours < 24) return `● Был(а) ${diffHours} ${pluralRu(diffHours, 'час', 'часа', 'часов')} назад`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return '● Был(а) вчера';
+  return '● Последний визит: ' + new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function updateProfileRegistrationAndVisitUI() {
+  ensureRegistrationAndVisitTimestamps();
+  const regDate = new Date(prof.createdAt);
+  const sinceEl = $('profSince');
+  if (sinceEl) {
+    sinceEl.textContent = `📅 На сайте с ${regDate.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })} ⓘ`;
+    sinceEl.onclick = () => {
+      const exactStr = regDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) + ' в ' + regDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      dlgOpen(() => {
+        $('dlgTitle').textContent = '📅 Дата и время регистрации';
+        $('dlgText').textContent = `Аккаунт зарегистрирован:
+${exactStr}
+
+Статус синхронизации: ${user && !user.isLocal ? 'Облачный аккаунт Google (' + user.email + ')' : 'Локальный профиль браузера'}`;
+        $('dlgBody').replaceChildren();
+      }, 'Понятно', false, () => true);
+    };
+  }
+  const visitEl = $('profLastVisit');
+  if (visitEl) {
+    visitEl.textContent = formatLastVisitText(prof.lastVisit);
+    visitEl.title = `Последняя активность: ${new Date(prof.lastVisit).toLocaleString('ru-RU')}`;
+  }
+}
+
+// История никнеймов (п. 5.2): запись при смене имени в #pfSave, просмотр, удаление по одному и полная очистка
+$('pfSave').onclick = () => {
+  const oldName = (prof.name || (user && (user.displayName || user.email)) || '').trim();
+  const newName = $('pfName').value.trim();
+  if (newName && oldName && newName !== oldName) {
+    prof.nickHistory = prof.nickHistory || [];
+    prof.nickHistory.unshift({ name: oldName, date: Date.now() });
+    prof.nickHistory = prof.nickHistory.slice(0, 30);
+  }
+  Object.assign(prof, {
+    name: newName,
+    bio: $('pfBio').value.trim(),
+    avatar: pf.avatar || '',
+    cover: pf.cover || '',
+    coverColor: pf.coverColor || 0,
+    bgAll: $('pfBgAll').checked,
+    frame: $('pfFrame').value,
+    cardStyle: $('pfCardStyle').value,
+    customColor: pf.customColor || '',
+    tilt: $('pfTilt').checked,
+    like: $('pfLike').value.trim(),
+    dislike: $('pfDislike').value.trim()
+  });
+  profCloud();
+  profPaint();
+  refresh();
+  $('profModal').style.display = 'none';
+  toast('Профиль сохранён');
+};
+
+if ($('nickHistBtn')) {
+  $('nickHistBtn').onclick = () => {
+    dlgOpen(() => {
+      const curNick = prof.name || (user && (user.displayName || user.email)) || 'Коллекционер';
+      $('dlgTitle').textContent = '🕒 История никнеймов';
+      $('dlgText').textContent = `Текущий никнейм: ${curNick}`;
+      const body = $('dlgBody');
+      const drawHistoryList = () => {
+        body.replaceChildren();
+        const hist = prof.nickHistory || [];
+        if (!hist.length) {
+          body.append(el('div', 'meta', 'История изменений имени пуста. Когда ты сменишь имя в настройках профиля, прежний никнейм сохранится здесь.'));
+          return;
+        }
+        hist.forEach((entry, idx) => {
+          const row = el('div', 'row');
+          row.style.justifyContent = 'space-between';
+          row.style.padding = '8px 12px';
+          row.style.background = 'rgba(255,255,255,0.04)';
+          row.style.borderRadius = '10px';
+          row.style.border = '1px solid var(--bd)';
+          const info = el('div');
+          info.append(
+            el('b', null, entry.name),
+            el('div', 'meta', 'Изменено: ' + new Date(entry.date).toLocaleString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))
+          );
+          const delBtn = el('button', 'btn btn-s', '🗑');
+          delBtn.type = 'button';
+          delBtn.title = 'Удалить этот никнейм из истории';
+          delBtn.onclick = () => {
+            prof.nickHistory.splice(idx, 1);
+            profCloud();
+            drawHistoryList();
+          };
+          row.append(info, delBtn);
+          body.append(row);
+        });
+        const clearAllBtn = el('button', 'btn btn-d', 'Очистить всю историю никнеймов');
+        clearAllBtn.type = 'button';
+        clearAllBtn.onclick = () => {
+          prof.nickHistory = [];
+          profCloud();
+          drawHistoryList();
+          toast('История никнеймов полностью очищена');
+        };
+        body.append(clearAllBtn);
+      };
+      drawHistoryList();
+    }, 'Закрыть', false, () => true);
+  };
+}
+
+// Расширенная система достижений + Витрина наград в шапке профиля (п. 5.6)
+function getAchievementsList() {
+  const n = c => items.filter(i => i.category === c).length;
+  const dn = items.filter(isCompletedItem).length;
+  const gn = new Set(items.flatMap(i => i.tags || [])).size;
+  const cn = new Set(items.map(i => i.category)).size;
+  const fv = items.filter(i => i.status === 'Любимое').length;
+  const revCnt = items.filter(i => (i.myNote || '').trim().length >= 10).length;
+  const animeHours = Math.round(items.filter(i => isCompletedItem(i) && i.category === 'Аниме').reduce((s, i) => s + getItemMinutes(i), 0) / 60);
+  const mangaCh = items.filter(i => isCompletedItem(i) && i.category === 'Манга').reduce((s, i) => s + num(i.eps), 0);
+
+  return [
+    ['🌱', 'Первый шаг', items.length, 1, 'Добавь в коллекцию свой первый тайтл.'],
+    ['📚', 'Коллекционер', items.length, 50, 'Собери коллекцию из 50 тайтлов.'],
+    ['🏛', 'Архивариус', items.length, 200, 'Собери коллекцию из 200 тайтлов.'],
+    ['🏆', 'Легенда', items.length, 500, 'Собери коллекцию из 500 тайтлов.'],
+    ['🌸', 'Аниме-фанат', n('Аниме'), 50, 'Добавь 50 аниме в коллекцию.'],
+    ['⭐', 'Аниме-эксперт', n('Аниме'), 100, 'Добавь 100 аниме в коллекцию.'],
+    ['⏱', 'Повелитель времени', animeHours, 240, 'Проведи за просмотром завершённых аниме минимум 10 дней (240 часов).'],
+    ['📖', 'Книжный червь', n('Манга') + n('Ранобэ'), 50, 'Добавь 50 тайтлов манги и ранобэ.'],
+    ['📜', 'Мастер свитков', mangaCh, 500, 'Прочитай 500 глав завершённой манги.'],
+    ['🎬', 'Киноман', n('Фильм') + n('Мультфильм'), 50, 'Добавь 50 фильмов и мультфильмов.'],
+    ['📺', 'Сериальный марафон', n('Сериал'), 25, 'Добавь 25 сериалов.'],
+    ['✅', 'Завершатель', dn, 50, 'Заверши 50 произведений.'],
+    ['❤', 'Любимчики', fv, 10, 'Отметь 10 произведений статусом «Любимое».'],
+    ['✍', 'Критик клуба', revCnt, 10, 'Напиши личные заметки или рецензии минимум к 10 тайтлам.'],
+    ['🧭', 'Разносторонний', cn, 5, 'Собери тайтлы минимум из 5 разных категорий.'],
+    ['🎭', 'Ценитель жанров', gn, 15, 'Собери в коллекции минимум 15 разных жанров и тегов.']
+  ];
+}
+
+function renderPinnedAchievementsShowcase() {
+  const showcase = $('profAchShowcase');
+  if (!showcase) return;
+  showcase.replaceChildren();
+  const allAch = getAchievementsList();
+  const unlocked = allAch.filter(([, , v, need]) => v >= need);
+  let pinnedNames = prof.pinnedAch || [];
+  // Если пользователь ещё не выбрал значки для витрины, показываем до 4 его лучших открытых достижений
+  const displayList = pinnedNames.length
+    ? allAch.filter(([, nm, v, need]) => pinnedNames.includes(nm) && v >= need)
+    : unlocked.slice(-4);
+
+  displayList.forEach(([ic, nm, , , ds]) => {
+    const pill = el('span', 'ach-pill');
+    pill.title = `${nm}: ${ds} (Нажми в блоке достижений ниже, чтобы изменить витрину профиля)`;
+    pill.innerHTML = `<span>${ic}</span><span>${nm}</span>`;
+    showcase.append(pill);
+  });
+
+  // Также обновляем блок достижений в дашборде профиля, чтобы можно было закреплять/откреплять значки в витрине
+  const achBlock = document.querySelector('.pb[data-k="ach"]');
+  if (achBlock) {
+    achBlock.replaceChildren(el('h4', null, '🏅 Достижения и витрина профиля (нажми на открытый значок, чтобы закрепить в шапке)'));
+    const g = el('div', 'ach');
+    const info = el('div', 'achinfo', 'Нажми на любое достижение, чтобы посмотреть прогресс или закрепить полученный значок в витрине своего профиля.');
+    allAch.forEach(([ic, nm, v, need, ds]) => {
+      const isOk = v >= need;
+      const isPinned = (prof.pinnedAch || []).includes(nm);
+      const d = el('button', 'ab' + (isOk ? ' ok' : '') + (isPinned ? ' pinned-ach' : ''));
+      d.type = 'button';
+      if (isPinned) d.append(el('span', 'pin-ach-tag', '★ В профиле'));
+      d.append(el('b', null, ic), el('span', null, nm), el('small', null, isOk ? 'получено ✓' : `${v} / ${need}`));
+      d.onclick = () => {
+        const bar = el('div', 'bar'), tr = el('div', 'track');
+        bar.style.width = Math.min(100, (v / need) * 100) + '%';
+        tr.append(bar);
+        info.replaceChildren(
+          el('b', null, `${ic} ${nm}`),
+          el('div', 'meta', ds),
+          tr,
+          el('div', 'meta', isOk ? 'Достижение разблокировано ✓' : `Прогресс: ${v} из ${need} (осталось ${need - v})`)
+        );
+        if (isOk) {
+          const pinBtn = el('button', 'btn btn-s', isPinned ? '★ Убрать из витрины профиля' : '☆ Показать в витрине профиля');
+          pinBtn.type = 'button';
+          pinBtn.style.alignSelf = 'flex-start';
+          pinBtn.onclick = () => {
+            prof.pinnedAch = prof.pinnedAch || [];
+            if (prof.pinnedAch.includes(nm)) {
+              prof.pinnedAch = prof.pinnedAch.filter(x => x !== nm);
+            } else {
+              if (prof.pinnedAch.length >= 6) return toast('В витрине профиля можно закрепить до 6 главных наград');
+              prof.pinnedAch.push(nm);
+            }
+            profCloud();
+            renderPinnedAchievementsShowcase();
+          };
+          info.append(pinBtn);
+        }
+      };
+      g.append(d);
+    });
+    achBlock.append(g, info);
+  }
+}
+
+
+// ---------- ЧАСТЬ 6: Персонажи и сэйю произведений (по образцу Jutsu.net) ----------
+class CharacterSeiyuuManager {
+  static cache = new Map();
+
+  static async fetchCharactersForItem(item) {
+    const cacheKey = `${item.category}_${item.aniId || ''}_${item.mal || ''}_${item.tmdb || ''}_${item.titleEn || item.title}`;
+    if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+
+    // 1. Для Аниме, Манги и Ранобэ получаем реальных персонажей и японских сэйю из AniList GraphQL API
+    if (['Аниме', 'Манга', 'Ранобэ'].includes(item.category) || item.src === 'AniList') {
+      const mType = item.category === 'Аниме' ? 'ANIME' : 'MANGA';
+      const searchName = item.titleEn || item.en || item.titleOrig || item.orig || item.title;
+      const queryById = `
+        query($id: Int, $mal: Int, $s: String, $t: MediaType) {
+          Media(id: $id, idMal: $mal, search: $s, type: $t) {
+            id
+            idMal
+            characters(sort: [ROLE, RELEVANCE, ID], perPage: 25) {
+              pageInfo { total }
+              edges {
+                role
+                node {
+                  id
+                  name { full native }
+                  image { large medium }
+                }
+                voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) {
+                  id
+                  name { full native }
+                  image { large medium }
+                }
+              }
+            }
+          }
+        }
+      `;
+      const vars = { t: mType };
+      if (item.aniId) vars.id = Number(item.aniId);
+      else if (item.mal) vars.mal = Number(item.mal);
+      else vars.s = searchName;
+
+      const resp = await fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ query: queryById, variables: vars })
+      });
+      const json = await resp.json();
+      const media = json?.data?.Media;
+      const edges = media?.characters?.edges || [];
+      const totalCount = media?.characters?.pageInfo?.total || edges.length;
+
+      // Попробуем получить русские имена персонажей с Shikimori, если он доступен и известен MAL ID
+      const malId = media?.idMal || item.mal;
+      const ruCharMap = new Map();
+      if (malId && shikiOk() && SHK[item.category]) {
+        try {
+          const roles = await shiki(`/api/${SHK[item.category]}/${malId}/roles`);
+          (roles || []).forEach(r => {
+            if (r.character && r.character.name && r.character.russian) {
+              ruCharMap.set(ruN(r.character.name), r.character.russian);
+            }
+          });
+        } catch (e) {}
+      }
+
+      const list = edges.map(edge => {
+        const ch = edge.node || {};
+        const va = (edge.voiceActors || [])[0] || null;
+        const enName = ch.name?.full || '';
+        const ruName = ruCharMap.get(ruN(enName)) || enName;
+        return {
+          name: ruName,
+          origName: enName,
+          role: edge.role === 'MAIN' ? 'MAIN' : 'SUPPORTING',
+          img: ch.image?.large || ch.image?.medium || FALL,
+          vaName: va ? (va.name?.full || '') : '',
+          vaImg: va ? (va.image?.large || va.image?.medium || '') : ''
+        };
+      });
+
+      const result = {
+        total: totalCount,
+        isAnime: item.category === 'Аниме',
+        isManga: item.category !== 'Аниме',
+        items: list
+      };
+      this.cache.set(cacheKey, result);
+      return result;
+    }
+
+    // 2. Для Фильмов, Сериалов и Мультфильмов получаем актёрский состав и роли из TMDB (если указан ключ TMDB)
+    const tmdbKey = TMDB_KEY || localStorage.getItem('tmdbKey');
+    if (tmdbKey && item.tmdb) {
+      const d = await ruJson(`https://api.themoviedb.org/3/${item.tmdb}/credits?api_key=${encodeURIComponent(tmdbKey)}&language=ru-RU`, 7000);
+      const cast = (d.cast || []).slice(0, 24);
+      const list = cast.map((c, idx) => ({
+        name: c.character || c.name,
+        origName: c.name,
+        role: idx < 4 ? 'MAIN' : 'SUPPORTING',
+        img: c.profile_path ? 'https://image.tmdb.org/t/p/w342' + c.profile_path : FALL,
+        vaName: c.name || '',
+        vaImg: ''
+      }));
+      const result = {
+        total: (d.cast || []).length || list.length,
+        isAnime: false,
+        isManga: false,
+        items: list
+      };
+      this.cache.set(cacheKey, result);
+      return result;
+    }
+
+    return { total: 0, items: [] };
+  }
+
+  static async renderIntoContainer(containerEl, item) {
+    if (!containerEl || !item) return;
+    containerEl.style.display = 'block';
+    containerEl.innerHTML = `<div class="meta" style="margin:0">Загрузка персонажей и сэйю…</div>`;
+
+    try {
+      const data = await this.fetchCharactersForItem(item);
+      if (!data.items || !data.items.length) {
+        containerEl.style.display = 'none';
+        containerEl.replaceChildren();
+        return;
+      }
+
+      containerEl.replaceChildren();
+
+      const hdr = el('div', 'jutsu-hdr');
+      const titleWrap = el('div', 'jutsu-hdr-title');
+      const h4 = el('h4');
+      const iconSpan = el('span', 'j-icon', '👤');
+      const headingText = data.isAnime
+        ? 'Персонажи и сэйю'
+        : data.isManga
+        ? 'Персонажи произведения'
+        : 'Персонажи и актёры';
+      h4.append(iconSpan, document.createTextNode(headingText));
+      const subText = data.isAnime
+        ? 'Герои аниме и японские голоса (оригинальная озвучка)'
+        : data.isManga
+        ? 'Главные и второстепенные герои манги / ранобэ'
+        : 'Главные герои и актёрский состав';
+      titleWrap.append(h4, el('div', 'jutsu-hdr-sub', subText));
+
+      const navBtns = el('div', 'jutsu-nav-btns');
+      const prevBtn = el('button', 'jutsu-arrow', '←');
+      prevBtn.type = 'button';
+      prevBtn.title = 'Прокрутить влево';
+      const nextBtn = el('button', 'jutsu-arrow', '→');
+      nextBtn.type = 'button';
+      nextBtn.title = 'Прокрутить вправо';
+      navBtns.append(prevBtn, nextBtn);
+      hdr.append(titleWrap, navBtns);
+
+      const track = el('div', 'jutsu-track');
+      prevBtn.onclick = () => track.scrollBy({ left: -420, behavior: 'smooth' });
+      nextBtn.onclick = () => track.scrollBy({ left: 420, behavior: 'smooth' });
+
+      let isExpanded = false;
+      const COMPACT_LIMIT = 8;
+
+      const renderCards = () => {
+        track.replaceChildren();
+        track.classList.toggle('expanded-grid', isExpanded);
+        navBtns.style.display = isExpanded ? 'none' : 'flex';
+
+        const visibleList = isExpanded ? data.items : data.items.slice(0, COMPACT_LIMIT);
+        visibleList.forEach(ch => {
+          const card = el('div', 'j-char-card' + (ch.role === 'MAIN' ? ' is-main' : ''));
+          const art = el('div', 'j-char-art');
+          const img = el('img', 'j-char-img');
+          img.loading = 'lazy';
+          img.src = ch.img || FALL;
+          img.alt = ch.name;
+          img.onerror = () => { img.onerror = null; img.src = FALL; };
+          art.append(img);
+
+          if (ch.role === 'MAIN') {
+            art.append(el('span', 'j-main-badge', 'Главный'));
+          }
+          if (ch.vaImg) {
+            const vaWrap = el('div', 'j-va-avatar');
+            vaWrap.title = ch.vaName ? `Сэйю: ${ch.vaName}` : '';
+            const vaIm = el('img');
+            vaIm.loading = 'lazy';
+            vaIm.src = ch.vaImg;
+            vaIm.alt = ch.vaName;
+            vaWrap.append(vaIm);
+            art.append(vaWrap);
+          }
+
+          const cName = el('div', 'j-char-name', ch.name);
+          cName.title = ch.origName && ch.origName !== ch.name ? `${ch.name} (${ch.origName})` : ch.name;
+          card.append(art, cName);
+
+          if (ch.vaName) {
+            const vName = el('div', 'j-va-name', ch.vaName);
+            vName.title = `Озвучивает: ${ch.vaName}`;
+            card.append(vName);
+          }
+          track.append(card);
+        });
+      };
+
+      renderCards();
+      containerEl.append(hdr, track);
+
+      if (data.items.length > COMPACT_LIMIT) {
+        const toggleWrap = el('div', 'jutsu-toggle-wrap');
+        const toggleBtn = el('button', 'jutsu-toggle-btn', `ПОКАЗАТЬ ВСЕХ (${data.items.length})`);
+        toggleBtn.type = 'button';
+        toggleBtn.onclick = () => {
+          isExpanded = !isExpanded;
+          toggleBtn.textContent = isExpanded ? 'СВЕРНУТЬ СПИСОК ▲' : `ПОКАЗАТЬ ВСЕХ (${data.items.length})`;
+          renderCards();
+        };
+        toggleWrap.append(toggleBtn);
+        containerEl.append(toggleWrap);
+      }
+    } catch (e) {
+      containerEl.style.display = 'none';
+    }
+  }
+}
+
+// Подключаем отрисовку «Персонажи и сэйю» при открытии карточки из коллекции и из каталога
+const _origOpenDetailChar = openDetail;
+openDetail = function (id) {
+  _origOpenDetailChar(id);
+  const item = items.find(x => x.id === id);
+  if (item) {
+    // Дополняем строку метаданных томами для манги/ранобэ
+    if (item.vols && $('detailMeta') && !$('detailMeta').textContent.includes('том')) {
+      $('detailMeta').textContent += ` • ${item.vols} ${pluralRu(item.vols, 'том', 'тома', 'томов')}`;
+    }
+    CharacterSeiyuuManager.renderIntoContainer($('detailCharsSec'), item);
+  }
+};
+
+const _origShowPreviewChar = showPreview;
+showPreview = function (r, rnd) {
+  const res = _origShowPreviewChar(r, rnd);
+  CharacterSeiyuuManager.renderIntoContainer($('rndCharsSec'), r);
+  return res;
+};
+
+// Связываем обновление статистики, времени, витрины достижений и даты визита с циклом refresh()
+const _prevRefreshHook = refresh;
+refresh = function () {
+  _prevRefreshHook();
+  renderProfileMediaTimeCards();
+  updateProfileRegistrationAndVisitUI();
+  renderPinnedAchievementsShowcase();
+  renderStatusAndCategoryBanner();
+};
+
+// Первичный запуск новых компонентов профиля и коллекций
+renderProfileMediaTimeCards();
+updateProfileRegistrationAndVisitUI();
+renderPinnedAchievementsShowcase();
+renderStatusAndCategoryBanner();
+
+</script>
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0a0b12">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -339,6 +2539,941 @@ html[data-theme=white] .toast{background:#fff}html[data-theme=white] .toast.bad{
 html[data-theme=neon] .menu{background:#150f28}html[data-theme=neon] .toast{background:#1a1230}
 html[data-theme=mocha] .menu{background:#241e1b}html[data-theme=mocha] .toast{background:#2b2420}
 #cgGenre,#cgGenre2{max-width:220px}
+
+/* ===== DESIGN SYSTEM & MODERN REDESIGN (2026 Editorial & Community Style) ===== */
+:root {
+  color-scheme: dark;
+  --bg: #07080d;
+  --bg-elevated: rgba(18, 20, 31, 0.72);
+  --card: rgba(22, 25, 38, 0.65);
+  --card-solid: #161926;
+  --inp: rgba(255, 255, 255, 0.055);
+  --bd: rgba(255, 255, 255, 0.08);
+  --bd-hover: rgba(255, 255, 255, 0.18);
+  --ac: #7c5cff;
+  --ach: #a68eff;
+  --mu: #949bb5;
+  --tx: #f3f5fa;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
+  --shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+
+body {
+  background: var(--bg);
+  color: var(--tx);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  padding: 20px clamp(12px, 3vw, 36px) 90px;
+  max-width: 1640px;
+  margin: 0 auto;
+  overflow-x: hidden;
+}
+
+/* Floating Island Header with Auto-Hide on Scroll */
+header {
+  position: sticky;
+  top: 12px;
+  z-index: 60;
+  margin: 0 auto 22px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--bd);
+  background: rgba(13, 15, 24, 0.78);
+  backdrop-filter: blur(22px) saturate(1.6);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease, box-shadow 0.25s ease;
+}
+header.hdr-hidden {
+  transform: translateY(-135%);
+  opacity: 0;
+  pointer-events: none;
+}
+html[data-theme=white] header {
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 10px 30px rgba(20, 24, 40, 0.1);
+}
+
+/* Community Pulse Ticker Bar (Social Presence) */
+.community-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 16px;
+  margin-bottom: 18px;
+  border-radius: 16px;
+  background: linear-gradient(90deg, rgba(124, 92, 255, 0.11), rgba(56, 189, 248, 0.06), rgba(22, 25, 38, 0.5));
+  border: 1px solid var(--bd);
+  font-size: 12.5px;
+  color: var(--mu);
+  overflow: hidden;
+}
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1db57a;
+  box-shadow: 0 0 10px #1db57a;
+  display: inline-block;
+  flex-shrink: 0;
+  animation: pulseGlow 2s infinite;
+}
+@keyframes pulseGlow {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.55; }
+}
+.comm-feed {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+  flex: 1;
+}
+.comm-feed::-webkit-scrollbar { display: none; }
+.comm-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--tx);
+  font-size: 12px;
+  cursor: pointer;
+  transition: 0.18s;
+}
+.comm-item:hover {
+  border-color: var(--ac);
+  background: rgba(124, 92, 255, 0.14);
+}
+.comm-av {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* Clean Poster-First Cards */
+.grid {
+  grid-template-columns: repeat(auto-fill, minmax(var(--cw, 185px), 1fr));
+  gap: 26px 18px;
+}
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pc {
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.36);
+  background: #151824;
+}
+.card:hover .pc {
+  transform: translateY(-4px);
+  border-color: rgba(124, 92, 255, 0.45);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.52), 0 0 22px rgba(124, 92, 255, 0.22);
+}
+.pc .status {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(15, 17, 26, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pc .status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #1db57a;
+}
+.status[data-s="В планах"]::before { background: #64748b; }
+.status[data-s="Смотрю/Читаю"]::before { background: #38bdf8; }
+.status[data-s="Любимое"]::before { background: #f43f5e; }
+.status[data-s="Пересматриваю"]::before { background: #a855f7; }
+.status[data-s="Брошено"]::before { background: #ef4444; }
+.title {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 10px 0 4px;
+}
+.cm {
+  font-size: 12px;
+  color: var(--mu);
+  font-weight: 500;
+}
+.tg {
+  font-size: 11.5px;
+  color: rgba(169, 175, 198, 0.72);
+}
+
+/* Redesigned Profile Hero & Taste DNA Social Hub */
+.pcard {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 24px;
+  padding: 28px 30px;
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(650px 260px at 0% 0%, rgba(124, 92, 255, 0.28), transparent 70%),
+    radial-gradient(500px 240px at 100% 100%, rgba(56, 189, 248, 0.14), transparent 70%),
+    rgba(22, 25, 38, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow: var(--shadow-md);
+}
+@media (max-width: 820px) {
+  .pcard {
+    grid-template-columns: 1fr;
+    text-align: center;
+    justify-items: center;
+    padding: 22px 18px;
+  }
+  .pinfo { align-items: center; display: flex; flex-direction: column; }
+  .xp-wrap { width: 100%; }
+}
+.prof-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.taste-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--tx);
+}
+.pcard-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+@media (max-width: 820px) {
+  .pcard-right { align-items: center; width: 100%; }
+}
+
+/* Showcase Vitrine (Top-4 Favorites + Taste Compatibility) */
+.vitrine-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+@media (max-width: 860px) {
+  .vitrine-grid { grid-template-columns: 1fr; }
+}
+.vitrine-card {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  backdrop-filter: blur(18px);
+}
+.vitrine-card h4 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--tx);
+}
+.fav-posters {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.fav-slot {
+  position: relative;
+  aspect-ratio: 2/3;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.fav-slot:hover {
+  transform: translateY(-3px);
+  border-color: var(--ac);
+}
+.fav-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.fav-slot .fav-rank {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(10, 12, 20, 0.82);
+  color: #fbbf24;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 6px;
+  backdrop-filter: blur(6px);
+}
+
+/* Smart Insights (Умные инсайты) */
+.insights-wrap {
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.12), rgba(22, 25, 38, 0.72));
+  border: 1px solid rgba(124, 92, 255, 0.26);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.insights-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.insights-hdr h4 {
+  margin: 0;
+  font-size: 14.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.insights-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
+}
+.insight-card {
+  background: rgba(12, 14, 22, 0.55);
+  border: 1px solid var(--bd);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.insight-card:hover {
+  border-color: var(--ac);
+  transform: translateY(-2px);
+}
+.insight-ic {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(124, 92, 255, 0.16);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.insight-body b {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 3px;
+  color: var(--tx);
+}
+.insight-body p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--mu);
+}
+html[data-theme=white] .insight-card {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+/* Interactive Kanban Board (Drag & Drop) */
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+  align-items: start;
+}
+@media (max-width: 768px) {
+  .kanban-board {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 14px;
+  }
+  .kanban-col {
+    min-width: 275px;
+    scroll-snap-align: start;
+  }
+}
+.kanban-col {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 360px;
+  max-height: 78vh;
+  transition: border-color 0.2s, background 0.2s, transform 0.2s;
+}
+.kanban-col.drag-over {
+  border-color: var(--ac);
+  background: rgba(124, 92, 255, 0.12);
+  box-shadow: 0 0 24px rgba(124, 92, 255, 0.22);
+}
+.kanban-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 8px;
+  border-bottom: 1px solid var(--bd);
+  font-weight: 700;
+  font-size: 13.5px;
+}
+.kanban-cnt {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--mu);
+}
+.kanban-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  flex: 1;
+  padding-right: 2px;
+}
+.k-card {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(14, 16, 25, 0.65);
+  border: 1px solid var(--bd);
+  cursor: grab;
+  transition: transform 0.16s, border-color 0.16s, box-shadow 0.16s;
+  user-select: none;
+}
+html[data-theme=white] .k-card {
+  background: #fff;
+}
+.k-card:hover {
+  border-color: var(--ac);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+.k-card:active { cursor: grabbing; }
+.k-card.dragging {
+  opacity: 0.42;
+  transform: scale(0.96);
+}
+.k-card img {
+  width: 48px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #222633;
+}
+.k-info { min-width: 0; }
+.k-title {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+.k-meta {
+  font-size: 11px;
+  color: var(--mu);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.k-quick-move {
+  display: flex;
+  gap: 4px;
+  margin-top: 5px;
+  flex-wrap: wrap;
+}
+.k-move-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--bd);
+  color: var(--mu);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 10px;
+  cursor: pointer;
+}
+.k-move-btn:hover {
+  border-color: var(--ac);
+  color: #fff;
+}
+
+/* Mobile-First Bottom Sheets with Swipe Handle */
+.sheet-handle {
+  display: none;
+  width: 42px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  margin: -6px auto 8px;
+  flex-shrink: 0;
+  touch-action: none;
+}
+html[data-theme=white] .sheet-handle {
+  background: rgba(0, 0, 0, 0.2);
+}
+@media (max-width: 680px) {
+  .modal {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  .modal .mc {
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: 90vh !important;
+    border-radius: 24px 24px 0 0 !important;
+    border-bottom: 0 !important;
+    padding: 16px 16px calc(20px + env(safe-area-inset-bottom)) !important;
+    animation: sheetUp 0.28s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    transition: transform 0.22s ease-out;
+  }
+  .sheet-handle {
+    display: block;
+  }
+  @keyframes sheetUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  #modalX.show { display: none !important; }
+}
+
+/* Shareable Profile Card Canvas Modal */
+#shareCanvas {
+  width: 100%;
+  max-width: 540px;
+  height: auto;
+  border-radius: 16px;
+  border: 1px solid var(--bd);
+  box-shadow: var(--shadow-md);
+  background: #0d0f18;
+  display: block;
+  margin: 0 auto;
+}
+
+
+/* ===== ЧАСТЬ 1–6: СТИЛИ ДОРАБОТКИ (Персонажи Jutsu, Статистика, Подборки, Профиль) ===== */
+
+/* Скрываем избыточные кнопки «Для тебя» и «Выбери за меня» (п. 2.1) */
+#cgRec, #cgPick { display: none !important; }
+
+/* Слегка расширенный по высоте баннер профиля с сохранением расположения (п. 5.5) */
+.pcard {
+  min-height: 195px;
+  padding: 32px 30px;
+  background-position: center 35%;
+}
+.pcard.hascover {
+  min-height: 235px;
+}
+
+/* Кликабельная дата регистрации и последний визит (п. 5.1, 5.3) */
+#profSince {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: 0.18s;
+}
+#profSince:hover {
+  border-color: var(--ac);
+  color: var(--tx);
+}
+.last-visit-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #1db57a;
+  background: rgba(29, 181, 122, 0.12);
+  border: 1px solid rgba(29, 181, 122, 0.28);
+  padding: 3px 10px;
+  border-radius: 999px;
+  margin-top: 4px;
+}
+.nick-hist-btn {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--bd);
+  color: var(--mu);
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  margin-left: 8px;
+  vertical-align: middle;
+  transition: 0.15s;
+}
+.nick-hist-btn:hover {
+  border-color: var(--ac);
+  color: var(--tx);
+}
+
+/* Витрина выбранных достижений в шапке профиля (п. 5.6) */
+.prof-ach-showcase {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ach-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.22), rgba(22, 25, 38, 0.85));
+  border: 1px solid rgba(124, 92, 255, 0.42);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tx);
+}
+.ab {
+  position: relative;
+  transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+  background: rgba(255, 255, 255, 0.03);
+}
+.ab.ok {
+  background: linear-gradient(160deg, rgba(124, 92, 255, 0.16), rgba(22, 25, 38, 0.7));
+}
+.ab.pinned-ach {
+  outline: 2px solid #fbbf24;
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.35);
+}
+.ab .pin-ach-tag {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 10px;
+  background: rgba(251, 191, 36, 0.95);
+  color: #000;
+  border-radius: 6px;
+  padding: 1px 4px;
+  font-weight: 800;
+}
+
+/* Карточки детальной статистики по категориям в профиле (п. 4.1, 4.2) */
+.media-time-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.mt-card {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+.mt-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--ac), var(--ach));
+}
+.mt-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.mt-hdr h4 {
+  margin: 0;
+  font-size: 14.5px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.mt-big {
+  font-size: 22px;
+  font-weight: 800;
+  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  color: var(--tx);
+  letter-spacing: -0.02em;
+}
+.mt-sub {
+  font-size: 12.5px;
+  color: var(--mu);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.mt-sub b { color: var(--tx); }
+
+/* Информационная плашка статуса / Архива / Планов в коллекции (п. 3.1, 4.5) */
+.status-summary-banner {
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.14), rgba(22, 25, 38, 0.78));
+  border: 1px solid rgba(124, 92, 255, 0.3);
+  border-radius: 16px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+.status-summary-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+.status-metric-pill {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 5px 11px;
+  font-size: 12.5px;
+}
+.status-metric-pill b {
+  color: var(--ach);
+}
+
+/* Раздел «Персонажи и сэйю» в стиле Jutsu.net (ЧАСТЬ 6) */
+.jutsu-chars-sec {
+  grid-column: 1 / -1;
+  background: #0e1017;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  padding: 18px 20px;
+  margin-top: 8px;
+}
+html[data-theme=white] .jutsu-chars-sec {
+  background: #f4f6fb;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+.jutsu-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.jutsu-hdr-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.jutsu-hdr-title h4 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+}
+html[data-theme=white] .jutsu-hdr-title h4 { color: #14161f; }
+.jutsu-hdr-title h4 .j-icon {
+  color: #d946ef;
+  font-size: 18px;
+}
+.jutsu-hdr-sub {
+  font-size: 12px;
+  color: #8a90a8;
+}
+.jutsu-nav-btns {
+  display: flex;
+  gap: 6px;
+}
+.jutsu-arrow {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(30, 33, 48, 0.85);
+  color: #fff;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  transition: 0.18s;
+}
+.jutsu-arrow:hover {
+  background: var(--ac);
+  border-color: var(--ac);
+}
+.jutsu-track {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+}
+.jutsu-track.expanded-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 16px 14px;
+  overflow-x: visible;
+  max-height: none;
+}
+.j-char-card {
+  flex: 0 0 128px;
+  width: 128px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  text-align: left;
+}
+.jutsu-track.expanded-grid .j-char-card {
+  width: 100%;
+}
+.j-char-art {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #1b1e2b;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.j-char-art > img.j-char-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+.j-char-card:hover .j-char-art > img.j-char-img {
+  transform: scale(1.05);
+}
+.j-main-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: linear-gradient(135deg, #ec4899, #d946ef);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 999px;
+  box-shadow: 0 2px 10px rgba(217, 70, 239, 0.5);
+  z-index: 2;
+}
+.j-va-avatar {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid #0e1017;
+  background: #222633;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
+  z-index: 2;
+}
+.j-va-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.j-char-name {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #f3f5fa;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.j-char-card.is-main .j-char-name {
+  color: #f472b6;
+}
+html[data-theme=white] .j-char-name { color: #14161f; }
+html[data-theme=white] .j-char-card.is-main .j-char-name { color: #db2777; }
+.j-va-name {
+  font-size: 11.5px;
+  color: #8a90a8;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.jutsu-toggle-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+.jutsu-toggle-btn {
+  background: #232634;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e6f3;
+  padding: 9px 24px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: 0.18s;
+}
+.jutsu-toggle-btn:hover {
+  background: var(--ac);
+  color: #fff;
+  border-color: var(--ac);
+}
+
 </style>
 </head>
 <body>
@@ -347,7 +3482,11 @@ html[data-theme=mocha] .menu{background:#241e1b}html[data-theme=mocha] .toast{ba
   <div class="auth-logo">▶</div>
   <h1 style="margin:0">Мой Медиа Трекер</h1>
   <p style="color:var(--mu);max-width:400px;margin:0;line-height:1.5">Твоя коллекция фильмов, сериалов, аниме, манги и ранобэ. Войди через Google, чтобы она синхронизировалась на всех устройствах.</p>
-  <button class="btn btn-g" id="loginBtn">Войти через Google</button>
+  <div class="row" style="justify-content:center;gap:12px">
+    <button class="btn btn-g" id="loginBtn">Войти через Google</button>
+    <button class="btn btn-s" id="localModeBtn" type="button" style="font-size:15px;padding:12px 20px">💻 Открыть локально (без аккаунта)</button>
+  </div>
+  <div class="meta" style="max-width:440px;margin:0;line-height:1.45">💡 При запуске файла двойным кликом (<code>file://</code>) вход через Google блокируется защитой браузера. Нажми <b>«Открыть локально»</b> — все данные будут надёжно сохраняться в памяти твоего браузера и через JSON-бэкапы.</div>
 </div>
 
 <div id="appScreen">
@@ -362,14 +3501,31 @@ html[data-theme=mocha] .menu{background:#241e1b}html[data-theme=mocha] .toast{ba
     </div>
   </header>
   <div class="tabs"><button class="tab on" data-v="catalog">🌐 Каталог</button><button class="tab" data-v="profile">👤 Мой профиль</button></div>
+  <div class="community-bar" id="communityBar">
+    <div class="row" style="gap:8px;flex-wrap:nowrap">
+      <span class="pulse-dot"></span>
+      <b style="color:var(--tx);font-size:12px;white-space:nowrap">Пульс клуба</b>
+    </div>
+    <div class="comm-feed" id="commFeed"></div>
+    <span class="meta" id="commOnline" style="margin:0;white-space:nowrap;font-size:11.5px">👥 48 в сети</span>
+  </div>
+
 
   <div id="catalogView">
     <div class="filters" id="cgCats">
-      <button class="tb on" data-g="Аниме">Аниме</button><button class="tb" data-g="Манга">Манга</button><button class="tb" data-g="Ранобэ">Ранобэ</button><button class="tb" data-g="Фильм">Фильмы</button><button class="tb" data-g="Сериал">Сериалы</button>
+      <button class="tb on" data-g="Аниме">Аниме</button>
+      <button class="tb" data-g="Манга">Манга</button>
+      <button class="tb" data-g="Ранобэ">Ранобэ</button>
+      <button class="tb" data-g="Кино и видео">🎬 Кино и видео</button>
+      <button class="tb" data-g="Фильм" style="display:none">Фильмы</button>
+      <button class="tb" data-g="Сериал" style="display:none">Сериалы</button>
     </div>
     <div class="row" id="cgFilters" style="margin-top:12px"><input id="cgSearch" placeholder="Найти в каталоге..." style="flex:1;max-width:340px"><button class="tb" id="cgClear" title="Очистить поиск" style="display:none">✕</button><button class="tb" id="cgFltBtn" type="button">🔎 Фильтры</button>
       <select id="cgMode"><option value="pop">Популярное</option><option value="top">Топ рейтинга</option><option value="new">Новинки / онгоинги</option><option value="soon">Скоро выйдет</option><option value="trend">🔥 В тренде на неделе</option><option value="month">🆕 Новинки месяца</option><option value="date">📅 По дате выхода</option><option value="votes">👥 По числу голосов</option><option value="hidden">💎 Недооценённые</option><option value="classic">🏛 Классика</option><option value="rare">🔭 Малоизвестные</option></select>
       <select id="cgKind" style="display:none"><option value="">Все виды</option><option value="JP">Манга</option><option value="KR">Манхва</option><option value="CN">Маньхуа</option></select>
+      <select id="cgAnimeKind" title="Вид аниме"><option value="">Вид: Все аниме</option><option value="TV">Аниме-сериалы</option><option value="MOVIE">Аниме-фильмы</option></select>
+      <select id="cgVideoKind" style="display:none" title="Вид кино и видео"><option value="all">Вид: Все</option><option value="movie">Фильмы</option><option value="tv">Сериалы</option><option value="cartoon">Мультфильмы</option></select>
+      <input id="cgTagSearch" placeholder="🔎 Поиск жанра или тега..." style="width:175px" title="Быстрый фильтр списка жанров и тегов">
       <select id="cgGenre"></select>
       <input type="number" id="cgYear" placeholder="Год" min="1900" max="2100" style="width:88px">
       <button class="tb" id="cgHide">Скрыть добавленные</button><button class="tb" id="cgPoster">Только с постером</button><button class="tb" id="cgRec" title="Подобрать по жанрам из твоей коллекции">✨ Для тебя</button><button class="tb" id="cgThree" title="Три случайных варианта на выбор">🎲 Три варианта</button><button class="tb" id="cgPick" title="Один тайтл по твоим вкусам">🧭 Выбери за меня</button><select id="cgMood" title="Подобрать по настроению"><option value="">Настроение…</option><option value="fun">😄 Весёлое</option><option value="serious">🎭 Серьёзное</option><option value="scary">👻 Страшное</option><option value="love">💕 Романтичное</option><option value="thrill">⚡ Захватывающее</option><option value="mystery">🕵 Загадочное</option><option value="scifi">🚀 Фантастика</option><option value="short">⏱ Короткое</option></select><button class="tb" id="cgCal" title="Календарь выхода серий и премьер">📅 Календарь</button><select id="cgMin" title="Минимальная внешняя оценка"><option value="0">Любой рейтинг</option><option value="6">★ 6+</option><option value="7">★ 7+</option><option value="8">★ 8+</option></select><details class="adv"><summary>⚙ Дополнительно</summary><div class="row"><input type="number" id="cgYear2" placeholder="Год по" min="1900" max="2100" style="width:96px"><select id="cgGenre2"></select><select id="cgSeason"><option value="">Любой сезон</option><option value="WINTER">❄ Зима</option><option value="SPRING">🌸 Весна</option><option value="SUMMER">☀ Лето</option><option value="FALL">🍂 Осень</option></select><select id="cgLen"></select><select id="cgAge" title="Возрастной контент (для аниме и манги)"><option value="">Без 18+</option><option value="all">С 18+</option><option value="only">Только 18+</option></select><select id="cgCountry"><option value="">Любая страна</option><option value="US">США</option><option value="RU">Россия</option><option value="GB">Великобритания</option><option value="FR">Франция</option><option value="DE">Германия</option><option value="JP">Япония</option><option value="KR">Южная Корея</option><option value="CN">Китай</option><option value="IN">Индия</option></select><button class="tb" id="cgNow">📅 Текущий сезон</button></div></details>
@@ -384,17 +3540,44 @@ html[data-theme=mocha] .menu{background:#241e1b}html[data-theme=mocha] .toast{ba
     <div class="pcard">
       <div class="av-wrap" id="avWrap"><img id="avatar" referrerpolicy="no-referrer" alt=""></div>
       <div class="pinfo">
-        <div><b id="profName"></b><span class="lvl-pill" id="profLvl">Ур. 1</span></div>
-        <div class="meta" id="profMail"></div><div class="meta" id="profSince"></div>
+        <div><b id="profName"></b><span class="lvl-pill" id="profLvl">Ур. 1</span><button type="button" class="nick-hist-btn" id="nickHistBtn" title="История изменения никнеймов">🕒 История имён</button></div>
+        <div class="meta" id="profMail"></div>
+        <div class="row" style="gap:8px;margin-top:4px"><div class="meta" id="profSince" title="Нажми, чтобы увидеть точную дату и время регистрации"></div><span class="last-visit-pill" id="profLastVisit">● Был(а) только что</span></div>
         <div class="pbio" id="profBio"></div>
+        <div class="prof-ach-showcase" id="profAchShowcase"></div>
+        <div class="prof-badges" id="profBadges"></div>
         <div class="xp-wrap"><div class="xp-bar"><div class="xp-fill" id="profXpFill" style="width:0%"></div></div><div class="xp-txt"><span id="profXpTxt">0 XP</span><span id="profNextTxt"></span></div></div>
       </div>
       <div class="ring" id="profRing" title="Доля завершённых и любимых"><span id="profRingTxt">0%</span></div>
-      <div class="row" style="gap:8px"><button class="btn btn-s" id="profEditBtn">✏ Редактировать</button><button class="btn btn-s" id="statsBtn">📊 Подробная статистика</button></div>
+      <div class="pcard-right">
+      <div class="row" style="gap:8px;justify-content:flex-end">
+        <button class="btn" id="shareCardBtn" type="button">🪪 Поделиться профилем</button>
+        <button class="btn btn-s" id="profEditBtn">✏ Редактировать</button>
+        <button class="btn btn-s" id="statsBtn">📊 Подробная статистика</button>
+      </div>
+    </div>
     </div>
     <div class="prof-nav"><div class="prof-subtabs" id="profSubTabs"><button class="pstab on" data-pv="ov" type="button">📊 Обзор</button><button class="pstab" data-pv="col" type="button">📚 Коллекция</button></div><span class="meta" style="margin:0" id="profTimeSummary"></span></div>
     <div id="profOverviewWrap">
     <div class="tiles" id="profStats"></div>
+    <div class="media-time-grid" id="profMediaTimeGrid"></div>
+    <div class="vitrine-grid" id="profVitrine">
+      <div class="vitrine-card">
+        <h4><span>🌟 Витрина фаворитов (Топ-4)</span><span class="meta" style="margin:0">Личный зал славы</span></h4>
+        <div class="fav-posters" id="profFavGrid"></div>
+      </div>
+      <div class="vitrine-card">
+        <h4><span>🧬 ДНК вкуса и радар сообщества</span><span class="meta" style="margin:0" id="tasteArchetype">Эстет</span></h4>
+        <div id="profTasteRadar" class="hl"></div>
+      </div>
+    </div>
+    <div class="insights-wrap" id="smartInsightsWrap">
+      <div class="insights-hdr">
+        <h4>🧠 Умные инсайты (Smart Analytics)</h4>
+        <span class="meta" style="margin:0">Автоматический анализ паттернов коллекции</span>
+      </div>
+      <div class="insights-grid" id="smartInsightsGrid"></div>
+    </div>
     <div id="profDash"></div>
     <div id="profStrips"></div>
     </div>
@@ -404,13 +3587,16 @@ html[data-theme=mocha] .menu{background:#241e1b}html[data-theme=mocha] .toast{ba
     <input type="text" id="searchInput" placeholder="Поиск: название, автор, студия, год...">
     <button class="btn btn-s" id="rndBtn">🎲 Случайный</button>
     <button class="btn btn-s" id="viewBtn">☰ Список</button>
+    <button class="btn btn-s" id="kanbanBtn" type="button" title="Интерактивная Kanban-доска (Drag & Drop)">📋 Канбан</button>
     <button class="btn btn-s" id="selBtn">☑ Выбрать</button>
     <select id="statusFilter">
       <option value="Все">Все статусы</option><option>В планах</option><option>Смотрю/Читаю</option>
       <option>Просмотрено/Прочитано</option><option>Любимое</option><option>Пересматриваю</option><option>Брошено</option>
     <option value="Архив">📦 Архив</option></select>
     <select id="tagFilter"><option value="Все">Все жанры и теги</option></select>
-    <select id="listFilter" style="display:none"><option value="Все">Все подборки</option></select>
+    <select id="listFilter"><option value="Все">📁 Все подборки</option></select>
+    <button class="btn btn-s" id="createListBtn" type="button" title="Создать новую пользовательскую подборку">＋ Создать подборку</button>
+    <button class="btn btn-s" id="manageListBtn" type="button" style="display:none" title="Настроить или удалить выбранную подборку">⚙ Подборка</button>
     <select id="sortSelect">
       <option value="dateDesc">Сначала новые</option>
       <option value="dateAsc">Сначала старые</option>
@@ -423,14 +3609,23 @@ html[data-theme=mocha] .menu{background:#241e1b}html[data-theme=mocha] .toast{ba
   </div>
 
   <div class="filters" id="catFilters">
-    <button class="fb on" data-c="Всё">Всё</button><button class="fb" data-c="Фильм">Фильмы</button>
-    <button class="fb" data-c="Сериал">Сериалы</button><button class="fb" data-c="Аниме">Аниме</button>
+    <button class="fb on" data-c="Всё">Всё</button>
+    <button class="fb" data-c="Аниме">Аниме</button>
     <button class="fb" data-c="Манга">Манга</button>
-    <button class="fb" data-c="Ранобэ">Ранобэ</button><button class="fb" data-c="Мультфильм">Мультфильмы</button><button class="tb" id="ongBtn">● Онгоинг</button><button class="tb on" id="xfBtn" style="display:none"></button><div id="chips" class="chips"></div>
+    <button class="fb" data-c="Ранобэ">Ранобэ</button>
+    <button class="fb" data-c="Кино и видео">🎬 Кино и видео</button>
+    <button class="fb" data-c="Фильм" style="display:none">Фильмы</button>
+    <button class="fb" data-c="Сериал" style="display:none">Сериалы</button>
+    <button class="fb" data-c="Мультфильм" style="display:none">Мультфильмы</button>
+    <button class="tb" id="ongBtn">● Онгоинг</button><button class="tb on" id="xfBtn" style="display:none"></button><div id="chips" class="chips"></div>
     <span id="countInfo" style="margin-left:auto;font-size:12px;color:#7d839a"></span>
   </div>
   <div class="filters" id="kindFilters" style="display:none;margin-top:8px"><button class="kb on" data-k="Все">Все виды</button><button class="kb" data-k="Манга">Манга</button><button class="kb" data-k="Манхва">Манхва</button><button class="kb" data-k="Маньхуа">Маньхуа</button><button class="kb" data-k="Комикс">Комикс</button></div>
+  <div class="filters" id="animeKindFilters" style="display:none;margin-top:8px"><button class="kb on" data-ak="Все">Вид: Все аниме</button><button class="kb" data-ak="Сериал">Аниме-сериалы</button><button class="kb" data-ak="Фильм">Аниме-фильмы</button></div>
+  <div class="filters" id="videoKindFilters" style="display:none;margin-top:8px"><button class="kb on" data-vk="Все">Вид: Все</button><button class="kb" data-vk="Фильм">Фильмы</button><button class="kb" data-vk="Сериал">Сериалы</button><button class="kb" data-vk="Мультфильм">Мультфильмы</button></div>
+  <div id="statusSummaryBanner" class="status-summary-banner" style="display:none"></div>
   <div class="grid" id="itemsGrid"></div>
+  <div class="kanban-board" id="kanbanBoard" style="display:none"></div>
   </div>
   </div>
 </div>
@@ -467,7 +3662,7 @@ html[data-theme=mocha] .menu{background:#241e1b}html[data-theme=mocha] .toast{ba
   <div class="row2"><input id="inputAuthor" placeholder="Автор / режиссёр"><input id="inputStudio" placeholder="Студия"></div>
   <div class="row2"><select id="inputSource"><option value="">Источник: не указан</option><option>Оригинал</option><option>Манга</option><option>Ранобэ</option><option>Визуальная новелла</option><option>Игра</option><option>Книга</option><option>Комикс</option><option>Другое</option></select><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" id="inputOngoing" style="flex:none;width:18px;height:18px;padding:0"> Онгоинг (выходит сейчас)</label></div>
   <div class="fs">Объём</div>
-  <div class="row2"><input type="number" id="inputEps" placeholder="Серий или глав" min="0"><input type="number" id="inputDur" placeholder="Минут на серию или фильм" min="0"></div>
+  <div class="row2"><input type="number" id="inputEps" placeholder="Серий или глав" min="0"><input type="number" id="inputVols" placeholder="Томов (для манги и ранобэ)" min="0"><input type="number" id="inputDur" placeholder="Минут на серию или фильм" min="0"></div>
   <div class="fs">Жанры и описание</div>
   <input id="inputTags" placeholder="Жанры и теги (через запятую)">
   <input id="inputLists" placeholder="Подборки (через запятую)">
@@ -494,6 +3689,7 @@ html[data-theme=mocha] .menu{background:#241e1b}html[data-theme=mocha] .toast{ba
   <select id="detailStatusSel" style="max-width:240px"></select>
   <div id="detailMyNote" class="my-note" style="display:none"></div>
   <div id="detailDescription"></div>
+  <div id="detailCharsSec" class="jutsu-chars-sec" style="display:none"></div>
   <div class="mb">
     <button class="btn btn-d" id="deleteItemBtn">Удалить</button>
     <div class="row"><button class="btn" id="editItemBtn">Редактировать</button><button class="btn btn-s" id="closeDetailBtn">Закрыть</button></div>
@@ -509,6 +3705,7 @@ html[data-theme=mocha] .menu{background:#241e1b}html[data-theme=mocha] .toast{ba
   <div class="meta" id="rndCredits" style="margin:0"></div>
   <div class="meta" id="rndTags" style="margin:0"></div>
   <p id="rndDesc" style="font-size:13px;color:#ccc;line-height:1.5;max-height:150px;overflow:auto;margin:0;text-align:left"></p>
+  <div id="rndCharsSec" class="jutsu-chars-sec" style="display:none;width:100%"></div>
   <a id="rndLink" target="_blank" rel="noopener" style="color:#b39dff;font-size:13px">Открыть на сайте-источнике ↗</a>
   <div class="row" style="justify-content:center"><button class="btn" id="rndAdd">＋ В планы</button><button class="btn btn-s" id="rndEdit">✎ Настроить</button><button class="btn btn-s" id="rndMore">🎲 Ещё</button><button class="btn btn-s" id="rndClose">Закрыть</button></div>
 </div></div>
@@ -560,6 +3757,23 @@ html[data-theme=mocha] .menu{background:#241e1b}html[data-theme=mocha] .toast{ba
   <div id="dlgBody" style="display:flex;flex-direction:column;gap:10px"></div>
   <div class="mb" style="justify-content:flex-end"><button class="btn btn-s" id="dlgCancel" type="button">Отмена</button><button class="btn" id="dlgOk" type="button">ОК</button></div>
 </div></div>
+
+<div id="shareModal" class="modal"><div class="mc" style="max-width:600px;align-items:center">
+  <div class="row" style="width:100%;justify-content:space-between">
+    <h3 style="margin:0">🪪 Карточка профиля (Shareable Canvas)</h3>
+    <button class="btn btn-s" id="closeShareBtn" type="button">✕</button>
+  </div>
+  <div class="meta" style="margin:0;text-align:center">Готовая визитка с твоим уровнем, ДНК вкуса, любимыми жанрами и топ-3 тайтлами для соцсетей и мессенджеров.</div>
+  <canvas id="shareCanvas" width="1080" height="620"></canvas>
+  <div class="row" style="width:100%;justify-content:space-between">
+    <button class="btn btn-s" id="regenShareBtn" type="button">🎨 Сменить фон</button>
+    <div class="row">
+      <button class="btn btn-s" id="copyShareBtn" type="button">📋 Скопировать</button>
+      <button class="btn" id="dlShareBtn" type="button">⬇ Скачать PNG</button>
+    </div>
+  </div>
+</div></div>
+
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import {getAuth,signInWithPopup,signInWithRedirect,GoogleAuthProvider,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -618,22 +3832,82 @@ const FALL = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" wi
 let user = null, items = [], loaded = false, cat = 'Всё', kind = 'Все', curId = null, unsub = null, posterValue = '', view = localStorage.getItem('view') || 'grid', ongOnly = false, xf = null, lastList = [], afTok = 0;
 const grid = $('itemsGrid');
 
-// ---------- Вход ----------
-$('loginBtn').onclick = () => signInWithPopup(auth, provider).catch(e => {
-  if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment'].includes(e.code)) return signInWithRedirect(auth, provider);
-  if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(e.code))
-    toast('Ошибка входа: ' + e.message + '\nЕсли открыл ссылку из Telegram или другого приложения — открой сайт в обычном браузере.');
-});
-$('logoutBtn').onclick = () => signOut(auth);
+// ---------- Вход и Локальный режим (поддержка запуска по двойному клику file://) ----------
+const saveLocalItems = () => {
+  try { localStorage.setItem('localItems', JSON.stringify(items)); } catch (e) {}
+  try { localStorage.setItem('offlineItemsCache', JSON.stringify(items)); } catch (e) {}
+};
+const loadLocalItems = () => {
+  try {
+    const raw = localStorage.getItem('localItems') || localStorage.getItem('offlineItemsCache') || '[]';
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(x => !x.isProfile).map(fix) : [];
+  } catch (e) { return []; }
+};
+
+function startLocalMode(reasonMsg) {
+  try { localStorage.setItem('useLocalMode', '1'); } catch (e) {}
+  user = {
+    uid: 'local_user',
+    isLocal: true,
+    displayName: prof.name || 'Локальный профиль',
+    email: 'Локальное хранилище браузера (без облака)',
+    photoURL: prof.avatar || '',
+    metadata: { creationTime: new Date().toISOString() }
+  };
+  $('authScreen').style.display = 'none';
+  $('appScreen').style.display = 'block';
+  $('hdrAvatar').src = user.photoURL || '';
+  $('profName').textContent = user.displayName;
+  $('profMail').textContent = user.email;
+  $('avatar').src = user.photoURL || '';
+  items = loadLocalItems();
+  loaded = true;
+  setSync();
+  refresh();
+  profPaint();
+  if (!cgGrid.children.length) cgLoad(true);
+  homeTab();
+  if (reasonMsg) toast(reasonMsg);
+}
+
+$('localModeBtn').onclick = () => startLocalMode('Включён локальный режим. Все данные сохраняются прямо в браузере!');
+
+$('loginBtn').onclick = () => {
+  if (location.protocol === 'file:') {
+    return startLocalMode('При запуске файла двойным кликом (file://) Firebase блокирует Google-вход. Включён полноценный локальный режим!');
+  }
+  signInWithPopup(auth, provider).catch(e => {
+    if (['auth/unauthorized-domain', 'auth/operation-not-supported-in-this-environment'].includes(e.code)) {
+      return startLocalMode('Домен не авторизован в Firebase (' + e.code + '). Автоматически включён локальный режим работы!');
+    }
+    if (e.code === 'auth/popup-blocked') return signInWithRedirect(auth, provider);
+    if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(e.code))
+      toast('Ошибка входа: ' + e.message, true, { label: 'Открыть локально', fn: () => startLocalMode() });
+  });
+};
+
+$('logoutBtn').onclick = () => {
+  try { localStorage.removeItem('useLocalMode'); } catch (e) {}
+  if (user && user.isLocal) {
+    user = null; items = []; loaded = false;
+    $('appScreen').style.display = 'none'; $('authScreen').style.display = 'flex';
+    return;
+  }
+  signOut(auth);
+};
 
 onAuthStateChanged(auth, u => {
+  if (!u && (location.protocol === 'file:' || localStorage.getItem('useLocalMode') === '1')) {
+    return startLocalMode();
+  }
   user = u;
   if (u) {
     $('authScreen').style.display = 'none'; $('appScreen').style.display = 'block'; $('hdrAvatar').src = u.photoURL || ''; $('profName').textContent = u.displayName || u.email; $('profMail').textContent = u.email; $('avatar').src = u.photoURL || '';
     loaded = false; render(); if (!cgGrid.children.length) cgLoad(true);
     // Живая синхронизация: изменения с другого устройства появляются сами
     unsub = onSnapshot(query(collection(db, 'items'), where('userId', '==', u.uid)),
-      snap => { const all = snap.docs.map(d => d.data()), pd = all.find(x => x.isProfile); if (pd) { const {isProfile, userId, ...rest} = pd; Object.assign(prof, rest); profSaveLocal(); } else if (!profTried && (prof.name || prof.bio || prof.avatar || prof.cover || prof.coverColor)) { profTried = true; profCloud(); } items = all.filter(x => !x.isProfile).map(fix); loaded = true; refresh(); profPaint(); homeTab(); },
+      snap => { const all = snap.docs.map(d => d.data()), pd = all.find(x => x.isProfile); if (pd) { const {isProfile, userId, ...rest} = pd; Object.assign(prof, rest); profSaveLocal(); } else if (!profTried && (prof.name || prof.bio || prof.avatar || prof.cover || prof.coverColor)) { profTried = true; profCloud(); } items = all.filter(x => !x.isProfile).map(fix); saveLocalItems(); loaded = true; refresh(); profPaint(); homeTab(); },
       err => toast('Не удалось загрузить данные: ' + err.message));
   } else {
     if (unsub) unsub(); unsub = null; items = []; loaded = false;
@@ -644,6 +3918,7 @@ onAuthStateChanged(auth, u => {
 let pend = 0, syncBad = false;
 const setSync = () => {
   const e = $('syncState');
+  if (user && user.isLocal) { e.className = 'sync'; e.textContent = '💾 Локальный режим'; return; }
   if (!navigator.onLine) { e.className = 'sync err'; e.textContent = '⚠ Нет подключения'; }
   else if (pend) { e.className = 'sync sav'; e.textContent = '⏳ Сохранение...'; }
   else if (syncBad) { e.className = 'sync err'; e.textContent = '⚠ Ошибка сохранения'; }
@@ -651,7 +3926,11 @@ const setSync = () => {
 };
 const track = p => { pend++; setSync(); return p.then(() => { pend--; if (!pend) syncBad = false; setSync(); }, e => { pend--; syncBad = true; setSync(); throw e; }); };
 addEventListener('online', setSync); addEventListener('offline', setSync);
-const cloudSave = it => track(setDoc(doc(db, 'items', String(it.id)), {...it, userId: user.uid})).catch(e => toast('Не удалось сохранить в облако: ' + e.message, true));
+const cloudSave = it => {
+  saveLocalItems();
+  if (!user || user.isLocal) { setSync(); return Promise.resolve(); }
+  return track(setDoc(doc(db, 'items', String(it.id)), {...it, userId: user.uid})).catch(e => toast('Не удалось сохранить в облако: ' + e.message, true));
+};
 
 // ---------- Отрисовка ----------
 const names = i => [i.title, i.titleEn, i.titleOrig, i.alt, i.author, i.studio, i.source, i.year, (i.tags || []).join(' ')].join(' ').toLowerCase();
@@ -664,10 +3943,20 @@ const KINO = ['Фильм', 'Сериал', 'Мультфильм'];
 const sameCat = (a, b) => a === b || ((a === 'Мультфильм' || b === 'Мультфильм') && KINO.includes(a) && KINO.includes(b));
 const nset = o => [o.title, o.titleEn || o.en, o.titleOrig || o.orig, ...String(o.alt || '').split(',')].map(x => (x || '').trim().toLowerCase()).filter(Boolean);
 const same = (a, b) => sameCat(a.category, b.category) && nset(a).some(n => nset(b).includes(n));
+let activeToastTimer = 0;
 function toast(msg, bad, act) {
+  const box = $('toasts');
+  if (!box) return;
+  clearTimeout(activeToastTimer);
+  box.replaceChildren();
   const t = el('div', 'toast' + ((bad ?? /не удалось|ошибк|обязательно|должен|нужен/i.test(msg)) ? ' bad' : ''), msg);
-  if (act) { const b = el('button', null, act.label); b.onclick = () => { act.fn(); t.remove(); }; t.append(b); }
-  $('toasts').append(t); setTimeout(() => t.remove(), act ? 7000 : 4500);
+  if (act) {
+    const b = el('button', null, act.label);
+    b.onclick = () => { clearTimeout(activeToastTimer); act.fn(); t.remove(); };
+    t.append(b);
+  }
+  box.append(t);
+  activeToastTimer = setTimeout(() => t.remove(), act ? 3200 : 2400);
 }
 
 function refresh() { refreshTags(); refreshLists(); render(); profStats(); cgMarks(); catCounts(); setTimeout(backupNudge, 4000); }
@@ -719,9 +4008,7 @@ function render() {
     const bd = el('div', 'bd2'), st2 = el('div', 'status', SHORT[i.status] || i.status); st2.dataset.s = i.status; bd.append(st2); if (i.ongoing) bd.append(el('div', 'ong', 'ОНГОИНГ'));
     info.append(Object.assign(el('h3', 'title', i.title), {title: i.title}), row, el('div', 'tg', (i.tags || []).slice(0, 3).join(', ')), bd);
     card.append(pc, info); card.tabIndex = 0; card.onclick = () => openDetail(i.id); card.onkeydown = e => { if (e.key === 'Enter') openDetail(i.id); };
-    card.onmousemove = e => { if (view === 'list' || prof.tilt === false) return; const r = pc.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5; pc.style.transform = `perspective(700px) rotateY(${x * 10}deg) rotateX(${-y * 10}deg) translateY(-6px)`; };
-    card.onmouseleave = () => { pc.style.transform = ''; };
-    card.onmousemove = e => { if (view === 'list') return; const r = pc.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5; pc.style.transform = `perspective(700px) rotateY(${x * 10}deg) rotateX(${-y * 10}deg) translateY(-6px)`; };
+    card.onmousemove = e => { if (view === 'list' || prof.tilt === false) return; const r = pc.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5; pc.style.transform = `perspective(700px) rotateY(${x * 8}deg) rotateX(${-y * 8}deg) translateY(-4px)`; };
     card.onmouseleave = () => { pc.style.transform = ''; };
     grid.append(card);
   });
@@ -741,7 +4028,7 @@ const setSize = v => { document.documentElement.style.setProperty('--cw', v + 'p
 $('sizeSel').value = localStorage.getItem('cw') || '190'; setSize($('sizeSel').value || '190'); $('sizeSel').onchange = e => setSize(e.target.value);
 
 // ---------- Окна ----------
-const closeAll = () => { if (dlgDone) dlgDone(null); ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'calModal'].forEach(id => $(id).style.display = 'none'); };
+const closeAll = () => { if (dlgDone) dlgDone(null); ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'calModal', 'shareModal'].forEach(id => { if ($(id)) $(id).style.display = 'none'; }); };
 ['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'rndClose'].forEach(id => $(id).onclick = closeAll);
 window.onclick = e => { if (e.target.id === 'dlgModal') { if (dlgDone) dlgDone(null); return; } if (e.target.classList.contains('modal')) closeAll(); };
 window.onkeydown = e => { if (e.key === 'Escape') { if (dlgDone) dlgDone(null); else closeAll(); } };
@@ -906,7 +4193,7 @@ let profTried = false;
 let prof = {name: '', bio: '', avatar: '', cover: '', coverColor: 0, bgAll: false}, pf = null, pfTarget = '';
 try { Object.assign(prof, JSON.parse(localStorage.getItem('prof') || '{}')); } catch (e) {}
 const profSaveLocal = () => { try { localStorage.setItem('prof', JSON.stringify(prof)); } catch (e) {} };
-const profCloud = () => { profSaveLocal(); if (user) track(setDoc(doc(db, 'items', 'prof_' + user.uid), {isProfile: true, ...prof, userId: user.uid})).catch(e => toast('Профиль сохранён только на этом устройстве: ' + e.message, true)); };
+const profCloud = () => { profSaveLocal(); if (user && !user.isLocal) track(setDoc(doc(db, 'items', 'prof_' + user.uid), {isProfile: true, ...prof, userId: user.uid})).catch(e => toast('Профиль сохранён только на этом устройстве: ' + e.message, true)); };
 const GRAD = ['linear-gradient(135deg,#6a4cf0,#38bdf8)', 'linear-gradient(135deg,#ff5d8f,#f59e0b)', 'linear-gradient(135deg,#0f766e,#2dd4bf)', 'linear-gradient(135deg,#111827,#4b5563)', 'linear-gradient(135deg,#7c2d12,#f59e0b)', 'linear-gradient(135deg,#1e3a8a,#a78bfa)'];
 function profPaint() {
   rtApply();
@@ -1082,7 +4369,7 @@ function rndTagChips(r) {   // теги в окне тайтла каталог�
   const b = $('rndTags'); b.replaceChildren(); b.className = 'chips'; b.style.justifyContent = 'center';
   (r.tags || []).forEach(t => { const c = el('button', 'chip', t); c.type = 'button'; c.onclick = () => { const o = [...$('cgGenre').options].find(x => x.value && x.textContent.trim().toLowerCase() === t.toLowerCase()); if (!o) return toast('Для этого тега нет фильтра в текущей категории'); closeAll(); $('cgGenre').value = o.value; cgLoad(true); }; b.append(c); });
 }
-const LBL = {inputCategory: 'Категория', inputStatus: 'Статус', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (например: Лучшее аниме, На выходные)', inputRecBy: 'Кто посоветовал', inputEps: 'Серий или глав', inputDur: 'Минут на серию или фильм', inputMyNote: 'Личная заметка / мой отзыв', inputDescription: 'Синопсис / описание'};
+const LBL = {inputCategory: 'Категория', inputStatus: 'Статус', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (например: Лучшее аниме, На выходные)', inputRecBy: 'Кто посоветовал', inputEps: 'Серий или глав', inputVols: 'Томов (для манги и ранобэ)', inputDur: 'Минут на серию или фильм', inputMyNote: 'Личная заметка / мой отзыв', inputDescription: 'Синопсис / описание'};
 Object.entries(LBL).forEach(([id, t]) => { const e = $(id), w = el('div', 'fld'); e.replaceWith(w); w.append(el('label', null, t), e); });
 const DF = Object.keys(LBL).concat('inputExtSrc');
 const draftClear = () => { try { localStorage.removeItem('draft'); } catch (e) {} };
@@ -1111,7 +4398,7 @@ $('addModal').addEventListener('input', pvDraw); $('addModal').addEventListener(
 const CATL = {'Аниме': ['Режиссёр / автор оригинала', 'Студия'], 'Манга': ['Автор / художник', 'Издатель'], 'Ранобэ': ['Автор', 'Издатель'], 'Фильм': ['Режиссёр', 'Студия / компания'], 'Сериал': ['Создатель / режиссёр', 'Студия / канал'], 'Мультфильм': ['Режиссёр', 'Студия']};
 function catFields() { const c = $('inputCategory').value, l = CATL[c], a = $('inputAuthor').previousSibling, t = $('inputStudio').previousSibling; if (l && a && t) { a.textContent = l[0]; t.textContent = l[1]; } const o = $('inputOngoing').parentElement; if (o) o.style.display = c === 'Фильм' ? 'none' : ''; }
 $('inputCategory').addEventListener('change', catFields);
-const _oa2 = openAdd; openAdd = function (item) { _oa2(item); $('inputEps').value = (item && item.eps) || ''; $('inputDur').value = (item && item.dur) || ''; $('inputMyNote').value = (item && item.myNote) || ''; starPaint(); catFields(); pvDraw(); };
+const _oa2 = openAdd; openAdd = function (item) { _oa2(item); $('inputEps').value = (item && item.eps) || ''; $('inputVols').value = (item && item.vols) || ''; $('inputDur').value = (item && item.dur) || ''; $('inputMyNote').value = (item && item.myNote) || ''; starPaint(); catFields(); pvDraw(); };
 ['dragover', 'drop'].forEach(ev => $('posterPreview').addEventListener(ev, async e => {
   e.preventDefault(); if (ev !== 'drop') return; const f = e.dataTransfer && e.dataTransfer.files[0];
   if (!f || !f.type.startsWith('image/')) return toast('Перетащи сюда картинку (jpg, png, webp)', true);
@@ -1221,9 +4508,9 @@ $('saveItemBtn').onclick = async () => {
     id: editId ? Number(editId) : newId(), title, category, kind: category === 'Манга' ? $('inputKind').value : '', status: $('inputStatus').value, poster: posterValue, year,
     rating: $('inputRating').value, extRating: $('inputExtRating').value, extSrc: $('inputExtSrc').value, description: $('inputDescription').value.trim(),
     titleEn: $('inputTitleEn').value.trim(), titleOrig: $('inputTitleOrig').value.trim(), alt: $('inputAlt').value.trim(), author: $('inputAuthor').value.trim(), studio: $('inputStudio').value.trim(), source: $('inputSource').value, ongoing: $('inputOngoing').checked,
-    tags: parseTags($('inputTags').value), lists: parseTags($('inputLists').value), recBy: $('inputRecBy').value.trim(), eps: +$('inputEps').value || 0, dur: +$('inputDur').value || 0, myNote: $('inputMyNote').value.trim()
+    tags: parseTags($('inputTags').value), lists: parseTags($('inputLists').value), recBy: $('inputRecBy').value.trim(), eps: +$('inputEps').value || 0, vols: +$('inputVols').value || 0, dur: +$('inputDur').value || 0, myNote: $('inputMyNote').value.trim()
   };
-  { const old = items.find(x => x.id === it.id); if (old) ['pin', 'archived', 'prevSt', 'seasons'].forEach(k => { if (old[k]) it[k] = old[k]; }); }
+  { const old = items.find(x => x.id === it.id); if (old) ['pin', 'archived', 'prevSt', 'seasons', 'format', 'aniId', 'mal', 'tmdb', 'vols'].forEach(k => { if (old[k] && !it[k]) it[k] = old[k]; }); }
   const k = items.findIndex(x => x.id === it.id);
   if (k > -1) items[k] = it; else items.push(it);
   refresh(); closeAll(); if (editId) openDetail(it.id);
@@ -1263,12 +4550,12 @@ $('deleteItemBtn').onclick = async () => {
 // ---------- Автозаполнение ----------
 const decode = s => { const t = document.createElement('textarea'); t.innerHTML = s; return t.value; };
 const SRC = {ORIGINAL: 'Оригинал', MANGA: 'Манга', LIGHT_NOVEL: 'Ранобэ', VISUAL_NOVEL: 'Визуальная новелла', VIDEO_GAME: 'Игра', GAME: 'Игра', NOVEL: 'Книга', WEB_NOVEL: 'Книга', COMIC: 'Комикс'};
-const RU = {Action:'Экшен',Adventure:'Приключения',Comedy:'Комедия',Drama:'Драма',Ecchi:'Эччи',Fantasy:'Фэнтези',Horror:'Ужасы','Mahou Shoujo':'Махо-сёдзё',Mecha:'Меха',Music:'Музыка',Mystery:'Детектив',Psychological:'Психология',Romance:'Романтика','Sci-Fi':'Научная фантастика','Slice of Life':'Повседневность',Sports:'Спорт',Supernatural:'Сверхъестественное',Thriller:'Триллер',Hentai:'Хентай (18+)'};
+const RU = {Action:'Экшен',Adventure:'Приключения',Comedy:'Комедия',Drama:'Драма',Ecchi:'Этти',Fantasy:'Фэнтези',Horror:'Ужасы','Mahou Shoujo':'Махо-сёдзё',Mecha:'Меха',Music:'Музыка',Mystery:'Детектив',Psychological:'Психология',Romance:'Романтика','Sci-Fi':'Научная фантастика','Slice of Life':'Повседневность',Sports:'Спорт',Supernatural:'Сверхъестественное',Thriller:'Триллер',Hentai:'Хентай (18+)'};
 const TG = {28:'Боевик',12:'Приключения',16:'Мультфильм',35:'Комедия',80:'Криминал',99:'Документальный',18:'Драма',10751:'Семейный',14:'Фэнтези',36:'История',27:'Ужасы',10402:'Музыка',9648:'Детектив',10749:'Мелодрама',878:'Фантастика',53:'Триллер',10752:'Военный',37:'Вестерн',10759:'Боевик и приключения',10765:'Фантастика и фэнтези',10768:'Война и политика',10770:'Телефильм',10762:'Детский',10763:'Новости',10764:'Реалити-шоу',10766:'Мыльная опера',10767:'Ток-шоу'};
 
 async function anilist(search, type, o = {}) {
   if (hasRu(search)) { let en = ''; if (shikiOk()) { try { for (const kk of type === 'ANIME' ? ['animes'] : ['mangas', 'ranobe']) { const l = await shiki(`/api/${kk}?search=${encodeURIComponent(search)}&limit=1`); if (l[0]) { en = l[0].name; break; } } } catch (e) {} } if (!en) { try { en = await ruToEn(search); } catch (e) {} } if (en) search = en; }
-  const gql = 'query($s:String,$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int,$g:[String],$sg:FuzzyDateInt,$sl:FuzzyDateInt,$ag:Int,$pl:Int,$el:Int,$eg:Int,$cl:Int,$cg:Int,$se:MediaSeason,$sy:Int,$tg:[String]){Page(page:$p,perPage:$pp){media(search:$s,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg,genre_in:$g,startDate_greater:$sg,startDate_lesser:$sl,averageScore_greater:$ag,popularity_lesser:$pl,episodes_lesser:$el,episodes_greater:$eg,chapters_lesser:$cl,chapters_greater:$cg,season:$se,seasonYear:$sy,tag_in:$tg){idMal format siteUrl countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore episodes duration chapters genres tags{name rank isMediaSpoiler} status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
+  const gql = 'query($s:String,$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int,$g:[String],$sg:FuzzyDateInt,$sl:FuzzyDateInt,$ag:Int,$pl:Int,$el:Int,$eg:Int,$cl:Int,$cg:Int,$se:MediaSeason,$sy:Int,$tg:[String]){Page(page:$p,perPage:$pp){media(search:$s,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg,genre_in:$g,startDate_greater:$sg,startDate_lesser:$sl,averageScore_greater:$ag,popularity_lesser:$pl,episodes_lesser:$el,episodes_greater:$eg,chapters_lesser:$cl,chapters_greater:$cg,season:$se,seasonYear:$sy,tag_in:$tg){id idMal isAdult format siteUrl countryOfOrigin title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore episodes duration chapters volumes genres tags{name rank isMediaSpoiler} status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
   const r = await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'}, body: JSON.stringify({query: gql, variables: {s: search, t: type, p: o.page || 1, pp: o.per || 10, so: o.sort || ['SEARCH_MATCH'], st: o.status, f: o.format, fn: o.fn, c: o.country, ad: o.ad, pg: o.pg, g: o.genre, sg: o.sg, sl: o.sl, ag: o.ag, pl: o.pl, el: o.el, eg: o.eg, cl: o.cl, cg: o.cg, se: o.se, sy: o.sy, tg: o.tag}})});
   const j = await r.json(); if (j.errors) throw new Error(j.errors[0].message);
   return j.data.Page.media.map(m => {
@@ -1276,7 +4563,7 @@ async function anilist(search, type, o = {}) {
     const stf = m.staff?.edges || [], pick = re => [...new Set(stf.filter(e => re.test(e.role)).map(e => e.node.name.full))].slice(0, 2).join(', ');
     const alt = [...new Set([t.romaji, ...(m.synonyms || [])].filter(x => x && x !== main && x !== t.english))].join(', ');
     return {
-      mal: m.idMal || 0, eps: m.episodes || m.chapters || 0, dur: m.duration || 0, title: main, en: t.english || '', orig: t.native || '', alt,
+      aniId: m.id || 0, mal: m.idMal || 0, isAdult: !!m.isAdult, format: m.format || '', rawGenres: m.genres || [], rawTags: (m.tags || []).filter(t => !t.isMediaSpoiler && t.rank >= 55).map(t => t.name), vols: m.volumes || 0, eps: m.episodes || m.chapters || 0, dur: m.duration || 0, title: main, en: t.english || '', orig: t.native || '', alt,
       author: type === 'ANIME' ? (pick(/Original Creator/i) || pick(/Director/i)) : (pick(/Story/i) || pick(/Art/i)),
       studio: (m.studios?.nodes || []).map(n => n.name).slice(0, 2).join(', '), source: SRC[m.source] || '', ongoing: m.status === 'RELEASING', src: 'AniList', url: m.siteUrl, poster: m.coverImage.large, year: m.startDate.year || '',
       ext: m.averageScore ? (m.averageScore / 10).toFixed(1) : '', tags: [...(m.genres || []).map(g => RU[g] || g), ...(m.tags || []).filter(t => !t.isMediaSpoiler && t.rank >= 60).slice(0, 8).map(t => ruTag(t.name))],
@@ -1335,7 +4622,7 @@ function fillForm(r) {
   $('inputTitleEn').value = r.en; $('inputTitleOrig').value = r.orig; $('inputAlt').value = r.alt;
   $('inputCategory').value = r.category; $('inputKind').value = r.kind || 'Манга'; $('inputYear').value = r.year; $('inputExtRating').value = r.ext; $('inputExtSrc').value = r.src || '';
   $('inputDescription').value = r.desc; $('inputTags').value = parseTags($('inputTags').value + ',' + r.tags.join(',')).join(', ');
-  setPoster(r.poster); afHint(); $('inputEps').value = r.eps || ''; $('inputDur').value = r.dur || '';
+  setPoster(r.poster); afHint(); $('inputEps').value = r.eps || ''; $('inputVols').value = r.vols || ''; $('inputDur').value = r.dur || '';
   if (r.src === 'AniList' && !r.ruDone) { const t0 = $('inputTitle').value, d0 = $('inputDescription').value; ruFull(r).then(() => { if ($('inputTitle').value === t0) { $('inputTitle').value = r.title; $('inputTitleEn').value = r.en || ''; } if ($('inputDescription').value === d0) $('inputDescription').value = r.desc || ''; }).catch(() => {}); }
 }
 
@@ -1543,17 +4830,18 @@ async function quickAdd(r) {
   try {
   const it = {id: newId(), extSrc: r.src || '', title: r.title, category: r.category, kind: r.category === 'Манга' ? (r.kind || 'Манга') : '', status: 'В планах', poster: r.poster || '', year: r.year || '', rating: '', extRating: r.ext || '', description: r.desc || '', titleEn: r.en || '', titleOrig: r.orig || '', alt: r.alt || '', tags: r.tags || [], author: r.author || '', studio: r.studio || '', source: r.source || '', ongoing: !!r.ongoing};
   if (r.tmdb) { try { Object.assign(it, await tmdbInfo(r)); } catch (e) {} }
-  if (r.src === 'AniList') { it.eps = r.eps || 0; it.dur = r.dur || 0; try { await ruFull(r); it.title = r.title; it.titleEn = r.en || ''; it.description = r.desc || ''; } catch (e) {} }
+  if (r.tmdb) it.tmdb = r.tmdb; if (r.src === 'AniList') { it.eps = r.eps || 0; it.vols = r.vols || 0; it.dur = r.dur || 0; it.format = r.format || ''; it.aniId = r.aniId || 0; it.mal = r.mal || 0; try { await ruFull(r); it.title = r.title; it.titleEn = r.en || ''; it.description = r.desc || ''; } catch (e) {} }
   if (has(r)) { cgMarks(); return; }
   items.push(it); refresh(); cloudSave(it); toast('Добавлено: ' + it.title, false, {label: 'Отменить', fn: () => removeItem(it.id)});
   } finally { adding.delete(ak); }
 }
 
 function removeItem(id, undo) {
-  const old = items.find(i => i.id === id); items = items.filter(i => i.id !== id); refresh();
-  if (undo && old) toast('Удалено: ' + old.title, false, {label: 'Вернуть', fn: () => { if (!items.some(i => i.id === old.id)) { items.push(old); refresh(); cloudSave(old); } }});
+  const old = items.find(i => i.id === id); items = items.filter(i => i.id !== id); saveLocalItems(); refresh();
+  if (undo && old) toast('Удалено: ' + old.title, false, {label: 'Вернуть', fn: () => { if (!items.some(i => i.id === old.id)) { items.push(old); saveLocalItems(); refresh(); cloudSave(old); } }});
+  if (!user || user.isLocal) return;
   track(deleteDoc(doc(db, 'items', String(id)))).catch(e => {
-    if (old && !items.some(i => i.id === id)) { items.push(old); refresh(); }
+    if (old && !items.some(i => i.id === id)) { items.push(old); saveLocalItems(); refresh(); }
     toast('Не удалось удалить в облаке: ' + e.message, true);
   });
 }
@@ -1687,7 +4975,7 @@ window.importData = e => {
           category: x.category === 'Кино' ? 'Фильм' : x.category === 'Манхва' ? 'Манга' : CATS.includes(x.category) ? x.category : 'Фильм', kind: x.category === 'Манхва' ? 'Манхва' : (x.kind || ''),
           status: STATS.includes(x.status) ? x.status : 'В планах', poster: x.poster || '', year: x.year || '', rating: x.rating || '',
           extRating: x.extRating || '', extSrc: x.extSrc || '', description: x.description || '', titleEn: x.titleEn || '', titleOrig: x.titleOrig || '',
-          alt: x.alt || '', author: x.author || '', studio: x.studio || '', source: x.source || '', ongoing: !!x.ongoing, tags: Array.isArray(x.tags) ? x.tags : [], lists: Array.isArray(x.lists) ? x.lists : [], recBy: x.recBy || '', pin: !!x.pin, archived: !!x.archived, eps: +x.eps || 0, dur: +x.dur || 0, seasons: +x.seasons || 0, myNote: x.myNote || ''
+          alt: x.alt || '', author: x.author || '', studio: x.studio || '', source: x.source || '', ongoing: !!x.ongoing, tags: Array.isArray(x.tags) ? x.tags : [], lists: Array.isArray(x.lists) ? x.lists : [], recBy: x.recBy || '', pin: !!x.pin, archived: !!x.archived, eps: +x.eps || 0, vols: +x.vols || 0, format: x.format || '', aniId: +x.aniId || 0, mal: +x.mal || 0, tmdb: x.tmdb || '', dur: +x.dur || 0, seasons: +x.seasons || 0, myNote: x.myNote || ''
         };
         if (!it.title || dup(it)) return;
         while (!it.id || ids.has(String(it.id))) it.id = newId();
@@ -1696,9 +4984,15 @@ window.importData = e => {
       const gone = rep ? items.filter(i => !ids.has(String(i.id))) : [];
       if (!(await uiConfirm(rep ? `ВНИМАНИЕ: коллекция будет полностью заменена содержимым файла.\nСейчас в ней: ${items.length}, в файле: ${add.length}.\nПеред заменой автоматически скачается резервная копия текущей коллекции. Продолжить?` : `В файле записей: ${arr.length}. Будет добавлено: ${add.length}, пропущено повторов: ${arr.length - add.length}. Продолжить?`, 'Импортировать', rep))) { e.target.value = ''; return; }
       if (rep) window.exportData();
-      const ops = [...gone.map(i => ['d', i]), ...add.map(i => ['s', i])];
-      for (let i = 0; i < ops.length; i += 400) {
-        const b = writeBatch(db); ops.slice(i, i + 400).forEach(([k, it]) => k === 'd' ? b.delete(doc(db, 'items', String(it.id))) : b.set(doc(db, 'items', String(it.id)), {...it, userId: user.uid})); await track(b.commit());
+      if (!user || user.isLocal) {
+        items = rep ? add : [...items, ...add];
+        saveLocalItems();
+        refresh();
+      } else {
+        const ops = [...gone.map(i => ['d', i]), ...add.map(i => ['s', i])];
+        for (let i = 0; i < ops.length; i += 400) {
+          const b = writeBatch(db); ops.slice(i, i + 400).forEach(([k, it]) => k === 'd' ? b.delete(doc(db, 'items', String(it.id))) : b.set(doc(db, 'items', String(it.id)), {...it, userId: user.uid})); await track(b.commit());
+        }
       }
       toast(rep ? `Коллекция заменена: ${add.length} записей (убрано лишних: ${gone.length}).` : `Добавлено: ${add.length}. Пропущено повторов: ${arr.length - add.length}.`);
     } catch (err) { toast('Ошибка: файл не подходит или не удалось сохранить.'); }

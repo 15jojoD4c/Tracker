@@ -340,7 +340,7 @@ html[data-theme=neon] .menu{background:#150f28}html[data-theme=neon] .toast{back
 html[data-theme=mocha] .menu{background:#241e1b}html[data-theme=mocha] .toast{background:#2b2420}
 #cgGenre,#cgGenre2{max-width:220px}
 
-/* ===== ОБНОВЛЁННЫЙ ДИЗАЙН, ANTI-LAG ОПТИМИЗАЦИЯ, ANIXART-ПРОФИЛЬ, JUTSU-ПЕРСОНАЖИ ===== */
+/* ===== V4: ANIXART ПРОФИЛЬ, КАРТОЧКА ПЕРСОНАЖА, ПОЛНАЯ СТРАНИЦА ТАЙТЛА, СПИСОК ПОЛЬЗОВАТЕЛЕЙ ===== */
 #cgRec, #cgPick { display: none !important; }
 .card { content-visibility: auto; contain-intrinsic-size: 190px 320px; }
 @media (max-width: 768px) {
@@ -355,11 +355,9 @@ header {
   position: sticky; top: 10px; z-index: 60; margin: 0 auto 18px; padding: 10px 18px;
   border-radius: 999px; border: 1px solid var(--bd);
   box-shadow: 0 10px 30px rgba(0,0,0,.38);
-  transition: transform .28s ease, opacity .22s ease;
 }
-header.hdr-hidden { transform: translateY(-140%); opacity: 0; pointer-events: none; }
 
-/* Верхняя панель: реальный онлайн + поиск пользователей */
+/* Верхняя панель: реальный онлайн + кнопка «Пользователи» + поиск людей */
 .top-social-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
   padding: 8px 14px; margin-bottom: 16px; border-radius: 14px;
@@ -367,25 +365,35 @@ header.hdr-hidden { transform: translateY(-140%); opacity: 0; pointer-events: no
 }
 .online-badge {
   display: inline-flex; align-items: center; gap: 7px; font-weight: 600; color: #e2e6f3;
-  padding: 4px 10px; border-radius: 999px; background: rgba(29,181,122,.12); border: 1px solid rgba(29,181,122,.3);
+  padding: 5px 12px; border-radius: 999px; background: rgba(29,181,122,.12); border: 1px solid rgba(29,181,122,.3);
 }
 .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #1db57a; box-shadow: 0 0 8px #1db57a; }
-.user-search-wrap { display: flex; align-items: center; gap: 6px; flex: 1; max-width: 420px; position: relative; }
+.user-search-wrap { display: flex; align-items: center; gap: 6px; flex: 1; max-width: 440px; position: relative; }
 .user-search-wrap input { flex: 1; padding: 7px 12px; font-size: 13px; border-radius: 999px; }
 .user-results-pop {
   display: none; position: absolute; top: 42px; left: 0; right: 0; z-index: 80;
   background: #181b2a; border: 1px solid var(--bd); border-radius: 14px; padding: 8px;
-  box-shadow: 0 16px 40px rgba(0,0,0,.6); max-height: 280px; overflow-y: auto;
+  box-shadow: 0 16px 40px rgba(0,0,0,.65); max-height: 280px; overflow-y: auto;
 }
 .user-results-pop.open { display: flex; flex-direction: column; gap: 6px; }
 .u-res-row {
-  display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px;
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 12px;
   cursor: pointer; transition: .15s;
 }
 .u-res-row:hover { background: rgba(124,92,255,.18); }
-.u-res-row img { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: #222633; }
+.u-res-row img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; background: #222633; flex-shrink: 0; }
 
-/* Профиль в стиле Anixart (крупный счётчик дней/часов, ID вместо почты, статус визита) */
+/* Золотой бейдж «👑 Создатель» */
+.creator-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: linear-gradient(135deg, #f59e0b, #fbbf24, #d97706);
+  color: #111 !important; font-weight: 800; font-size: 11.5px;
+  padding: 3px 10px; border-radius: 999px;
+  box-shadow: 0 0 14px rgba(251, 191, 36, 0.45);
+  margin-left: 6px; vertical-align: middle; cursor: pointer;
+}
+
+/* Профиль в стиле Anixart */
 .pcard { min-height: 195px; padding: 28px 26px; background-position: center 35%; align-items: center; }
 .pcard.hascover { min-height: 230px; }
 .anix-hero-stats {
@@ -411,7 +419,7 @@ html[data-theme=white] .anix-counters div b { color: #14161f; }
 .ab.pinned-ach { outline: 2px solid #fbbf24; }
 .ab .pin-ach-tag { position: absolute; top: 3px; right: 3px; font-size: 9px; background: #fbbf24; color: #000; border-radius: 5px; padding: 1px 4px; font-weight: 800; }
 
-/* Карточки времени и глав по категориям (Аниме, Манга, Кино/Сериалы/Мультфильмы, Ранобэ) */
+/* Карточки времени и глав по категориям */
 .media-time-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 14px; }
 .mt-card { background: var(--card); border: 1px solid var(--bd); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
 .mt-hdr { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -422,16 +430,16 @@ html[data-theme=white] .mt-big { color: #14161f; }
 .mt-sub b { color: #e2e6f3; }
 html[data-theme=white] .mt-sub b { color: #14161f; }
 
-/* Плашка сводки выбранного статуса («В планах», «Архив» и др.) */
+/* Плашка сводки выбранного статуса */
 .status-summary-banner { background: var(--card); border: 1px solid rgba(124,92,255,.32); border-radius: 14px; padding: 11px 15px; margin: 10px 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; }
 .status-summary-metrics { display: flex; flex-wrap: wrap; gap: 6px 12px; }
 .status-metric-pill { background: rgba(255,255,255,.05); border: 1px solid var(--bd); border-radius: 8px; padding: 4px 9px; }
 .status-metric-pill b { color: var(--ach); }
 
 /* Гостевой баннер при просмотре чужого профиля */
-.guest-banner { display: none; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; margin-bottom: 12px; border-radius: 14px; background: linear-gradient(90deg, rgba(124,92,255,.24), rgba(56,189,248,.14)); border: 1px solid var(--ac); font-size: 13.5px; }
+.guest-banner { display: none; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 10px 16px; margin-bottom: 12px; border-radius: 14px; background: linear-gradient(90deg, rgba(124,92,255,.24), rgba(56,189,248,.14)); border: 1px solid var(--ac); font-size: 13.5px; }
 
-/* Умные инсайты и Канбан-доска */
+/* Умные инсайты и Канбан */
 .insights-wrap { background: var(--card); border: 1px solid var(--bd); border-radius: 16px; padding: 14px 16px; margin-bottom: 14px; }
 .insights-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-top: 10px; }
 .insight-card { background: rgba(255,255,255,.03); border: 1px solid var(--bd); border-radius: 12px; padding: 10px 12px; display: flex; gap: 10px; align-items: flex-start; }
@@ -450,7 +458,7 @@ html[data-theme=white] .mt-sub b { color: #14161f; }
 .k-quick-move { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
 .k-move-btn { background: rgba(255,255,255,.06); border: 1px solid var(--bd); color: var(--mu); border-radius: 5px; padding: 1px 5px; font-size: 10px; cursor: pointer; }
 
-/* Раздел «Персонажи и сэйю» (стиль Jutsu.net) */
+/* Раздел «Персонажи и сэйю» (Jutsu.net) + Drag-to-Scroll мышкой */
 .jutsu-chars-sec { grid-column: 1 / -1; background: #0e1017; border: 1px solid rgba(255,255,255,.09); border-radius: 16px; padding: 16px; margin-top: 6px; }
 html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgba(0,0,0,.1); }
 .jutsu-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
@@ -458,20 +466,183 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
 .jutsu-hdr-sub { font-size: 11.5px; color: #8a90a8; }
 .jutsu-nav-btns { display: flex; gap: 6px; }
 .jutsu-arrow { width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(255,255,255,.15); background: #1e2130; color: #fff; cursor: pointer; }
-.jutsu-track { display: flex; gap: 12px; overflow-x: auto; scroll-behavior: smooth; padding-bottom: 6px; }
-.jutsu-track.expanded-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 14px 12px; overflow-x: visible; }
-.j-char-card { flex: 0 0 122px; width: 122px; display: flex; flex-direction: column; gap: 5px; text-align: left; }
+.jutsu-track { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; cursor: grab; user-select: none; -webkit-user-select: none; }
+.jutsu-track.dragging-track { cursor: grabbing; scroll-behavior: auto !important; }
+.jutsu-track.expanded-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 14px 12px; overflow-x: visible; cursor: default; }
+.j-char-card { flex: 0 0 122px; width: 122px; display: flex; flex-direction: column; gap: 5px; text-align: left; cursor: pointer; }
 .jutsu-track.expanded-grid .j-char-card { width: 100%; }
 .j-char-art { position: relative; width: 100%; aspect-ratio: 3/4; border-radius: 12px; overflow: hidden; background: #1b1e2b; }
-.j-char-art > img.j-char-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.j-char-art > img.j-char-img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; transition: transform .25s ease; }
+.j-char-card:hover .j-char-art > img.j-char-img { transform: scale(1.05); }
 .j-main-badge { position: absolute; top: 7px; left: 7px; background: linear-gradient(135deg,#ec4899,#d946ef); color: #fff; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 999px; z-index: 2; }
 .j-va-avatar { position: absolute; right: 5px; bottom: 5px; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; border: 2px solid #0e1017; background: #222633; z-index: 2; }
-.j-va-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.j-va-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
 .j-char-name { font-size: 12.5px; font-weight: 700; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .j-char-card.is-main .j-char-name { color: #f472b6; }
 .j-va-name { font-size: 11px; color: #8a90a8; line-height: 1.2; }
 .jutsu-toggle-wrap { display: flex; justify-content: center; margin-top: 10px; }
 .jutsu-toggle-btn { background: #232634; border: 1px solid rgba(255,255,255,.12); color: #e2e6f3; padding: 8px 20px; border-radius: 999px; font-size: 11px; font-weight: 800; cursor: pointer; }
+
+/* Всплывающее окошко персонажа и сэйю по клику (как на скриншоте Коёми Арараги) */
+#charPopupModal .mc {
+  max-width: 500px;
+  background: #12131a;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 22px;
+  padding: 22px;
+  position: relative;
+}
+.char-pop-layout {
+  display: grid;
+  grid-template-columns: 165px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 520px) {
+  .char-pop-layout { grid-template-columns: 120px 1fr; gap: 14px; }
+}
+.char-pop-poster {
+  width: 100%;
+  aspect-ratio: 3/4;
+  object-fit: cover;
+  border-radius: 14px;
+  background: #1e202d;
+  display: block;
+}
+.char-pop-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(255,255,255,.08);
+  color: #cfd3e2;
+  font-size: 16px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.char-pop-close:hover { background: rgba(255,255,255,.18); color: #fff; }
+.char-pop-badge {
+  display: inline-block;
+  background: linear-gradient(90deg, #b81468, #741b80);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  margin-bottom: 10px;
+}
+.char-pop-badge-sup {
+  background: rgba(255,255,255,.1);
+  color: #b5bccf;
+}
+.char-pop-ru {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 4px;
+  line-height: 1.2;
+}
+.char-pop-en {
+  font-size: 14px;
+  color: #8a90a8;
+  margin-bottom: 20px;
+}
+.char-pop-va-hdr {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #8a90a8;
+  margin-bottom: 10px;
+}
+.char-pop-va-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.char-pop-va-av {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #222633;
+  flex-shrink: 0;
+}
+.char-pop-va-ru {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 2px;
+}
+.char-pop-va-en {
+  font-size: 13px;
+  color: #8a90a8;
+}
+
+/* Гибридная полная внутренняя страница произведения (#titlePageView) */
+.tp-wrap {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 22px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.tp-hero {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 26px;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .tp-hero { grid-template-columns: 1fr; }
+  .tp-poster { max-width: 230px; margin: 0 auto; }
+}
+.tp-poster {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  border-radius: 16px;
+  box-shadow: 0 14px 36px rgba(0,0,0,.5);
+  background: #1b1e2b;
+}
+.tp-specs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.tp-spec-box {
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 9px 12px;
+}
+.tp-spec-box span { display: block; font-size: 11px; color: var(--mu); margin-bottom: 2px; }
+.tp-spec-box b { font-size: 13.5px; color: #fff; }
+html[data-theme=white] .tp-spec-box b { color: #14161f; }
+.tp-rel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.tp-rel-card {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--bd);
+  cursor: pointer;
+  transition: .15s;
+}
+.tp-rel-card:hover { border-color: var(--ac); background: rgba(124,92,255,.14); }
+.tp-rel-card img { width: 46px; height: 66px; object-fit: cover; border-radius: 8px; background: #222633; flex-shrink: 0; }
 
 /* Bottom Sheets на мобильных и Shareable Canvas */
 .sheet-handle { display: none; width: 40px; height: 4px; border-radius: 999px; background: rgba(255,255,255,.25); margin: -4px auto 6px; }
@@ -491,10 +662,10 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
   <h1 style="margin:0">Мой Медиа Трекер</h1>
   <p style="color:var(--mu);max-width:400px;margin:0;line-height:1.5">Твоя коллекция фильмов, сериалов, аниме, манги и ранобэ. Войди через Google, чтобы она синхронизировалась на всех устройствах.</p>
   <div class="row" style="justify-content:center;gap:12px">
-    <button class="btn btn-g" id="loginBtn">Войти через Google</button>
+    <button class="btn btn-g" id="loginBtn" title="С выбором аккаунта Google">Войти через Google</button>
     <button class="btn btn-s" id="localModeBtn" type="button" style="font-size:15px;padding:12px 20px">💻 Открыть локально (без аккаунта)</button>
   </div>
-  <div class="meta" style="max-width:430px;margin:0;line-height:1.45">💡 При запуске файла двойным кликом (<code>file://</code>) вход через Google блокируется защитой браузера. Нажми <b>«Открыть локально»</b> — коллекция сохраняется в памяти браузера и через бэкапы.</div>
+  <div class="meta" style="max-width:430px;margin:0;line-height:1.45">💡 При входе через Google теперь всегда предлагается выбор аккаунта. При запуске двойным кликом из папки (<code>file://</code>) используй кнопку <b>«Открыть локально»</b>.</div>
 </div>
 
 <div id="appScreen">
@@ -511,14 +682,16 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
   <div class="tabs" id="mainTabs">
     <button class="tab on" data-v="catalog">🌐 Каталог</button>
     <button class="tab" data-v="profile">👤 Мой профиль</button>
+    <button class="tab" data-v="users">👥 Пользователи</button>
     <button class="tab" data-v="admin" id="adminTabBtn" style="display:none">👑 Админ-панель</button>
   </div>
   <div class="top-social-bar" id="topSocialBar">
     <div class="row" style="gap:10px">
-      <span class="online-badge" id="realOnlineBadge" title="Реальное количество пользователей, активных на сайте прямо сейчас"><span class="pulse-dot"></span><span id="realOnlineTxt">В сети сейчас: 1</span></span>
+      <span class="online-badge" id="realOnlineBadge"><span class="pulse-dot"></span><span id="realOnlineTxt">В сети сейчас: 1</span></span>
+      <button class="btn btn-s" id="openUsersDirBtn" type="button" style="padding:5px 12px;font-size:12.5px">👥 Все пользователи сайта</button>
     </div>
     <div class="user-search-wrap" id="userSearchWrap">
-      <input type="text" id="userSearchInput" placeholder="🔎 Найти пользователя по никнейму или ID...">
+      <input type="text" id="userSearchInput" placeholder="🔎 Найти человека по никнейму или ID...">
       <button class="btn btn-s" id="userSearchBtn" type="button" style="padding:7px 14px;font-size:12.5px">Найти</button>
       <div class="user-results-pop" id="userResultsPop"></div>
     </div>
@@ -529,7 +702,7 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
       <button class="tb on" data-g="Аниме">Аниме</button>
       <button class="tb" data-g="Манга">Манга</button>
       <button class="tb" data-g="Ранобэ">Ранобэ</button>
-      <button class="tb" data-g="Кино и видео">🎬 Кино и видео</button>
+      <button class="tb" data-g="Кино и сериалы">🎬 Кино и сериалы</button>
       <button class="tb" data-g="Фильм" style="display:none">Фильмы</button>
       <button class="tb" data-g="Сериал" style="display:none">Сериалы</button>
     </div>
@@ -537,7 +710,7 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
       <select id="cgMode"><option value="pop">Популярное</option><option value="top">Топ рейтинга</option><option value="new">Новинки / онгоинги</option><option value="soon">Скоро выйдет</option><option value="trend">🔥 В тренде на неделе</option><option value="month">🆕 Новинки месяца</option><option value="date">📅 По дате выхода</option><option value="votes">👥 По числу голосов</option><option value="hidden">💎 Недооценённые</option><option value="classic">🏛 Классика</option><option value="rare">🔭 Малоизвестные</option></select>
       <select id="cgKind" style="display:none"><option value="">Все виды</option><option value="JP">Манга</option><option value="KR">Манхва</option><option value="CN">Маньхуа</option></select>
       <select id="cgAnimeKind" title="Вид аниме"><option value="">Вид: Все аниме</option><option value="TV">Аниме-сериалы</option><option value="MOVIE">Аниме-фильмы</option></select>
-      <select id="cgVideoKind" style="display:none" title="Вид кино и видео"><option value="all">Вид: Все</option><option value="movie">Фильмы</option><option value="tv">Сериалы</option><option value="cartoon">Мультфильмы</option></select>
+      <select id="cgVideoKind" style="display:none" title="Вид кино и сериалов"><option value="all">Вид: Все</option><option value="movie">Фильмы</option><option value="tv">Сериалы</option></select>
       <input id="cgTagSearch" placeholder="🔎 Поиск жанра/тега..." style="width:165px" title="Быстрый фильтр жанров и тегов">
       <select id="cgGenre"></select>
       <input type="number" id="cgYear" placeholder="Год" min="1900" max="2100" style="width:88px">
@@ -552,12 +725,15 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
   <div id="profileView" style="display:none">
     <div class="guest-banner" id="guestBanner">
       <span id="guestBannerTxt">👁 Вы просматриваете профиль пользователя</span>
-      <button class="btn btn-s" id="exitGuestBtn" type="button">← Вернуться в мой профиль</button>
+      <div class="row" style="gap:8px">
+        <button class="btn" id="creatorBypassBtn" type="button" style="display:none;background:linear-gradient(135deg,#f59e0b,#d97706);color:#111">👑 Раскрыть скрытую приватность (Создатель)</button>
+        <button class="btn btn-s" id="exitGuestBtn" type="button">← Вернуться в мой профиль</button>
+      </div>
     </div>
     <div class="pcard">
       <div class="av-wrap" id="avWrap"><img id="avatar" referrerpolicy="no-referrer" alt=""></div>
       <div class="pinfo">
-        <div><b id="profName"></b><span class="lvl-pill" id="profLvl">Ур. 1</span><button type="button" class="nick-hist-btn" id="nickHistBtn" title="История изменения никнеймов">🕒 История имён</button></div>
+        <div><b id="profName"></b><span class="creator-badge" id="profCreatorBadge" style="display:none" title="Нажми, чтобы изменить подпись статуса Создателя">👑 Создатель сайта</span><span class="lvl-pill" id="profLvl">Ур. 1</span><button type="button" class="nick-hist-btn" id="nickHistBtn" title="История изменения никнеймов">🕒 История имён</button></div>
         <div class="meta" id="profPublicId" style="font-family:monospace;color:var(--ach)"></div>
         <div class="meta" id="profMail" style="display:none"></div>
         <div class="row" style="gap:8px;margin-top:4px"><div class="meta" id="profSince" title="Нажми, чтобы увидеть точную дату и время регистрации"></div><span class="last-visit-pill" id="profLastVisit">● Был(а) только что</span></div>
@@ -568,7 +744,7 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
       <div class="ring" id="profRing" title="Доля завершённых и любимых"><span id="profRingTxt">0%</span></div>
       <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:flex-end">
         <button class="btn" id="shareCardBtn" type="button">🪪 Визитка</button>
-        <button class="btn btn-s" id="profPrivacyBtn" type="button" title="Настройки приватности профиля и скрытия статистики">🔒 Приватность</button>
+        <button class="btn btn-s" id="profPrivacyBtn" type="button" title="Настройки приватности профиля">🔒 Приватность</button>
         <button class="btn btn-s" id="profEditBtn">✏ Редактировать</button>
         <button class="btn btn-s" id="statsBtn">📊 Подробная статистика</button>
       </div>
@@ -617,7 +793,7 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
     <button class="fb" data-c="Аниме">Аниме</button>
     <button class="fb" data-c="Манга">Манга</button>
     <button class="fb" data-c="Ранобэ">Ранобэ</button>
-    <button class="fb" data-c="Кино и видео">🎬 Кино и видео</button>
+    <button class="fb" data-c="Кино и сериалы">🎬 Кино и сериалы</button>
     <button class="fb" data-c="Фильм" style="display:none">Фильмы</button>
     <button class="fb" data-c="Сериал" style="display:none">Сериалы</button>
     <button class="fb" data-c="Мультфильм" style="display:none">Мультфильмы</button>
@@ -626,28 +802,39 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
   </div>
   <div class="filters" id="kindFilters" style="display:none;margin-top:8px"><button class="kb on" data-k="Все">Все виды</button><button class="kb" data-k="Манга">Манга</button><button class="kb" data-k="Манхва">Манхва</button><button class="kb" data-k="Маньхуа">Маньхуа</button><button class="kb" data-k="Комикс">Комикс</button></div>
   <div class="filters" id="animeKindFilters" style="display:none;margin-top:8px"><button class="kb on" data-ak="Все">Вид: Все аниме</button><button class="kb" data-ak="Сериал">Аниме-сериалы</button><button class="kb" data-ak="Фильм">Аниме-фильмы</button></div>
-  <div class="filters" id="videoKindFilters" style="display:none;margin-top:8px"><button class="kb on" data-vk="Все">Вид: Все</button><button class="kb" data-vk="Фильм">Фильмы</button><button class="kb" data-vk="Сериал">Сериалы</button><button class="kb" data-vk="Мультфильм">Мультфильмы</button></div>
+  <div class="filters" id="videoKindFilters" style="display:none;margin-top:8px"><button class="kb on" data-vk="Все">Вид: Все</button><button class="kb" data-vk="Фильм">Фильмы</button><button class="kb" data-vk="Сериал">Сериалы</button></div>
   <div id="statusSummaryBanner" class="status-summary-banner" style="display:none"></div>
   <div class="grid" id="itemsGrid"></div>
   <div class="kanban-board" id="kanbanBoard" style="display:none"></div>
   </div>
   </div>
 
-  <!-- Третья вкладка: Админ-панель (видна только владельцу/создателю) -->
+  <div id="usersView" style="display:none">
+    <div class="pcard" style="min-height:auto;padding:22px 24px">
+      <div class="pinfo">
+        <h2 style="margin:0 0 6px">👥 Участники сайта</h2>
+        <div class="meta" style="margin:0">Нажми на любого пользователя, чтобы посмотреть его коллекцию и статистику. Создатель сайта отмечен золотым значком 👑.</div>
+      </div>
+    </div>
+    <div id="publicUsersList" style="display:flex;flex-direction:column;gap:10px"></div>
+  </div>
+
   <div id="adminView" style="display:none">
     <div class="pcard" style="min-height:auto;padding:22px 24px">
       <div class="pinfo">
-        <h2 style="margin:0 0 6px">👑 Панель администратора (Только для создателя)</h2>
-        <div class="meta" style="margin:0">Реальная статистика базы данных Firebase Firestore и онлайн-активности</div>
+        <h2 style="margin:0 0 6px">👑 Панель создателя сайта</h2>
+        <div class="meta" style="margin:0">Точная статистика базы данных Firebase, онлайн-активности и полный доступ к профилям</div>
       </div>
-      <button class="btn btn-s" id="adminRefreshBtn" type="button">↻ Обновить данные</button>
+      <button class="btn btn-s" id="adminRefreshBtn" type="button">↻ Обновить</button>
     </div>
     <div class="tiles" id="adminTiles"></div>
     <div class="pb" style="margin-top:14px">
-      <h4>👥 Зарегистрированные пользователи сайта</h4>
+      <h4>👥 Все зарегистрированные пользователи (с возможностью просмотра скрытых профилей)</h4>
       <div id="adminUsersList" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
   </div>
+
+  <div id="titlePageView" style="display:none"></div>
 </div>
 
 <!-- Добавление / редактирование -->
@@ -656,7 +843,7 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
   <input type="hidden" id="editId">
   <div class="fs">Основное</div>
   <div class="row2">
-    <select id="inputCategory"><option>Фильм</option><option>Сериал</option><option>Аниме</option><option>Манга</option><option>Ранобэ</option><option>Мультфильм</option></select>
+    <select id="inputCategory"><option>Фильм</option><option>Сериал</option><option>Аниме</option><option>Манга</option><option>Ранобэ</option></select>
     <select id="inputStatus"><option>В планах</option><option>Смотрю/Читаю</option><option>Просмотрено/Прочитано</option><option>Любимое</option><option>Пересматриваю</option><option>Брошено</option></select>
   </div>
   <select id="inputKind" style="display:none"><option>Манга</option><option>Манхва</option><option>Маньхуа</option><option>Комикс</option></select>
@@ -712,7 +899,7 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
   <div id="detailCharsSec" class="jutsu-chars-sec" style="display:none"></div>
   <div class="mb">
     <button class="btn btn-d" id="deleteItemBtn">Удалить</button>
-    <div class="row"><button class="btn" id="editItemBtn">Редактировать</button><button class="btn btn-s" id="closeDetailBtn">Закрыть</button></div>
+    <div class="row"><button class="btn btn-s" id="openFullPageFromDetailBtn" type="button">📖 Полная страница ↗</button><button class="btn" id="editItemBtn">Редактировать</button><button class="btn btn-s" id="closeDetailBtn">Закрыть</button></div>
   </div>
 </div></div>
 
@@ -727,7 +914,7 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
   <p id="rndDesc" style="font-size:13px;color:#ccc;line-height:1.5;max-height:150px;overflow:auto;margin:0;text-align:left"></p>
   <div id="rndCharsSec" class="jutsu-chars-sec" style="display:none;width:100%"></div>
   <a id="rndLink" target="_blank" rel="noopener" style="color:#b39dff;font-size:13px">Открыть на сайте-источнике ↗</a>
-  <div class="row" style="justify-content:center"><button class="btn" id="rndAdd">＋ В планы</button><button class="btn btn-s" id="rndEdit">✎ Настроить</button><button class="btn btn-s" id="rndMore">🎲 Ещё</button><button class="btn btn-s" id="rndClose">Закрыть</button></div>
+  <div class="row" style="justify-content:center"><button class="btn" id="rndAdd">＋ В планы</button><button class="btn btn-s" id="openFullPageFromRndBtn" type="button">📖 Полная страница ↗</button><button class="btn btn-s" id="rndEdit">✎ Настроить</button><button class="btn btn-s" id="rndMore">🎲 Ещё</button><button class="btn btn-s" id="rndClose">Закрыть</button></div>
 </div></div>
 
 <!-- Статистика -->
@@ -784,6 +971,28 @@ html[data-theme=white] .jutsu-chars-sec { background: #f3f5fa; border-color: rgb
   <div class="row" style="width:100%;justify-content:space-between"><button class="btn btn-s" id="regenShareBtn" type="button">🎨 Сменить фон</button><div class="row"><button class="btn btn-s" id="copyShareBtn" type="button">📋 Скопировать</button><button class="btn" id="dlShareBtn" type="button">⬇ Скачать PNG</button></div></div>
 </div></div>
 
+<div id="charPopupModal" class="modal" style="z-index:1400"><div class="mc">
+  <button type="button" class="char-pop-close" id="charPopCloseBtn">✕</button>
+  <div class="char-pop-layout">
+    <img id="charPopPoster" class="char-pop-poster" alt="">
+    <div style="min-width:0;padding-right:24px">
+      <div id="charPopBadge" class="char-pop-badge">Главный персонаж</div>
+      <h3 id="charPopRuName" class="char-pop-ru"></h3>
+      <div id="charPopEnName" class="char-pop-en"></div>
+      <div id="charPopVaBlock">
+        <div id="charPopVaHdr" class="char-pop-va-hdr">СЕЙЮ · ЯПОНСКАЯ ОЗВУЧКА</div>
+        <div class="char-pop-va-row">
+          <img id="charPopVaAv" class="char-pop-va-av" alt="">
+          <div>
+            <div id="charPopVaRu" class="char-pop-va-ru"></div>
+            <div id="charPopVaEn" class="char-pop-va-en"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import {getAuth,signInWithPopup,signInWithRedirect,GoogleAuthProvider,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -801,7 +1010,7 @@ const app = initializeApp({
   appId: "1:642718397694:web:7a4e175ed593cc364961af",
   measurementId: "G-NKNYFSP981"
 });
-const auth = getAuth(app), db = getFirestore(app), provider = new GoogleAuthProvider();
+const auth = getAuth(app), db = getFirestore(app), provider = new GoogleAuthProvider(); provider.setCustomParameters({ prompt: 'select_account' });
 
 const $ = id => document.getElementById(id);
 const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
@@ -834,7 +1043,7 @@ function uiListDialog(name, desc, cn, cols) {
   }, 'Сохранить', false, () => ({name: iName.value.trim(), desc: iDesc.value.trim(), cn: cur}));
 }
 const CATS = ['Фильм','Сериал','Аниме','Манга','Ранобэ','Мультфильм'];
-const fix = i => { if (i.category === 'Манхва') { i.category = 'Манга'; i.kind = 'Манхва'; } else if (i.category === 'Манга' && !i.kind) i.kind = 'Манга'; return i; };
+const fix = i => { if (i.category === 'Манхва') { i.category = 'Манга'; i.kind = 'Манхва'; } else if (i.category === 'Манга' && !i.kind) i.kind = 'Манга'; else if (i.category === 'Мультфильм') { i.category = (num(i.eps) > 1 || num(i.seasons) > 0) ? 'Сериал' : 'Фильм'; } return i; };
 const catLabel = i => i.category === 'Манга' && i.kind && i.kind !== 'Манга' ? i.kind : i.category;
 const STATS = ['В планах','Смотрю/Читаю','Просмотрено/Прочитано','Любимое','Пересматриваю','Брошено'];
 const FALL = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280"><rect width="200" height="280" fill="%232c2c2c"/><text x="50%" y="50%" fill="%23777" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" dominant-baseline="middle">Нет постера</text></svg>';
@@ -842,9 +1051,9 @@ const FALL = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" wi
 let user = null, items = [], loaded = false, cat = 'Всё', kind = 'Все', curId = null, unsub = null, posterValue = '', view = localStorage.getItem('view') || 'grid', ongOnly = false, xf = null, lastList = [], afTok = 0;
 const grid = $('itemsGrid');
 
-// ---------- Вход и Локальный режим (поддержка запуска по двойному клику file://) ----------
+// ---------- Вход с выбором Google-аккаунта и безопасный Локальный режим ----------
 const saveLocalItems = () => {
-  if (window._viewingGuestUid) return;
+  if (window._viewingGuestUid || !loaded) return;
   try { localStorage.setItem('localItems', JSON.stringify(items)); } catch (e) {}
 };
 const loadLocalItems = () => {
@@ -861,11 +1070,14 @@ function startLocalMode(msg) {
   $('hdrAvatar').src = user.photoURL || ''; $('profName').textContent = user.displayName; $('avatar').src = user.photoURL || '';
   items = loadLocalItems(); loaded = true; setSync(); refresh(); profPaint();
   if (!cgGrid.children.length) cgLoad(true); homeTab();
+  setTimeout(backfillMissingDurations, 1200);
   if (msg) toast(msg);
 }
 $('localModeBtn').onclick = () => startLocalMode('Включён локальный режим');
 $('loginBtn').onclick = () => {
-  if (location.protocol === 'file:') return startLocalMode('При запуске из папки (file://) включён локальный режим');
+  try { localStorage.removeItem('useLocalMode'); } catch (e) {}
+  provider.setCustomParameters({ prompt: 'select_account' });
+  if (location.protocol === 'file:') return startLocalMode('При запуске из папки (file://) Google-вход недоступен — включён локальный режим');
   signInWithPopup(auth, provider).catch(e => {
     if (['auth/unauthorized-domain', 'auth/operation-not-supported-in-this-environment'].includes(e.code)) return startLocalMode('Включён локальный режим (' + e.code + ')');
     if (e.code === 'auth/popup-blocked') return signInWithRedirect(auth, provider);
@@ -890,7 +1102,15 @@ onAuthStateChanged(auth, u => {
         const all = snap.docs.map(d => d.data()), pd = all.find(x => x.isProfile);
         if (pd) { const {isProfile, userId, ...rest} = pd; Object.assign(prof, rest); profSaveLocal(); }
         else if (!profTried) { profTried = true; profCloud(); }
-        items = all.filter(x => !x.isProfile).map(fix); saveLocalItems(); loaded = true; refresh(); profPaint(); homeTab();
+        const cloudItems = all.filter(x => !x.isProfile).map(fix);
+        if (!cloudItems.length && !snap.metadata.fromCache) {
+          const loc = loadLocalItems();
+          if (loc.length) items = loc; else items = [];
+        } else {
+          items = cloudItems;
+        }
+        loaded = true; saveLocalItems(); refresh(); profPaint(); homeTab();
+        setTimeout(backfillMissingDurations, 1500);
       },
       err => toast('Не удалось загрузить данные: ' + err.message));
   } else {
@@ -1006,7 +1226,7 @@ const setSize = v => { document.documentElement.style.setProperty('--cw', v + 'p
 $('sizeSel').value = localStorage.getItem('cw') || '190'; setSize($('sizeSel').value || '190'); $('sizeSel').onchange = e => setSize(e.target.value);
 
 // ---------- Окна ----------
-const closeAll = () => { if (dlgDone) dlgDone(null); ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'calModal', 'shareModal'].forEach(id => { if ($(id)) $(id).style.display = 'none'; }); };
+const closeAll = () => { if (dlgDone) dlgDone(null); ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'calModal', 'shareModal', 'charPopupModal'].forEach(id => { if ($(id)) $(id).style.display = 'none'; }); };
 ['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'rndClose'].forEach(id => $(id).onclick = closeAll);
 window.onclick = e => { if (e.target.id === 'dlgModal') { if (dlgDone) dlgDone(null); return; } if (e.target.classList.contains('modal')) closeAll(); };
 window.onkeydown = e => { if (e.key === 'Escape') { if (dlgDone) dlgDone(null); else closeAll(); } };
@@ -1176,9 +1396,9 @@ const profCloud = () => {
   if (!prof.publicId) prof.publicId = String(Math.floor(100000 + Math.random() * 900000));
   prof.displayName = prof.name || (user && user.displayName) || 'Пользователь';
   prof.lastVisit = Date.now();
+  if (isCreatorAdmin()) prof.isCreator = true;
   profSaveLocal();
   if (user && !user.isLocal) {
-    // Никогда не сохраняем чужую/личную почту в публичный документ профиля
     const safeProf = {...prof}; delete safeProf.email;
     track(setDoc(doc(db, 'items', 'prof_' + user.uid), {isProfile: true, ...safeProf, userId: user.uid})).catch(() => {});
   }
@@ -1580,7 +1800,7 @@ async function tmdb(search, path, media, page = 1) {
       poster: x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '',
       year: (x.release_date || x.first_air_date || '').slice(0, 4), ext: x.vote_count ? x.vote_average.toFixed(1) : '',
       tags: ids.map(g => TG[g]).filter(Boolean), tmdb: x.media_type + '/' + x.id, src: 'TMDB', url: 'https://www.themoviedb.org/' + x.media_type + '/' + x.id, desc: x.overview || '',
-      category: ids.includes(16) ? 'Мультфильм' : x.media_type === 'tv' ? 'Сериал' : 'Фильм'
+      category: x.media_type === 'tv' ? 'Сериал' : 'Фильм'
     };
   });
 }
@@ -1672,7 +1892,7 @@ function profDash() {
     cc.forEach(([c, n], k) => { const s0 = a / tot * 100; a += n; g.push(`${PAL[k % 6]} ${s0}% ${a / tot * 100}%`); const l = el('div', 'go'), sw = el('i'); sw.style.background = PAL[k % 6]; l.append(sw, el('span', null, `${c}: ${n}`)); l.onclick = () => goCat(c); lg.append(l); });
     d.style.background = `conic-gradient(${g.join(',')})`; w.append(d, lg); p.append(w);
     const h = el('div', 'hl'), t1 = topBy(i => i.tags || [])[0], c1 = cc.slice().sort((x, y) => y[1] - x[1])[0], mins = items.reduce((a, i) => a + (i.eps && i.dur ? i.eps * i.dur : i.dur || 0), 0);
-    kv(h, 'Любимый жанр', t1 && `${t1[0]} (${t1[1]})`); kv(h, 'Любимая категория', c1 && `${c1[0]} (${c1[1]})`); kv(h, 'Время завершённых тайтлов', formatWatchTimeRu(items.filter(isCompletedItem).reduce((a, i) => a + getItemMinutes(i), 0))); p.append(h); }
+    kv(h, 'Любимый жанр', t1 && `${t1[0]} (${t1[1]})`); kv(h, 'Любимая категория', c1 && `${c1[0]} (${c1[1]})`); kv(h, 'Время завершённых тайтлов (все категории)', formatWatchTimeRu(items.filter(isCompletedItem).reduce((a, i) => a + getItemMinutes(i), 0))); p.append(h); }
 
 
   { const p = mk('lists', 'Мои подборки'), l = topBy(i => i.lists || []);
@@ -1749,7 +1969,12 @@ function profStrips() {
     box.append(w);
   };
   const by = (f, d) => items.filter(f).sort(d).slice(0, 12), ex = (a, b) => num(b.extRating) - num(a.extRating);
-  strip('❤ Любимое (Избранное на показ)', by(i => i.status === 'Любимое', ex));
+  strip('🕒 Недавно добавлено', by(() => true, (a, b) => b.id - a.id));
+  { const pl = items.filter(i => i.status === 'В планах'); if (pl.length) { const d = new Date(); strip('🎯 Рекомендация дня', [pl[(d.getFullYear() * 366 + d.getMonth() * 31 + d.getDate()) % pl.length]]); } }
+  strip('▶ Продолжаю', by(i => i.status === 'Смотрю/Читаю', (a, b) => b.id - a.id));
+  strip('🏆 Топ-10 по оценке', items.filter(i => num(i.rating) || num(i.extRating)).sort((a, b) => (num(b.rating) || num(b.extRating)) - (num(a.rating) || num(a.extRating))).slice(0, 10));
+  strip('❤ Любимое', by(i => i.status === 'Любимое', ex));
+  strip('📌 Следующие в планах', by(i => i.status === 'В планах', ex));
 }
 $('rndBtn').onclick = () => {
   if (!lastList.length) return toast('В текущем списке пусто. Попробуй сбросить фильтры.');
@@ -1985,8 +2210,8 @@ window.importData = e => {
 };
 
 // ============================================================================
-// ДОРАБОТКА: ЖАНРЫ/ЮРИ, ВРЕМЯ В ДНЯХ (ANIXART), ПОДБОРКИ, ПЕРСОНАЖИ JUTSU,
-// РЕАЛЬНЫЙ ОНЛАЙН, ПОИСК ЛЮДЕЙ, ПРИВАТНОСТЬ И АДМИН-ПАНЕЛЬ ВЛАДЕЛЬЦА
+// ДОРАБОТКА V4: ВОССТАНОВЛЕНИЕ ЧАСОВ СТАРЫХ ТАЙТЛОВ, ОКОШКО ПЕРСОНАЖА,
+// DRAG-TO-SCROLL, ГИБРИДНАЯ СТРАНИЦА ТАЙТЛА + ФРАНШИЗЫ, КАТАЛОГ ЛЮДЕЙ, СОЗДАТЕЛЬ
 // ============================================================================
 
 try { localStorage.removeItem('tagRu'); } catch (e) {}
@@ -2045,7 +2270,7 @@ aniOptions = function () {
 tagAuto = async function () {};
 
 cgGenres = function () {
-  const isVideo = cg.g === 'Кино и видео' || cg.g === 'Фильм' || cg.g === 'Сериал';
+  const isVideo = cg.g === 'Кино и сериалы' || cg.g === 'Фильм' || cg.g === 'Сериал';
   const fill = (id, label, groups) => {
     const sel = $(id); if (!sel) return; const old = sel.value; sel.replaceChildren(new Option(label, ''));
     groups.forEach(([g, list]) => { const og = document.createElement('optgroup'); og.label = g; list.forEach(([v, t]) => og.append(new Option(t, v))); sel.append(og); });
@@ -2055,7 +2280,7 @@ cgGenres = function () {
   fill('cgGenre', 'Все жанры и теги', groups); fill('cgGenre2', 'Ещё жанр / тег', groups);
   if ($('cgTagSearch')) $('cgTagSearch').style.display = isVideo ? 'none' : '';
   if ($('cgAnimeKind')) $('cgAnimeKind').style.display = cg.g === 'Аниме' ? '' : 'none';
-  if ($('cgVideoKind')) $('cgVideoKind').style.display = cg.g === 'Кино и видео' ? '' : 'none';
+  if ($('cgVideoKind')) $('cgVideoKind').style.display = cg.g === 'Кино и сериалы' ? '' : 'none';
   $('cgCountry').style.display = isVideo ? '' : 'none'; $('cgSeason').style.display = cg.g === 'Аниме' ? '' : 'none'; $('cgAge').style.display = isVideo ? 'none' : '';
   const L = cg.g === 'Аниме' ? [['', 'Любая длина'], ['s', 'Короткие (до 13 серий)'], ['m', 'До 26 серий'], ['l', 'Длинные (50+ серий)']] : isVideo ? [['', 'Любая длина'], ['s', 'До 100 минут'], ['m', 'До 130 минут'], ['l', 'Длинные (от 150 мин)']] : cg.g === 'Манга' ? [['', 'Любой объём'], ['s', 'Короткие (до 30 глав)'], ['m', 'До 100 глав'], ['l', 'Длинные (200+ глав)']] : [['', 'Любая длина']];
   $('cgLen').replaceChildren(...L.map(([v, t]) => new Option(t, v))); $('cgLen').style.display = L.length > 1 ? '' : 'none';
@@ -2067,7 +2292,7 @@ if ($('cgVideoKind')) $('cgVideoKind').addEventListener('change', () => cgLoad(t
 function verifyCatalogItemMatchesFilters(r) {
   const sel = [$('cgGenre')?.value, $('cgGenre2')?.value].filter(Boolean);
   const ageMode = $('cgAge')?.value || '';
-  const isVideo = cg.g === 'Кино и видео' || cg.g === 'Фильм' || cg.g === 'Сериал';
+  const isVideo = cg.g === 'Кино и сериалы' || cg.g === 'Фильм' || cg.g === 'Сериал';
   if (!isVideo && r.src === 'AniList') {
     const hasHentai = (r.rawGenres || []).includes('Hentai') || (r.tags || []).some(t => /хентай|hentai/i.test(t));
     if (ageMode === '' && (r.isAdult || hasHentai)) return false;
@@ -2088,10 +2313,9 @@ function verifyCatalogItemMatchesFilters(r) {
     }
   } else if (isVideo) {
     const vk = $('cgVideoKind')?.value || 'all';
-    if (cg.g === 'Кино и видео') {
+    if (cg.g === 'Кино и сериалы') {
       if (vk === 'movie' && r.category !== 'Фильм') return false;
       if (vk === 'tv' && r.category !== 'Сериал') return false;
-      if (vk === 'cartoon' && r.category !== 'Мультфильм') return false;
     }
     for (const flt of sel) { if (TG[flt] && !(r.tags || []).includes(TG[flt])) return false; }
   }
@@ -2101,17 +2325,16 @@ function verifyCatalogItemMatchesFilters(r) {
 const _origCgFetch = cgFetch;
 cgFetch = async function (page, per, q, mode) {
   const g = cg.g;
-  if (g === 'Кино и видео') {
+  if (g === 'Кино и сериалы') {
     const vk = $('cgVideoKind')?.value || 'all';
     if (vk === 'movie' || vk === 'tv') {
       cg.g = vk === 'movie' ? 'Фильм' : 'Сериал';
-      const res = await _origCgFetch(page, per, q, mode); cg.g = 'Кино и видео';
+      const res = await _origCgFetch(page, per, q, mode); cg.g = 'Кино и сериалы';
       return res.filter(verifyCatalogItemMatchesFilters);
     }
-    const prevG = $('cgGenre').value; if (vk === 'cartoon' && !prevG) $('cgGenre').value = '16';
     cg.g = 'Фильм'; const r1 = await _origCgFetch(page, Math.ceil(per / 2), q, mode).catch(() => []);
     cg.g = 'Сериал'; const r2 = await _origCgFetch(page, Math.ceil(per / 2), q, mode).catch(() => []);
-    cg.g = 'Кино и видео'; $('cgGenre').value = prevG;
+    cg.g = 'Кино и сериалы';
     return [...r1, ...r2].filter(verifyCatalogItemMatchesFilters);
   }
   if (g === 'Фильм' || g === 'Сериал') return (await _origCgFetch(page, per, q, mode)).filter(verifyCatalogItemMatchesFilters);
@@ -2223,7 +2446,7 @@ detailExtra = function (id) {
   }
 };
 
-// ---------- Время в днях и часах (24 часа = 1 день) + Стиль Anixart ----------
+// ---------- ИСПРАВЛЕНИЕ 0 ЧАСОВ У СТАРЫХ АНИМЕ И СЕРИАЛОВ (24 часа = 1 день) ----------
 function pluralRu(n, one, two, five) {
   const abs = Math.abs(n) % 100, n1 = abs % 10;
   if (abs > 10 && abs < 20) return five;
@@ -2238,15 +2461,57 @@ function formatWatchTimeRu(totalMinutes) {
   const hStr = remHours > 0 ? `${remHours} ${pluralRu(remHours, 'час', 'часа', 'часов')}` : '';
   return (days > 0 && remHours > 0) ? `${dStr} и ${hStr}` : (days > 0 ? dStr : hStr);
 }
+
 function getItemMinutes(item) {
   if (item.category === 'Манга' || item.category === 'Ранобэ') return 0;
   const eps = num(item.eps), dur = num(item.dur);
   if (eps > 0 && dur > 0) return eps * dur;
+  if (eps > 0) return eps * (item.category === 'Сериал' ? 42 : 24);
   if (dur > 0) return dur;
-  if (eps > 0 && (item.category === 'Аниме' || item.category === 'Сериал')) return eps * 24;
-  if (item.category === 'Фильм' || item.category === 'Мультфильм') return 100;
+  if (item.category === 'Аниме') return item.format === 'MOVIE' ? 105 : 12 * 24;
+  if (item.category === 'Сериал') return 10 * 42;
+  if (item.category === 'Фильм' || item.category === 'Мультфильм') return 105;
   return 0;
 }
+
+function getItemEpisodesCount(item) {
+  if (item.category === 'Манга' || item.category === 'Ранобэ') return 0;
+  const eps = num(item.eps);
+  if (eps > 0) return eps;
+  if (item.category === 'Аниме') return item.format === 'MOVIE' ? 1 : 12;
+  if (item.category === 'Сериал') return 10;
+  return 1;
+}
+
+let backfillBusy = false;
+async function backfillMissingDurations() {
+  if (backfillBusy || window._viewingGuestUid || !items.length) return;
+  const missing = items.filter(i => !num(i.eps) && !num(i.dur) && ['Аниме', 'Манга', 'Ранобэ'].includes(i.category));
+  if (!missing.length) return;
+  backfillBusy = true;
+  let updatedAny = false;
+  for (const it of missing.slice(0, 18)) {
+    try {
+      const qName = it.titleEn || it.titleOrig || it.title;
+      const res = await anilist(qName, it.category === 'Аниме' ? 'ANIME' : 'MANGA', { per: 3 });
+      const hit = res[0];
+      if (hit && (hit.eps || hit.dur || hit.vols)) {
+        if (hit.eps) it.eps = hit.eps;
+        if (hit.dur) it.dur = hit.dur;
+        if (hit.vols) it.vols = hit.vols;
+        if (hit.format) it.format = hit.format;
+        if (hit.aniId) it.aniId = hit.aniId;
+        if (hit.mal) it.mal = hit.mal;
+        cloudSave(it);
+        updatedAny = true;
+      }
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 900));
+  }
+  backfillBusy = false;
+  if (updatedAny) refresh();
+}
+
 function getAnimeSubKind(item) {
   if (item.format === 'MOVIE') return 'Фильм';
   if (item.format && item.format !== 'MOVIE') return 'Сериал';
@@ -2259,7 +2524,6 @@ function isCompletedItem(item) {
   return false;
 }
 
-// Переключатели категорий и под-видов в коллекции
 let animeSubKind = 'Все', videoSubKind = 'Все', profileVideoSubFilter = 'all';
 document.querySelectorAll('#catFilters .fb').forEach(b => {
   b.onclick = () => {
@@ -2267,7 +2531,7 @@ document.querySelectorAll('#catFilters .fb').forEach(b => {
     cat = b.dataset.c; kind = 'Все'; animeSubKind = 'Все'; videoSubKind = 'Все';
     $('kindFilters').style.display = cat === 'Манга' ? 'flex' : 'none';
     if ($('animeKindFilters')) $('animeKindFilters').style.display = cat === 'Аниме' ? 'flex' : 'none';
-    if ($('videoKindFilters')) $('videoKindFilters').style.display = cat === 'Кино и видео' ? 'flex' : 'none';
+    if ($('videoKindFilters')) $('videoKindFilters').style.display = cat === 'Кино и сериалы' ? 'flex' : 'none';
     document.querySelectorAll('#kindFilters .kb').forEach(x => x.classList.toggle('on', x.dataset.k === 'Все'));
     document.querySelectorAll('#animeKindFilters .kb').forEach(x => x.classList.toggle('on', x.dataset.ak === 'Все'));
     document.querySelectorAll('#videoKindFilters .kb').forEach(x => x.classList.toggle('on', x.dataset.vk === 'Все'));
@@ -2281,12 +2545,11 @@ catCounts = function () {
   document.querySelectorAll('#catFilters .fb').forEach(b => {
     if (!b.dataset.l) b.dataset.l = b.textContent;
     const cName = b.dataset.c;
-    const n = cName === 'Всё' ? items.filter(i => !i.archived).length : cName === 'Кино и видео' ? items.filter(i => !i.archived && KINO.includes(i.category)).length : items.filter(i => !i.archived && i.category === cName).length;
+    const n = cName === 'Всё' ? items.filter(i => !i.archived).length : cName === 'Кино и сериалы' ? items.filter(i => !i.archived && KINO.includes(i.category)).length : items.filter(i => !i.archived && i.category === cName).length;
     b.textContent = b.dataset.l + (n ? ' ' + n : '');
   });
 };
 
-// Канбан-доска
 class KanbanManager {
   static STATUSES = [
     { key: 'В планах', label: '📋 В планах', color: '#64748b' },
@@ -2315,7 +2578,7 @@ class KanbanManager {
     const board = $('kanbanBoard'); if (!board || !this.isKanbanActive) return;
     board.replaceChildren();
     const q = $('searchInput').value.toLowerCase().trim(), tg = $('tagFilter').value, lf = $('listFilter').value;
-    const pool = items.filter(i => !i.archived && (!q || names(i).includes(q)) && (cat === 'Всё' || (cat === 'Кино и видео' ? KINO.includes(i.category) : i.category === cat)) && (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) && (lf === 'Все' || (i.lists || []).some(t => t.toLowerCase() === lf)));
+    const pool = items.filter(i => !i.archived && (!q || names(i).includes(q)) && (cat === 'Всё' || (cat === 'Кино и сериалы' ? KINO.includes(i.category) : i.category === cat)) && (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) && (lf === 'Все' || (i.lists || []).some(t => t.toLowerCase() === lf)));
     this.STATUSES.forEach(stCol => {
       const col = el('div', 'kanban-col'), list = el('div', 'kanban-list');
       const colItems = pool.filter(i => stCol.key === 'Смотрю/Читаю' ? (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю') : i.status === stCol.key);
@@ -2352,12 +2615,12 @@ class KanbanManager {
 const _baseRender = render;
 render = function () {
   const realCat = cat;
-  if (realCat === 'Кино и видео') cat = 'Всё';
+  if (realCat === 'Кино и сериалы') cat = 'Всё';
   _baseRender();
   cat = realCat;
-  if (realCat === 'Кино и видео' || (realCat === 'Аниме' && animeSubKind !== 'Все')) {
+  if (realCat === 'Кино и сериалы' || (realCat === 'Аниме' && animeSubKind !== 'Все')) {
     const keepIds = new Set(lastList.filter(i => {
-      if (realCat === 'Кино и видео') return KINO.includes(i.category) && (videoSubKind === 'Все' || i.category === videoSubKind);
+      if (realCat === 'Кино и сериалы') return KINO.includes(i.category) && (videoSubKind === 'Все' || i.category === videoSubKind);
       if (realCat === 'Аниме' && animeSubKind !== 'Все') return getAnimeSubKind(i) === animeSubKind;
       return true;
     }).map(i => i.id));
@@ -2393,17 +2656,18 @@ function renderStatusAndCategoryBanner() {
     addP('📖 Манга', `${mg.length} шт. · ${ch} гл.${vl ? ' · ' + vl + ' т.' : ''}`);
   }
   const vd = lastList.filter(i => KINO.includes(i.category));
-  if (vd.length) addP('🎬 Кино/Сериалы', `${vd.length} шт. · ${formatWatchTimeRu(vd.reduce((s, i) => s + getItemMinutes(i), 0))}`);
+  if (vd.length) addP('🎬 Кино и сериалы', `${vd.length} шт. · ${formatWatchTimeRu(vd.reduce((s, i) => s + getItemMinutes(i), 0))}`);
   banner.append(left, right);
 }
 
-// ---------- Отрисовка Профиля в стиле Anixart + Настройки приватности ----------
+// ---------- Отрисовка Профиля в стиле Anixart + Настройки приватности + Обход для Создателя ----------
 function renderAnixartHeroAndCategoryCards() {
   const isGuest = !!window._viewingGuestUid;
   const activeProf = isGuest ? (window._guestProf || {}) : prof;
-  const hideTime = isGuest && activeProf.hideWatchTime;
-  const hideStats = isGuest && activeProf.hideGeneralStats;
-  const hideDetailed = isGuest && activeProf.hideDetailedStats;
+  const bypass = !!window._creatorBypassActive;
+  const hideTime = isGuest && activeProf.hideWatchTime && !bypass;
+  const hideStats = isGuest && activeProf.hideGeneralStats && !bypass;
+  const hideDetailed = isGuest && activeProf.hideDetailedStats && !bypass;
 
   if ($('statsBtn')) $('statsBtn').style.display = hideDetailed ? 'none' : '';
   if ($('profStats')) $('profStats').style.display = hideStats ? 'none' : '';
@@ -2419,20 +2683,18 @@ function renderAnixartHeroAndCategoryCards() {
   const animeMins = doneAnime.reduce((s, i) => s + getItemMinutes(i), 0);
   const videoMinsAll = doneVideoAll.reduce((s, i) => s + getItemMinutes(i), 0);
   const totalWatchMins = animeMins + videoMinsAll;
-  const totalEpisodes = completed.filter(i => i.category === 'Аниме' || i.category === 'Сериал').reduce((s, i) => s + (num(i.eps) || 1), 0);
+  const totalEpisodes = completed.filter(i => i.category === 'Аниме' || i.category === 'Сериал').reduce((s, i) => s + getItemEpisodesCount(i), 0);
   const totalChapters = [...doneManga, ...doneRanobe].reduce((s, i) => s + num(i.eps), 0);
   const totalVolumes = [...doneManga, ...doneRanobe].reduce((s, i) => s + num(i.vols), 0);
   const favCount = items.filter(i => i.status === 'Любимое').length;
   const notesCount = items.filter(i => (i.myNote || '').trim()).length;
 
-  // Верхняя строка #profTimeSummary — теперь ВСЕГДА в днях и часах (не просто "136 ч")!
   if ($('profTimeSummary')) {
     $('profTimeSummary').textContent = hideTime
       ? '🔒 Время просмотра скрыто настройками приватности'
       : `⏱ За просмотром: ${formatWatchTimeRu(totalWatchMins)} · Прочитано: ${totalChapters} гл.${totalVolumes ? ' (' + totalVolumes + ' т.)' : ''}`;
   }
 
-  // Блок в стиле Anixart (#anixHeroStats)
   const heroBox = $('anixHeroStats');
   if (heroBox) {
     if (hideTime) {
@@ -2468,7 +2730,6 @@ function renderAnixartHeroAndCategoryCards() {
     }
   }
 
-  // 4 карточки по категориям (#profMediaTimeGrid)
   const box = $('profMediaTimeGrid');
   if (!box) return;
   box.replaceChildren();
@@ -2485,12 +2746,12 @@ function renderAnixartHeroAndCategoryCards() {
   const doneVidF = doneVideoAll.filter(i => profileVideoSubFilter === 'all' || i.category === profileVideoSubFilter);
   const vidMins = doneVidF.reduce((s, i) => s + getItemMinutes(i), 0);
   const videoCard = el('div', 'mt-card');
-  const vHdr = el('div', 'mt-hdr'); vHdr.append(el('h4', null, '🎬 Кино и видео'));
+  const vHdr = el('div', 'mt-hdr'); vHdr.append(el('h4', null, '🎬 Кино и сериалы'));
   const vSel = el('select'); vSel.style.padding = '3px 7px'; vSel.style.fontSize = '11.5px';
-  [['all', 'Вид: Все'], ['Фильм', 'Фильмы'], ['Сериал', 'Сериалы'], ['Мультфильм', 'Мультфильмы']].forEach(([v, t]) => vSel.add(new Option(t, v)));
+  [['all', 'Вид: Все'], ['Фильм', 'Фильмы'], ['Сериал', 'Сериалы']].forEach(([v, t]) => vSel.add(new Option(t, v)));
   vSel.value = profileVideoSubFilter; vSel.onchange = () => { profileVideoSubFilter = vSel.value; renderAnixartHeroAndCategoryCards(); };
   vHdr.append(vSel);
-  videoCard.append(vHdr, el('div', 'mt-big', formatWatchTimeRu(vidMins)), Object.assign(el('div', 'mt-sub'), {innerHTML: `<span>Завершено (${vSel.selectedOptions[0].textContent}): <b>${doneVidF.length}</b></span><span>Всего кино/ТВ: <b>${doneVideoAll.length}</b></span>`}));
+  videoCard.append(vHdr, el('div', 'mt-big', formatWatchTimeRu(vidMins)), Object.assign(el('div', 'mt-sub'), {innerHTML: `<span>Завершено (${vSel.selectedOptions[0].textContent}): <b>${doneVidF.length}</b></span><span>Всего кино и сериалов: <b>${doneVideoAll.length}</b></span>`}));
 
   const rCh = doneRanobe.reduce((s, i) => s + num(i.eps), 0), rVl = doneRanobe.reduce((s, i) => s + num(i.vols), 0);
   const ranobeCard = el('div', 'mt-card');
@@ -2499,7 +2760,6 @@ function renderAnixartHeroAndCategoryCards() {
   box.append(animeCard, mangaCard, videoCard, ranobeCard);
 }
 
-// Умные инсайты
 function renderSmartInsights() {
   const g = $('smartInsightsGrid'); if (!g) return; g.replaceChildren();
   const list = [];
@@ -2525,7 +2785,28 @@ function renderSmartInsights() {
   });
 }
 
-// ---------- Дата регистрации, Публичный ID (без показа почты!), История имён, Приватность ----------
+// ---------- Статус Создателя, Дата регистрации, Публичный ID, Приватность ----------
+function isCreatorAdmin() {
+  if (!user) return false;
+  if (user.isLocal) return true;
+  const savedOwnerUid = localStorage.getItem('siteCreatorUid');
+  const nm = (prof.name || user.displayName || '').toLowerCase();
+  if (!savedOwnerUid || nm.includes('павел') || prof.isCreator) {
+    try { localStorage.setItem('siteCreatorUid', user.uid); } catch (e) {}
+    return true;
+  }
+  return user.uid === savedOwnerUid;
+}
+
+function isProfileCreator(p) {
+  if (!p) return false;
+  if (p.isCreator) return true;
+  const nm = (p.name || p.displayName || '').toLowerCase();
+  if (nm.includes('павел сускин') || nm.includes('павел ц')) return true;
+  const savedOwnerUid = localStorage.getItem('siteCreatorUid');
+  return !!(savedOwnerUid && p.userId === savedOwnerUid);
+}
+
 function updateProfileMetaAndPrivacyUI() {
   const isGuest = !!window._viewingGuestUid;
   const activeProf = isGuest ? (window._guestProf || {}) : prof;
@@ -2536,15 +2817,28 @@ function updateProfileMetaAndPrivacyUI() {
       prof.createdAt = fbTime || items.map(born).filter(Boolean).sort((a, b) => a - b)[0] || Date.now();
     }
     if (!prof.publicId) prof.publicId = String(Math.floor(100000 + Math.random() * 900000));
+    if (isCreatorAdmin()) prof.isCreator = true;
     if (!window._sessionVisitRecorded) { window._sessionVisitRecorded = true; prof.lastVisit = Date.now(); profSaveLocal(); }
   }
 
-  // Вместо личной почты показываем безопасный публичный ID (как на скриншоте Anixart: ID 463695)
-  if ($('profMail')) $('profMail').style.display = 'none';
-  if ($('profPublicId')) {
-    const pid = activeProf.publicId || '100001';
-    $('profPublicId').textContent = `🆔 ID ${pid}`;
+  const cBadge = $('profCreatorBadge');
+  if (cBadge) {
+    const showCreator = isGuest ? isProfileCreator(activeProf) : isCreatorAdmin();
+    cBadge.style.display = showCreator ? 'inline-flex' : 'none';
+    cBadge.textContent = '👑 ' + (activeProf.creatorTitle || 'Создатель сайта');
+    cBadge.onclick = async () => {
+      if (isGuest || !isCreatorAdmin()) return;
+      const custom = await uiPrompt('Титул создателя сайта (виден всем пользователям)', prof.creatorTitle || 'Создатель сайта', 'Например: Создатель сайта / Основатель');
+      if (custom !== null && custom.trim()) {
+        prof.creatorTitle = custom.trim();
+        profCloud();
+        updateProfileMetaAndPrivacyUI();
+      }
+    };
   }
+
+  if ($('profMail')) $('profMail').style.display = 'none';
+  if ($('profPublicId')) $('profPublicId').textContent = `🆔 ID ${activeProf.publicId || '100001'}`;
 
   const regDate = new Date(activeProf.createdAt || Date.now());
   if ($('profSince')) {
@@ -2560,14 +2854,13 @@ function updateProfileMetaAndPrivacyUI() {
   if ($('profLastVisit')) $('profLastVisit').textContent = visitTxt;
 }
 
-// Настройки приватности пользователя (кнопка «🔒 Приватность»)
 if ($('profPrivacyBtn')) {
   $('profPrivacyBtn').onclick = () => {
     if (window._viewingGuestUid) return;
-    let cTime, cStats, cDet;
+    let cTime, cStats, cDet, cFav;
     dlgOpen(() => {
       $('dlgTitle').textContent = '🔒 Настройки приватности профиля';
-      $('dlgText').textContent = 'Выбери, какие блоки твоего профиля будут видны другим пользователям, когда они находят тебя через поиск. Твоя электронная почта всегда скрыта от всех по умолчанию.';
+      $('dlgText').textContent = 'Выбери, какие блоки твоего профиля скрыть от других пользователей. Почта скрыта всегда.';
       const mkChk = (lbl, val) => {
         const l = el('label'); l.style.display = 'flex'; l.style.gap = '8px'; l.style.alignItems = 'center'; l.style.cursor = 'pointer'; l.style.fontSize = '13.5px';
         const inp = el('input'); inp.type = 'checkbox'; inp.checked = !!val; l.append(inp, document.createTextNode(lbl));
@@ -2576,17 +2869,17 @@ if ($('profPrivacyBtn')) {
       const [l1, i1] = mkChk('Скрыть время просмотра аниме и фильмов от других людей', prof.hideWatchTime);
       const [l2, i2] = mkChk('Скрыть общую статистику, графики и инсайты в профиле', prof.hideGeneralStats);
       const [l3, i3] = mkChk('Скрыть кнопку «📊 Подробная статистика» от гостей', prof.hideDetailedStats);
-      cTime = i1; cStats = i2; cDet = i3;
-      $('dlgBody').replaceChildren(l1, l2, l3);
-    }, 'Сохранить', false, () => ({ t: cTime.checked, s: cStats.checked, d: cDet.checked })).then(res => {
+      const [l4, i4] = mkChk('Скрыть витрину «❤ Любимое (Избранное)» внизу профиля', prof.hideFavorites);
+      cTime = i1; cStats = i2; cDet = i3; cFav = i4;
+      $('dlgBody').replaceChildren(l1, l2, l3, l4);
+    }, 'Сохранить', false, () => ({ t: cTime.checked, s: cStats.checked, d: cDet.checked, f: cFav.checked })).then(res => {
       if (!res) return;
-      prof.hideWatchTime = res.t; prof.hideGeneralStats = res.s; prof.hideDetailedStats = res.d;
+      prof.hideWatchTime = res.t; prof.hideGeneralStats = res.s; prof.hideDetailedStats = res.d; prof.hideFavorites = res.f;
       profCloud(); refresh(); toast('Настройки приватности сохранены');
     });
   };
 }
 
-// Сохранение истории никнеймов
 $('pfSave').onclick = () => {
   const oldName = (prof.name || (user && user.displayName) || '').trim(), newName = $('pfName').value.trim();
   if (newName && oldName && newName !== oldName) {
@@ -2631,19 +2924,18 @@ if ($('nickHistBtn')) {
   };
 }
 
-// Витрина достижений
 function renderPinnedAchievementsShowcase() {
   const isGuest = !!window._viewingGuestUid;
   const activeProf = isGuest ? (window._guestProf || {}) : prof;
   const showcase = $('profAchShowcase'); if (!showcase) return; showcase.replaceChildren();
   const n = c => items.filter(i => i.category === c).length, dn = items.filter(isCompletedItem).length, gn = new Set(items.flatMap(i => i.tags || [])).size, cn = new Set(items.map(i => i.category)).size, fv = items.filter(i => i.status === 'Любимое').length;
   const A = [
-    ['🌱', 'Первый шаг', items.length, 1, 'Добавь первый тайтл.'], ['📚', 'Коллекционер', items.length, 50, 'Собери 50 тайтлов.'],
-    ['🏛', 'Архивариус', items.length, 200, 'Собери 200 тайтлов.'], ['🏆', 'Легенда', items.length, 500, 'Собери 500 тайтлов.'],
-    ['🌸', 'Аниме-фанат', n('Аниме'), 50, 'Добавь 50 аниме.'], ['⭐', 'Аниме-эксперт', n('Аниме'), 100, 'Добавь 100 аниме.'],
-    ['📖', 'Книжный червь', n('Манга') + n('Ранобэ'), 50, 'Добавь 50 манги и ранобэ.'], ['🎬', 'Киноман', n('Фильм') + n('Мультфильм'), 50, 'Добавь 50 фильмов.'],
-    ['📺', 'Сериальный марафон', n('Сериал'), 25, 'Добавь 25 сериалов.'], ['✅', 'Завершатель', dn, 50, 'Заверши 50 тайтлов.'],
-    ['❤', 'Любимчики', fv, 10, '10 любимых тайтлов.'], ['🧭', 'Разносторонний', cn, 5, '5 разных категорий.'], ['🎭', 'Ценитель жанров', gn, 15, '15 разных жанров.']
+    ['🌱', 'Первый шаг', items.length, 1], ['📚', 'Коллекционер', items.length, 50],
+    ['🏛', 'Архивариус', items.length, 200], ['🏆', 'Легенда', items.length, 500],
+    ['🌸', 'Аниме-фанат', n('Аниме'), 50], ['⭐', 'Аниме-эксперт', n('Аниме'), 100],
+    ['📖', 'Книжный червь', n('Манга') + n('Ранобэ'), 50], ['🎬', 'Киноман', n('Фильм') + n('Мультфильм'), 50],
+    ['📺', 'Сериальный марафон', n('Сериал'), 25], ['✅', 'Завершатель', dn, 50],
+    ['❤', 'Любимчики', fv, 10], ['🧭', 'Разносторонний', cn, 5], ['🎭', 'Ценитель жанров', gn, 15]
   ];
   const unlocked = A.filter(([, , v, need]) => v >= need);
   const pinned = activeProf.pinnedAch || [];
@@ -2652,7 +2944,71 @@ function renderPinnedAchievementsShowcase() {
   });
 }
 
-// ---------- Персонажи и сэйю (стиль Jutsu.net) ----------
+// ---------- Персонажи и сэйю (Jutsu.net) + Окошко по клику (Коёми Арараги) + Drag-to-Scroll мышкой ----------
+function enableDragToScroll(trackEl) {
+  let isDown = false, startX = 0, scrollL = 0, movedDist = 0;
+  trackEl.addEventListener('mousedown', e => {
+    if (trackEl.classList.contains('expanded-grid')) return;
+    isDown = true; movedDist = 0;
+    trackEl.classList.add('dragging-track');
+    startX = e.pageX - trackEl.offsetLeft;
+    scrollL = trackEl.scrollLeft;
+  });
+  const stop = () => { isDown = false; trackEl.classList.remove('dragging-track'); };
+  trackEl.addEventListener('mouseleave', stop);
+  trackEl.addEventListener('mouseup', stop);
+  trackEl.addEventListener('mousemove', e => {
+    if (!isDown) return;
+    e.preventDefault();
+    const x = e.pageX - trackEl.offsetLeft;
+    const walk = (x - startX) * 1.4;
+    movedDist = Math.abs(walk);
+    trackEl.scrollLeft = scrollL - walk;
+  });
+  trackEl._wasDragged = () => movedDist > 7;
+}
+
+const seiyuuRuCache = new Map();
+async function openCharacterPopup(ch) {
+  const modal = $('charPopupModal'); if (!modal) return;
+  $('charPopPoster').src = ch.img || FALL;
+  const badge = $('charPopBadge');
+  badge.textContent = ch.role === 'MAIN' ? 'Главный персонаж' : 'Второстепенный персонаж';
+  badge.className = 'char-pop-badge' + (ch.role === 'MAIN' ? '' : ' char-pop-badge-sup');
+
+  $('charPopRuName').textContent = ch.name || ch.enName || 'Персонаж';
+  $('charPopEnName').textContent = ch.enName || ch.name || '';
+
+  const vaBlock = $('charPopVaBlock');
+  if (ch.vaName) {
+    vaBlock.style.display = 'block';
+    $('charPopVaHdr').textContent = ch.isLiveActor ? 'АКТЁР · РОЛЬ В КАДРЕ' : 'СЕЙЮ · ЯПОНСКАЯ ОЗВУЧКА';
+    $('charPopVaAv').src = ch.vaImg || FALL;
+    $('charPopVaEn').textContent = ch.vaName;
+    $('charPopVaRu').textContent = seiyuuRuCache.get(ch.vaName) || ch.vaName;
+    modal.style.display = 'flex';
+    if (!hasRu($('charPopVaRu').textContent) && !seiyuuRuCache.has(ch.vaName)) {
+      try {
+        const tr = await ruChunk(ch.vaName);
+        if (hasRu(tr)) {
+          seiyuuRuCache.set(ch.vaName, tr.trim());
+          $('charPopVaRu').textContent = tr.trim();
+        }
+      } catch (e) {}
+    }
+    if (!hasRu($('charPopRuName').textContent) && ch.enName) {
+      try {
+        const trC = await ruChunk(ch.enName);
+        if (hasRu(trC)) $('charPopRuName').textContent = trC.trim();
+      } catch (e) {}
+    }
+  } else {
+    vaBlock.style.display = 'none';
+    modal.style.display = 'flex';
+  }
+}
+if ($('charPopCloseBtn')) $('charPopCloseBtn').onclick = () => { $('charPopupModal').style.display = 'none'; };
+
 class CharacterSeiyuuManager {
   static cache = new Map();
   static async fetchChars(item) {
@@ -2660,7 +3016,7 @@ class CharacterSeiyuuManager {
     if (this.cache.has(k)) return this.cache.get(k);
     if (['Аниме', 'Манга', 'Ранобэ'].includes(item.category) || item.src === 'AniList') {
       const mType = item.category === 'Аниме' ? 'ANIME' : 'MANGA';
-      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){idMal characters(sort:[ROLE,RELEVANCE,ID],perPage:24){edges{role node{name{full}image{large}}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full}image{large}}}}}}`;
+      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal format source duration episodes volumes chapters relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,RELEVANCE,ID],perPage:25){edges{role node{name{full native}image{large}}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
       const vars = { t: mType };
       if (item.aniId) vars.id = Number(item.aniId); else if (item.mal) vars.mal = Number(item.mal); else vars.s = item.titleEn || item.en || item.title;
       const j = await (await fetch('https://graphql.anilist.co', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, variables: vars }) })).json();
@@ -2671,10 +3027,11 @@ class CharacterSeiyuuManager {
         try { (await shiki(`/api/${SHK[item.category]}/${malId}/roles`) || []).forEach(r => { if (r.character?.name && r.character?.russian) ruMap.set(ruN(r.character.name), r.character.russian); }); } catch (e) {}
       }
       const res = {
+        mediaMeta: media || null,
         isAnime: item.category === 'Аниме',
         items: edges.map(e => {
           const en = e.node?.name?.full || '', va = (e.voiceActors || [])[0];
-          return { name: ruMap.get(ruN(en)) || en, role: e.role === 'MAIN' ? 'MAIN' : 'SUP', img: e.node?.image?.large || FALL, vaName: va?.name?.full || '', vaImg: va?.image?.large || '' };
+          return { name: ruMap.get(ruN(en)) || en, enName: en, role: e.role === 'MAIN' ? 'MAIN' : 'SUP', img: e.node?.image?.large || FALL, vaName: va?.name?.full || '', vaImg: va?.image?.large || '', isLiveActor: false };
         })
       };
       this.cache.set(k, res); return res;
@@ -2682,7 +3039,7 @@ class CharacterSeiyuuManager {
     const tk = TMDB_KEY || localStorage.getItem('tmdbKey');
     if (tk && item.tmdb) {
       const d = await ruJson(`https://api.themoviedb.org/3/${item.tmdb}/credits?api_key=${encodeURIComponent(tk)}&language=ru-RU`, 6000);
-      const res = { isAnime: false, items: (d.cast || []).slice(0, 20).map((c, idx) => ({ name: c.character || c.name, role: idx < 4 ? 'MAIN' : 'SUP', img: c.profile_path ? 'https://image.tmdb.org/t/p/w342' + c.profile_path : FALL, vaName: c.name || '', vaImg: '' })) };
+      const res = { isAnime: false, items: (d.cast || []).slice(0, 20).map((c, idx) => ({ name: c.character || c.name, enName: c.original_name || c.name, role: idx < 4 ? 'MAIN' : 'SUP', img: c.profile_path ? 'https://image.tmdb.org/t/p/w342' + c.profile_path : FALL, vaName: c.name || '', vaImg: c.profile_path ? 'https://image.tmdb.org/t/p/w185' + c.profile_path : '', isLiveActor: true })) };
       this.cache.set(k, res); return res;
     }
     return { items: [] };
@@ -2695,10 +3052,11 @@ class CharacterSeiyuuManager {
       if (!data.items.length) { box.style.display = 'none'; return; }
       box.replaceChildren();
       const hdr = el('div', 'jutsu-hdr'), tw = el('div', 'jutsu-hdr-title');
-      tw.innerHTML = `<h4><span style="color:#d946ef">👤</span> ${data.isAnime ? 'Персонажи и сэйю' : 'Персонажи'}</h4><div class="jutsu-hdr-sub">${data.isAnime ? 'Герои аниме и японские голоса' : 'Главные и второстепенные герои'}</div>`;
+      tw.innerHTML = `<h4><span style="color:#d946ef">👤</span> ${data.isAnime ? 'Персонажи и сэйю' : 'Персонажи'}</h4><div class="jutsu-hdr-sub">${data.isAnime ? 'Герои аниме и японские голоса (зажми мышкой для прокрутки или нажми на героя)' : 'Главные и второстепенные герои'}</div>`;
       const nav = el('div', 'jutsu-nav-btns'), pB = el('button', 'jutsu-arrow', '←'), nB = el('button', 'jutsu-arrow', '→');
       pB.type = nB.type = 'button'; nav.append(pB, nB); hdr.append(tw, nav);
       const track = el('div', 'jutsu-track');
+      enableDragToScroll(track);
       pB.onclick = () => track.scrollBy({ left: -380, behavior: 'smooth' }); nB.onclick = () => track.scrollBy({ left: 380, behavior: 'smooth' });
       let exp = false;
       const draw = () => {
@@ -2710,6 +3068,10 @@ class CharacterSeiyuuManager {
           if (ch.vaImg) { const vw = el('div', 'j-va-avatar'), vi = el('img'); vi.loading = 'lazy'; vi.src = ch.vaImg; vw.append(vi); art.append(vw); }
           c.append(art, el('div', 'j-char-name', ch.name));
           if (ch.vaName) c.append(el('div', 'j-va-name', ch.vaName));
+          c.onclick = () => {
+            if (track._wasDragged && track._wasDragged()) return;
+            openCharacterPopup(ch);
+          };
           track.append(c);
         });
       };
@@ -2735,7 +3097,143 @@ openDetail = function (id) {
 const _origShowPreview = showPreview;
 showPreview = function (r, rnd) { const x = _origShowPreview(r, rnd); CharacterSeiyuuManager.render($('rndCharsSec'), r); return x; };
 
-// ---------- Генератор визитки (Shareable Canvas) ----------
+// ---------- ГИБРИДНАЯ ПОЛНАЯ СТРАНИЦА ПРОИЗВЕДЕНИЯ (#titlePageView) + ФРАНШИЗЫ ----------
+const FORMAT_RU = {
+  TV: 'TV-сериал', TV_SHORT: 'Короткометражный TV', MOVIE: 'Полнометражный фильм',
+  SPECIAL: 'Спешл (Special)', OVA: 'OVA', ONA: 'ONA (Веб-аниме)', MUSIC: 'Музыкальное видео',
+  MANGA: 'Манга', NOVEL: 'Ранобэ / Новелла', ONE_SHOT: 'Ваншот'
+};
+const REL_RU = {
+  PREQUEL: 'Предыстория (Приквел)', SEQUEL: 'Продолжение (Сиквел)', PARENT: 'Основная вселенная',
+  SIDE_STORY: 'Ответвление (Спин-офф)', ADAPTATION: 'Адаптация / Первоисточник',
+  ALTERNATIVE: 'Альтернативная версия', SPIN_OFF: 'Спин-офф', SUMMARY: 'Рекап'
+};
+
+async function openFullTitlePage(itemObj) {
+  if (!itemObj) return;
+  closeAll();
+  const page = $('titlePageView'); if (!page) return;
+  $('catalogView').style.display = 'none';
+  $('profileView').style.display = 'none';
+  $('usersView').style.display = 'none';
+  $('adminView').style.display = 'none';
+  page.style.display = 'block';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  const inCol = items.find(i => i.id === itemObj.id || same(i, itemObj));
+  const activeItem = inCol || itemObj;
+
+  page.innerHTML = `
+    <div style="margin-bottom:14px"><button class="btn btn-s" id="tpBackBtn" type="button">← Назад</button></div>
+    <div class="tp-wrap">
+      <div class="tp-hero">
+        <img class="tp-poster" src="${activeItem.poster || FALL}" alt="">
+        <div>
+          <div class="row" style="gap:8px;margin-bottom:8px">
+            <span class="status" data-s="${activeItem.status || 'В планах'}">${activeItem.status || 'В каталоге'}</span>
+            ${activeItem.ongoing ? '<span class="ong">ОНГОИНГ</span>' : ''}
+            <span class="chip">${catLabel(activeItem)}</span>
+          </div>
+          <h1 style="margin:0 0 6px;font-size:26px">${activeItem.title}</h1>
+          <div class="meta" style="font-size:13.5px">${[activeItem.titleEn || activeItem.en, activeItem.titleOrig || activeItem.orig].filter(Boolean).join(' / ')}</div>
+          <div class="tp-specs-grid" id="tpSpecsGrid"></div>
+          <div class="chips" id="tpTagsBox" style="margin:12px 0"></div>
+          <div id="tpActionRow" class="row" style="margin-top:12px"></div>
+        </div>
+      </div>
+      <h3 style="margin:22px 0 8px">📖 Описание и синопсис</h3>
+      <div style="background:rgba(0,0,0,.25);padding:14px;border-radius:12px;line-height:1.6;white-space:pre-wrap">${activeItem.description || activeItem.desc || 'Описание отсутствует.'}</div>
+      <div id="tpCharsSec" class="jutsu-chars-sec" style="margin-top:18px;display:none"></div>
+      <div id="tpFranchiseSec" style="margin-top:20px;display:none">
+        <h3 style="margin:0 0 8px">🌌 Франшиза и связанные произведения вселенной</h3>
+        <div class="tp-rel-grid" id="tpRelGrid"></div>
+      </div>
+    </div>
+  `;
+
+  $('tpBackBtn').onclick = () => {
+    page.style.display = 'none';
+    const activeTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
+    if (activeTab === 'profile') $('profileView').style.display = '';
+    else if (activeTab === 'users') $('usersView').style.display = '';
+    else if (activeTab === 'admin') $('adminView').style.display = '';
+    else $('catalogView').style.display = '';
+  };
+
+  const specsGrid = $('tpSpecsGrid');
+  const addSpec = (lbl, val) => {
+    if (!val) return;
+    const b = el('div', 'tp-spec-box');
+    b.innerHTML = `<span>${lbl}</span><b>${val}</b>`;
+    specsGrid.append(b);
+  };
+  addSpec('Год выпуска', activeItem.year || 'Не указан');
+  addSpec('Тип произведения', FORMAT_RU[activeItem.format] || catLabel(activeItem));
+  addSpec('Первоисточник', activeItem.source || 'Оригинал / Не указан');
+  addSpec('Автор / Режиссёр', activeItem.author || 'Не указан');
+  addSpec('Студия / Издатель', activeItem.studio || 'Не указана');
+  if (activeItem.category === 'Манга' || activeItem.category === 'Ранобэ') {
+    addSpec('Объём (Главы и Тома)', `${num(activeItem.eps) || '?'} гл. · ${num(activeItem.vols) || '?'} т.`);
+  } else {
+    addSpec('Количество серий', num(activeItem.eps) ? `${activeItem.eps} эп.` : (activeItem.category === 'Фильм' ? 'Полнометражный фильм' : 'Не указано'));
+    addSpec('Длительность', num(activeItem.dur) ? `${activeItem.dur} мин. (${formatWatchTimeRu(getItemMinutes(activeItem))} всего)` : formatWatchTimeRu(getItemMinutes(activeItem)));
+  }
+  addSpec('Внешний рейтинг', (activeItem.extRating || activeItem.ext) ? `★ ${activeItem.extRating || activeItem.ext}` : '—');
+  addSpec('Моя оценка', activeItem.rating ? `★ ${activeItem.rating} / 10` : 'Не оценено');
+
+  const tagsBox = $('tpTagsBox');
+  (activeItem.tags || []).forEach(t => tagsBox.append(el('span', 'chip', t)));
+
+  const actRow = $('tpActionRow');
+  if (inCol && !window._viewingGuestUid) {
+    const edB = el('button', 'btn', '✏ Редактировать в коллекции');
+    edB.onclick = () => openAdd(inCol);
+    actRow.append(edB);
+  } else if (!inCol) {
+    const addB = el('button', 'btn', '＋ Добавить в планы');
+    addB.onclick = async () => { addB.disabled = true; await quickAdd(activeItem); addB.textContent = '✓ В коллекции'; };
+    actRow.append(addB);
+  }
+
+  await CharacterSeiyuuManager.render($('tpCharsSec'), activeItem);
+  const cached = await CharacterSeiyuuManager.fetchChars(activeItem);
+  const relEdges = cached?.mediaMeta?.relations?.edges || [];
+  if (relEdges.length) {
+    const fSec = $('tpFranchiseSec'), rGrid = $('tpRelGrid');
+    fSec.style.display = 'block';
+    relEdges.slice(0, 12).forEach(edge => {
+      const node = edge.node; if (!node) return;
+      const card = el('div', 'tp-rel-card'), im = el('img'), inf = el('div');
+      im.src = node.coverImage?.large || FALL;
+      const titleStr = node.title?.english || node.title?.romaji || 'Произведение';
+      const relLabel = REL_RU[edge.relationType] || edge.relationType;
+      inf.innerHTML = `<div class="meta" style="font-size:10.5px;color:var(--ach);margin:0">${relLabel} · ${FORMAT_RU[node.format] || node.format || ''}</div><b style="font-size:13px;display:block;margin:2px 0">${titleStr}</b><div class="meta" style="margin:0">${node.startDate?.year || ''} ${node.averageScore ? '· ★ ' + (node.averageScore / 10).toFixed(1) : ''}</div>`;
+      card.append(im, inf);
+      card.onclick = () => {
+        openFullTitlePage({
+          aniId: node.id, mal: node.idMal, title: titleStr, en: titleStr,
+          poster: node.coverImage?.large || FALL, year: node.startDate?.year || '',
+          ext: node.averageScore ? (node.averageScore / 10).toFixed(1) : '',
+          format: node.format || '', category: node.type === 'MANGA' ? 'Манга' : 'Аниме', src: 'AniList', tags: []
+        });
+      };
+      rGrid.append(card);
+    });
+  }
+}
+
+if ($('openFullPageFromDetailBtn')) {
+  $('openFullPageFromDetailBtn').onclick = () => {
+    const it = items.find(x => x.id === curId);
+    if (it) openFullTitlePage(it);
+  };
+}
+if ($('openFullPageFromRndBtn')) {
+  $('openFullPageFromRndBtn').onclick = () => {
+    if (rndR) openFullTitlePage(rndR);
+  };
+}
+
 class ShareCardGenerator {
   static idx = 0;
   static PALS = [['#0b0d18', '#1e1b4b', '#7c5cff', '#38bdf8'], ['#0f0718', '#3b0764', '#f43f5e', '#fbbf24'], ['#061417', '#064e3b', '#10b981', '#2dd4bf']];
@@ -2764,59 +3262,80 @@ class ShareCardGenerator {
   }
 }
 
-// ---------- Реальный онлайн (Firestore Presence), Поиск людей, Гостевой просмотр и Админ-панель ----------
 let allRegisteredProfiles = [];
 window._viewingGuestUid = null;
 window._guestProf = null;
 window._myOwnItemsBackup = null;
-
-// Проверка: является ли текущий пользователь создателем/владельцем сайта
-function isCreatorAdmin() {
-  if (!user) return false;
-  if (user.isLocal) return true; // В локальном режиме при запуске своего файла ты всегда владелец
-  if (!prof.ownerUid) { prof.ownerUid = user.uid; profSaveLocal(); }
-  return user.uid === prof.ownerUid || localStorage.getItem('isSiteOwner') === '1';
-}
+window._creatorBypassActive = false;
 
 function initRealtimePresenceAndAdmin() {
   if ($('adminTabBtn')) $('adminTabBtn').style.display = isCreatorAdmin() ? '' : 'none';
-
-  // Подписываемся на реальные профили пользователей в Firestore (isProfile == true)
   try {
     onSnapshot(query(collection(db, 'items'), where('isProfile', '==', true)), snap => {
       allRegisteredProfiles = snap.docs.map(d => d.data());
       updateRealOnlineCounter();
+      renderPublicUsersDirectory();
       if ($('adminView').style.display !== 'none') renderAdminDashboard();
-    }, () => updateRealOnlineCounter());
-  } catch (e) { updateRealOnlineCounter(); }
+    }, () => { updateRealOnlineCounter(); renderPublicUsersDirectory(); });
+  } catch (e) { updateRealOnlineCounter(); renderPublicUsersDirectory(); }
 
-  // Каждые 90 секунд обновляем свой штамп присутствия lastVisit, пока вкладка открыта
   setInterval(() => {
-    if (document.visibilityState === 'visible' && user && !user.isLocal && !window._viewingGuestUid) {
-      profCloud();
-    }
+    if (document.visibilityState === 'visible' && user && !user.isLocal && !window._viewingGuestUid) profCloud();
     updateRealOnlineCounter();
   }, 90000);
 }
 
 function updateRealOnlineCounter() {
   const now = Date.now();
-  // Считаем реально активных пользователей за последние 4 минуты (240 000 мс)
   const activeCloudCount = allRegisteredProfiles.filter(p => p.lastVisit && (now - p.lastVisit) < 240000).length;
   const realOnline = Math.max(1, activeCloudCount);
-  if ($('realOnlineTxt')) {
-    $('realOnlineTxt').textContent = `В сети сейчас: ${realOnline}`;
-  }
+  if ($('realOnlineTxt')) $('realOnlineTxt').textContent = `В сети сейчас: ${realOnline}`;
 }
 
-// Поиск пользователей по никнейму или публичному ID (если у нескольких людей одинаковый ник, выводит всех)
+function getEffectiveProfilesList() {
+  if (allRegisteredProfiles.length) return allRegisteredProfiles;
+  return [{ ...prof, isCreator: true, userId: user?.uid || 'local_user', displayName: prof.name || $('profName')?.textContent || 'Павел Сускин' }];
+}
+
+function renderPublicUsersDirectory() {
+  const box = $('publicUsersList'); if (!box) return;
+  box.replaceChildren();
+  const now = Date.now();
+  const list = getEffectiveProfilesList().slice().sort((a, b) => (isProfileCreator(b) ? 1 : 0) - (isProfileCreator(a) ? 1 : 0) || (b.lastVisit || 0) - (a.lastVisit || 0));
+  list.forEach(p => {
+    const r = el('div', 'u-res-row'); r.style.border = '1px solid var(--bd)'; r.style.background = 'var(--card)';
+    const im = el('img'); im.src = p.avatar || FALL; im.onerror = () => { im.onerror = null; im.src = FALL; };
+    const isOn = p.lastVisit && (now - p.lastVisit) < 240000;
+    const isCr = isProfileCreator(p);
+    const inf = el('div'); inf.style.flex = '1';
+    inf.innerHTML = `
+      <div>
+        <b style="font-size:15px">${p.name || p.displayName || 'Пользователь'}</b>
+        ${isCr ? `<span class="creator-badge" style="cursor:default">👑 ${p.creatorTitle || 'Создатель сайта'}</span>` : ''}
+        <span class="chip">ID ${p.publicId || (p.userId || '').slice(0, 6)}</span>
+      </div>
+      <div class="meta" style="margin-top:3px">${isOn ? '🟢 Сейчас в сети' : 'Был(а): ' + (p.lastVisit ? new Date(p.lastVisit).toLocaleString('ru-RU') : 'только что')}${p.bio ? ' · «' + p.bio.slice(0, 60) + '»' : ''}</div>
+    `;
+    const btn = el('button', 'btn btn-s', 'Открыть профиль →'); btn.type = 'button';
+    btn.onclick = e => { e.stopPropagation(); openUserPublicProfile(p); };
+    r.append(im, inf, btn);
+    r.onclick = () => openUserPublicProfile(p);
+    box.append(r);
+  });
+}
+
+if ($('openUsersDirBtn')) {
+  $('openUsersDirBtn').onclick = () => {
+    document.querySelector('#mainTabs .tab[data-v="users"]')?.click();
+  };
+}
+
 function searchUsers(queryStr) {
   const q = (queryStr || '').trim().toLowerCase().replace(/^id\s*/i, '');
   const pop = $('userResultsPop'); if (!pop) return;
   if (!q) { pop.classList.remove('open'); return; }
   pop.replaceChildren();
-  const pool = allRegisteredProfiles.length ? allRegisteredProfiles : [{ ...prof, userId: user?.uid || 'local_user', displayName: prof.name || $('profName').textContent }];
-  const matches = pool.filter(p => {
+  const matches = getEffectiveProfilesList().filter(p => {
     const nm = (p.name || p.displayName || '').toLowerCase();
     const pid = String(p.publicId || '').toLowerCase();
     const uid = String(p.userId || '').toLowerCase();
@@ -2831,7 +3350,8 @@ function searchUsers(queryStr) {
       im.src = p.avatar || FALL; im.onerror = () => { im.onerror = null; im.src = FALL; };
       const nm = p.name || p.displayName || 'Пользователь';
       const isOnline = p.lastVisit && (Date.now() - p.lastVisit) < 240000;
-      inf.innerHTML = `<b>${nm}</b> <span class="meta">· ID ${p.publicId || (p.userId || '').slice(0, 6)} ${isOnline ? '🟢 в сети' : ''}</span>`;
+      const isCr = isProfileCreator(p);
+      inf.innerHTML = `<b>${nm}</b> ${isCr ? '<span class="creator-badge">👑 Создатель</span>' : ''} <span class="meta">· ID ${p.publicId || (p.userId || '').slice(0, 6)} ${isOnline ? '🟢 в сети' : ''}</span>`;
       row.append(im, inf);
       row.onclick = () => { pop.classList.remove('open'); openUserPublicProfile(p); };
       pop.append(row);
@@ -2847,21 +3367,32 @@ if ($('userSearchInput')) {
 }
 document.addEventListener('click', e => { if (!e.target.closest('#userSearchWrap')) $('userResultsPop')?.classList.remove('open'); });
 
-// Переход в профиль другого человека (Гостевой режим просмотра с сохранением кнопки «Подробная статистика»)
 let guestUnsub = null;
 function openUserPublicProfile(targetProf) {
   if (!targetProf || targetProf.userId === (user && user.uid)) {
     exitGuestProfile();
-    document.querySelector('.tab[data-v="profile"]')?.click();
+    document.querySelector('#mainTabs .tab[data-v="profile"]')?.click();
     return;
   }
-  if (!window._viewingGuestUid) {
-    window._myOwnItemsBackup = [...items];
-  }
+  if (!window._viewingGuestUid) window._myOwnItemsBackup = [...items];
   window._viewingGuestUid = targetProf.userId;
   window._guestProf = targetProf;
+  window._creatorBypassActive = false;
   $('guestBanner').style.display = 'flex';
   $('guestBannerTxt').textContent = `👁 Просмотр профиля: ${targetProf.name || targetProf.displayName || 'Пользователь'} (ID ${targetProf.publicId || targetProf.userId.slice(0, 6)})`;
+
+  const hasAnyPrivacy = targetProf.hideWatchTime || targetProf.hideGeneralStats || targetProf.hideDetailedStats || targetProf.hideFavorites;
+  if ($('creatorBypassBtn')) {
+    $('creatorBypassBtn').style.display = (isCreatorAdmin() && hasAnyPrivacy) ? 'inline-block' : 'none';
+    $('creatorBypassBtn').textContent = '👑 Раскрыть скрытую приватность (Создатель)';
+    $('creatorBypassBtn').onclick = () => {
+      window._creatorBypassActive = !window._creatorBypassActive;
+      $('creatorBypassBtn').textContent = window._creatorBypassActive ? '👑 Скрытые данные раскрыты ✓' : '👑 Раскрыть скрытую приватность (Создатель)';
+      refresh();
+      toast(window._creatorBypassActive ? 'Режим Создателя: все скрытые блоки пользователя раскрыты' : 'Приватность пользователя снова включена');
+    };
+  }
+
   $('profEditBtn').style.display = 'none';
   $('profPrivacyBtn').style.display = 'none';
   $('openModalBtn').style.display = 'none';
@@ -2870,7 +3401,7 @@ function openUserPublicProfile(targetProf) {
   $('profBio').textContent = targetProf.bio || '';
   $('profBio').style.display = targetProf.bio ? '' : 'none';
 
-  document.querySelector('.tab[data-v="profile"]')?.click();
+  document.querySelector('#mainTabs .tab[data-v="profile"]')?.click();
   if (guestUnsub) guestUnsub();
   guestUnsub = onSnapshot(query(collection(db, 'items'), where('userId', '==', targetProf.userId)), snap => {
     items = snap.docs.map(d => d.data()).filter(x => !x.isProfile).map(fix);
@@ -2883,6 +3414,7 @@ function exitGuestProfile() {
   if (guestUnsub) { guestUnsub(); guestUnsub = null; }
   window._viewingGuestUid = null;
   window._guestProf = null;
+  window._creatorBypassActive = false;
   if (window._myOwnItemsBackup) { items = window._myOwnItemsBackup; window._myOwnItemsBackup = null; }
   $('guestBanner').style.display = 'none';
   $('profEditBtn').style.display = '';
@@ -2893,16 +3425,15 @@ function exitGuestProfile() {
 }
 if ($('exitGuestBtn')) $('exitGuestBtn').onclick = exitGuestProfile;
 
-// Отрисовка третьей вкладки «👑 Админ-панель» (видна только тебе как создателю)
 function renderAdminDashboard() {
   const tiles = $('adminTiles'), list = $('adminUsersList');
   if (!tiles || !list) return;
   tiles.replaceChildren(); list.replaceChildren();
 
-  const now = Date.now();
-  const regCount = Math.max(1, allRegisteredProfiles.length);
-  const onlineNow = Math.max(1, allRegisteredProfiles.filter(p => p.lastVisit && (now - p.lastVisit) < 240000).length);
-  const activeToday = Math.max(1, allRegisteredProfiles.filter(p => p.lastVisit && (now - p.lastVisit) < 86400000).length);
+  const now = Date.now(), profiles = getEffectiveProfilesList();
+  const regCount = profiles.length;
+  const onlineNow = Math.max(1, profiles.filter(p => p.lastVisit && (now - p.lastVisit) < 240000).length);
+  const activeToday = Math.max(1, profiles.filter(p => p.lastVisit && (now - p.lastVisit) < 86400000).length);
 
   const mkTile = (numVal, label) => {
     const t = el('div', 'tile'); t.style.cursor = 'default';
@@ -2913,36 +3444,42 @@ function renderAdminDashboard() {
   mkTile(onlineNow, 'Сейчас онлайн на сайте');
   mkTile(activeToday, 'Были на сайте за 24 часа');
 
-  const profilesToShow = allRegisteredProfiles.length ? allRegisteredProfiles : [{ ...prof, userId: user?.uid || 'local_user', displayName: prof.name || $('profName').textContent }];
-  profilesToShow.sort((a, b) => (b.lastVisit || 0) - (a.lastVisit || 0)).forEach(p => {
+  profiles.slice().sort((a, b) => (b.lastVisit || 0) - (a.lastVisit || 0)).forEach(p => {
     const r = el('div', 'u-res-row'); r.style.border = '1px solid var(--bd)'; r.style.background = 'rgba(255,255,255,.03)';
     const im = el('img'); im.src = p.avatar || FALL; im.onerror = () => { im.onerror = null; im.src = FALL; };
     const isOn = p.lastVisit && (now - p.lastVisit) < 240000;
+    const isCr = isProfileCreator(p);
     const inf = el('div'); inf.style.flex = '1';
     const regD = p.createdAt ? new Date(p.createdAt).toLocaleDateString('ru-RU') : '—';
-    inf.innerHTML = `<b>${p.name || p.displayName || 'Без имени'}</b> <span class="chip">ID ${p.publicId || (p.userId || '').slice(0, 6)}</span> <span class="meta">· Зарегистрирован: ${regD} · ${isOn ? '🟢 Онлайн сейчас' : 'Был(а): ' + (p.lastVisit ? new Date(p.lastVisit).toLocaleString('ru-RU') : '—')}</span>`;
-    const openB = el('button', 'btn btn-s', 'Открыть профиль'); openB.type = 'button';
-    openB.onclick = e => { e.stopPropagation(); openUserPublicProfile(p); };
+    inf.innerHTML = `<b>${p.name || p.displayName || 'Без имени'}</b> ${isCr ? '<span class="creator-badge">👑 Создатель</span>' : ''} <span class="chip">ID ${p.publicId || (p.userId || '').slice(0, 6)}</span> <span class="meta">· Зарегистрирован: ${regD} · ${isOn ? '🟢 Онлайн сейчас' : 'Был(а): ' + (p.lastVisit ? new Date(p.lastVisit).toLocaleString('ru-RU') : '—')}</span>`;
+    const openB = el('button', 'btn btn-s', 'Открыть (полный доступ)'); openB.type = 'button';
+    openB.onclick = e => {
+      e.stopPropagation();
+      openUserPublicProfile(p);
+      window._creatorBypassActive = true;
+      refresh();
+    };
     r.append(im, inf, openB);
     list.append(r);
   });
 }
 if ($('adminRefreshBtn')) $('adminRefreshBtn').onclick = renderAdminDashboard;
 
-// Переключение главных вкладок (Каталог / Мой профиль / Админ-панель)
 document.querySelectorAll('#mainTabs .tab').forEach(b => {
   b.onclick = () => {
     document.querySelectorAll('#mainTabs .tab').forEach(x => x.classList.toggle('on', x === b));
     const v = b.dataset.v;
+    if ($('titlePageView')) $('titlePageView').style.display = 'none';
     $('catalogView').style.display = v === 'catalog' ? '' : 'none';
     $('profileView').style.display = v === 'profile' ? '' : 'none';
+    $('usersView').style.display = v === 'users' ? '' : 'none';
     $('adminView').style.display = v === 'admin' ? '' : 'none';
     if (v === 'catalog') cgMarks();
+    if (v === 'users') renderPublicUsersDirectory();
     if (v === 'admin') renderAdminDashboard();
   };
 });
 
-// Единый быстрый хук обновления интерфейса (без дублирования вызовов)
 const _coreRefresh = refresh;
 refresh = function () {
   _coreRefresh();
@@ -2951,10 +3488,10 @@ refresh = function () {
   updateProfileMetaAndPrivacyUI();
   renderPinnedAchievementsShowcase();
   renderStatusAndCategoryBanner();
+  renderPublicUsersDirectory();
   if ($('adminTabBtn')) $('adminTabBtn').style.display = isCreatorAdmin() ? '' : 'none';
 };
 
-// Инициализация
 KanbanManager.init();
 ShareCardGenerator.init();
 initRealtimePresenceAndAdmin();
@@ -2963,6 +3500,7 @@ renderSmartInsights();
 updateProfileMetaAndPrivacyUI();
 renderPinnedAchievementsShowcase();
 renderStatusAndCategoryBanner();
+renderPublicUsersDirectory();
 
 </script>
 </body>

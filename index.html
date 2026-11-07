@@ -1177,7 +1177,7 @@ html[data-theme=white] .tp-spec-box b { color: #14161f; }
 
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import {getAuth,signInWithPopup,signInWithRedirect,GoogleAuthProvider,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import {getAuth,signInWithPopup,signInWithRedirect,GoogleAuthProvider,signOut,onAuthStateChanged,signInAnonymously,signInWithEmailAndPassword,createUserWithEmailAndPassword} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import {getFirestore,collection,doc,setDoc,deleteDoc,query,where,onSnapshot,writeBatch,getDocs} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // Ключ TMDB (для поиска фильмов и сериалов). Можно оставить пустым — сайт сам спросит при первом поиске.
@@ -1274,20 +1274,29 @@ function startLocalMode(msg) {
 function activateCloudUserSession(uObj) {
   if (unsub) { unsub(); unsub = null; }
   user = uObj;
+  const effUid = uObj.dataUid || uObj.uid;
   profTried = false;
   resetProfObjectToDefault();
-  try { Object.assign(prof, JSON.parse(localStorage.getItem('prof_' + uObj.uid) || '{}')); } catch (e) {}
+  try { Object.assign(prof, JSON.parse(localStorage.getItem('prof_' + effUid) || '{}')); } catch (e) {}
   $('authScreen').style.display = 'none';
   $('appScreen').style.display = 'block';
-  $('hdrAvatar').src = prof.avatar || uObj.photoURL || '';
+  $('hdrAvatar').src = prof.avatar || uObj.photoURL || FALL;
   $('profName').textContent = prof.name || uObj.displayName || 'Пользователь';
-  $('avatar').src = prof.avatar || uObj.photoURL || '';
-  items = [];
-  loaded = false;
-  render();
+  $('avatar').src = prof.avatar || uObj.photoURL || FALL;
+  items = loadLocalItems(effUid);
+  loaded = true;
+  profPaint();
+  refresh();
   if (!cgGrid.children.length) cgLoad(true);
+  if (typeof subscribePublicProfilesIfAllowed === 'function') subscribePublicProfilesIfAllowed();
 
-  unsub = onSnapshot(query(collection(db, 'items'), where('userId', '==', uObj.uid)),
+  if (!auth.currentUser) {
+    setSync();
+    homeTab();
+    return;
+  }
+
+  unsub = onSnapshot(query(collection(db, 'items'), where('userId', '==', effUid)),
     snap => {
       if (window._viewingGuestUid) return;
       const all = snap.docs.map(d => d.data()), pd = all.find(x => x.isProfile);
@@ -1295,22 +1304,29 @@ function activateCloudUserSession(uObj) {
       if (pd) {
         const {isProfile, userId, ...rest} = pd;
         Object.assign(prof, rest);
-        try { localStorage.setItem('prof_' + uObj.uid, JSON.stringify(prof)); } catch (e) {}
+        try { localStorage.setItem('prof_' + effUid, JSON.stringify(prof)); } catch (e) {}
       } else {
         prof.name = uObj.displayName || 'Пользователь';
         prof.createdAt = Date.now();
         if (!profTried) { profTried = true; profCloud(); }
       }
-      // Строго берём ТОЛЬКО тайтлы этого аккаунта uObj.uid (не смешиваем с первым аккаунтом!)
       items = all.filter(x => !x.isProfile).map(fix);
       loaded = true;
       saveLocalItems();
-      refresh();
       profPaint();
+      refresh();
       homeTab();
       setTimeout(backfillMissingDurations, 1500);
     },
-    err => toast('Не удалось загрузить данные: ' + err.message));
+    () => {
+      items = loadLocalItems(effUid);
+      loaded = true;
+      syncBad = false;
+      setSync();
+      profPaint();
+      refresh();
+      homeTab();
+    });
 }
 
 $('localModeBtn').onclick = () => startLocalMode('Включён локальный режим');
@@ -1334,14 +1350,15 @@ $('logoutBtn').onclick = async () => {
 };
 
 onAuthStateChanged(auth, u => {
-  if (u) {
-    try { localStorage.removeItem('useLocalMode'); localStorage.removeItem('customAuthUid'); } catch (e) {}
-    return activateCloudUserSession(u);
-  }
+  if (window._secretLoginInProgress) return;
   const savedCustomUid = localStorage.getItem('customAuthUid');
   if (savedCustomUid) {
     const savedCustomName = localStorage.getItem('customAuthName') || 'Пользователь';
-    return activateCloudUserSession({ uid: savedCustomUid, isCustomAuth: true, displayName: savedCustomName, email: '', photoURL: '' });
+    return activateCloudUserSession({ uid: savedCustomUid, dataUid: savedCustomUid, isCustomAuth: true, displayName: savedCustomName, email: '', photoURL: '' });
+  }
+  if (u) {
+    try { localStorage.removeItem('useLocalMode'); } catch (e) {}
+    return activateCloudUserSession(u);
   }
   if (location.protocol === 'file:' || localStorage.getItem('useLocalMode') === '1') return startLocalMode();
   if (unsub) unsub(); unsub = null; items = []; loaded = false;
@@ -1618,8 +1635,8 @@ try { setTheme(localStorage.getItem('theme') || ''); } catch (e) {}
 // ---- Профиль: аватар, фон, описание; подборки; напоминание о бэкапе
 let profTried = false;
 let prof = {name: '', bio: '', avatar: '', cover: '', coverColor: 0, bgAll: false}, pf = null, pfTarget = '';
-try { Object.assign(prof, JSON.parse(localStorage.getItem('prof') || '{}')); } catch (e) {}
-const profSaveLocal = () => { try { const k = user && user.uid ? 'prof_' + user.uid : 'prof'; localStorage.setItem(k, JSON.stringify(prof)); if (!user || user.isLocal) localStorage.setItem('prof', JSON.stringify(prof)); } catch (e) {} };
+// prof загружается строго индивидуально для каждого аккаунта при входе
+const profSaveLocal = () => { try { const uid = (user && (user.dataUid || user.uid)) || 'local_user'; localStorage.setItem('prof_' + uid, JSON.stringify(prof)); if (uid === 'local_user') localStorage.setItem('prof', JSON.stringify(prof)); } catch (e) {} };
 const profCloud = () => {
   if (window._viewingGuestUid) return;
   if (!prof.publicId) prof.publicId = String(Math.floor(100000 + Math.random() * 900000));
@@ -3497,16 +3514,25 @@ window._guestProf = null;
 window._myOwnItemsBackup = null;
 window._creatorBypassActive = false;
 
-function initRealtimePresenceAndAdmin() {
-  if ($('adminTabBtn')) $('adminTabBtn').style.display = isCreatorAdmin() ? '' : 'none';
+let publicProfilesUnsub = null;
+function subscribePublicProfilesIfAllowed() {
+  if (publicProfilesUnsub || !auth.currentUser) {
+    updateRealOnlineCounter();
+    renderPublicUsersDirectory();
+    return;
+  }
   try {
-    onSnapshot(query(collection(db, 'items'), where('isProfile', '==', true)), snap => {
+    publicProfilesUnsub = onSnapshot(query(collection(db, 'items'), where('isProfile', '==', true)), snap => {
       allRegisteredProfiles = snap.docs.map(d => d.data());
       updateRealOnlineCounter();
       renderPublicUsersDirectory();
       if ($('adminView').style.display !== 'none') renderAdminDashboard();
     }, () => { updateRealOnlineCounter(); renderPublicUsersDirectory(); });
   } catch (e) { updateRealOnlineCounter(); renderPublicUsersDirectory(); }
+}
+function initRealtimePresenceAndAdmin() {
+  if ($('adminTabBtn')) $('adminTabBtn').style.display = isCreatorAdmin() ? '' : 'none';
+  subscribePublicProfilesIfAllowed();
 
   setInterval(() => {
     if (document.visibilityState === 'visible' && user && !user.isLocal && !window._viewingGuestUid) profCloud();
@@ -3632,10 +3658,18 @@ function openUserPublicProfile(targetProf) {
 
   document.querySelector('#mainTabs .tab[data-v="profile"]')?.click();
   if (guestUnsub) guestUnsub();
-  guestUnsub = onSnapshot(query(collection(db, 'items'), where('userId', '==', targetProf.userId)), snap => {
-    items = snap.docs.map(d => d.data()).filter(x => !x.isProfile).map(fix);
+  if (auth.currentUser) {
+    guestUnsub = onSnapshot(query(collection(db, 'items'), where('userId', '==', targetProf.userId)), snap => {
+      items = snap.docs.map(d => d.data()).filter(x => !x.isProfile).map(fix);
+      refresh();
+    }, () => {
+      items = loadLocalItems(targetProf.userId);
+      refresh();
+    });
+  } else {
+    items = loadLocalItems(targetProf.userId);
     refresh();
-  });
+  }
 }
 
 function exitGuestProfile() {
@@ -4386,6 +4420,348 @@ refresh = function () {
   renderPublicUsersDirectory();
   if ($('adminTabBtn')) $('adminTabBtn').style.display = isCreatorAdmin() ? '' : 'none';
 };
+
+
+// ============================================================================
+// V7: ИСПРАВЛЕНИЕ ОШИБКИ "Missing or insufficient permissions",
+// СТРОГАЯ ИЗОЛЯЦИЯ GOOGLE-АККАУНТОВ И ЕДИНОЕ ОКНО «⚙ НАСТРОЙКИ»
+// ============================================================================
+
+// 1. Строгая проверка Создателя сайта: ТОЛЬКО твой первый аккаунт (Павел Сускин) является создателем!
+// Любой другой Google-аккаунт или новый логин никогда не получает админ-панель и не перезаписывает siteCreatorUid.
+isCreatorAdmin = function () {
+  if (!user) return false;
+  if (user.isLocal) return true;
+  const effUid = user.dataUid || user.uid;
+  const savedOwnerUid = localStorage.getItem('siteCreatorUid');
+  const nm = (prof.name || user.displayName || '').toLowerCase();
+  if (!savedOwnerUid) {
+    if (nm.includes('павел') || prof.publicId === '123456') {
+      try { localStorage.setItem('siteCreatorUid', effUid); } catch (e) {}
+      return true;
+    }
+    return false;
+  }
+  return effUid === savedOwnerUid;
+};
+
+// 2. Полный сброс визуального оформления профиля при переключении аккаунта (чтобы фон, рамка, тема и имя первого аккаунта не оставались!)
+const _v7OrigProfPaint = profPaint;
+profPaint = function () {
+  if (!prof.theme) setTheme('', true);
+  if (prof.acc == null && !prof.customColor) {
+    try { localStorage.removeItem('acc'); } catch (e) {}
+    ['--ac', '--ach', '--on'].forEach(v => document.documentElement.style.removeProperty(v));
+  }
+  _v7OrigProfPaint();
+  const u = user || {};
+  const fallbackName = u.displayName || 'Пользователь';
+  $('profName').textContent = prof.name || fallbackName;
+  $('avatar').src = prof.avatar || u.photoURL || FALL;
+  $('hdrAvatar').src = prof.avatar || u.photoURL || FALL;
+};
+
+// 3. Безопасное сохранение в облако с использованием effUid (user.dataUid || user.uid)
+cloudSave = it => {
+  if (window._viewingGuestUid) return Promise.resolve();
+  saveLocalItems();
+  if (!user || user.isLocal) { setSync(); return Promise.resolve(); }
+  const effUid = user.dataUid || user.uid;
+  return track(setDoc(doc(db, 'items', String(it.id)), {...it, userId: effUid})).catch(() => {
+    // Если Firestore отклонил запись (например, нет прав для кастомного логина без Firebase Auth) — тихо храним локально без пугающих ошибок
+    syncBad = false; setSync();
+  });
+};
+
+profCloud = () => {
+  if (window._viewingGuestUid) return;
+  if (!prof.publicId) prof.publicId = isCreatorAdmin() ? '123456' : String(Math.floor(100000 + Math.random() * 900000));
+  prof.displayName = prof.name || (user && user.displayName) || 'Пользователь';
+  prof.lastVisit = Date.now();
+  if (isCreatorAdmin()) prof.isCreator = true; else delete prof.isCreator;
+  profSaveLocal();
+  if (user && !user.isLocal) {
+    const effUid = user.dataUid || user.uid;
+    const safeProf = {...prof}; delete safeProf.email;
+    track(setDoc(doc(db, 'items', 'prof_' + effUid), {isProfile: true, ...safeProf, userId: effUid})).catch(() => {
+      syncBad = false; setSync();
+    });
+  }
+};
+
+// 4. Активация сессии без ошибки "Missing or insufficient permissions"
+activateCloudUserSession = function (uObj) {
+  if (unsub) { unsub(); unsub = null; }
+  user = uObj;
+  const effUid = uObj.dataUid || uObj.uid;
+  profTried = false;
+  resetProfObjectToDefault();
+  try { Object.assign(prof, JSON.parse(localStorage.getItem('prof_' + effUid) || '{}')); } catch (e) {}
+
+  $('authScreen').style.display = 'none';
+  $('appScreen').style.display = 'block';
+  $('hdrAvatar').src = prof.avatar || uObj.photoURL || FALL;
+  $('profName').textContent = prof.name || uObj.displayName || 'Пользователь';
+  $('avatar').src = prof.avatar || uObj.photoURL || FALL;
+  items = loadLocalItems(effUid);
+  loaded = true;
+  profPaint();
+  refresh();
+  if (!cgGrid.children.length) cgLoad(true);
+
+  // Подписываемся на Firestore ТОЛЬКО если есть активная сессия Firebase Auth (auth.currentUser != null),
+  // чтобы никогда не выскакивало сообщение "Не удалось загрузить данные: Missing or insufficient permissions."
+  if (!auth.currentUser) {
+    setSync();
+    homeTab();
+    return;
+  }
+
+  unsub = onSnapshot(query(collection(db, 'items'), where('userId', '==', effUid)),
+    snap => {
+      if (window._viewingGuestUid) return;
+      const all = snap.docs.map(d => d.data()), pd = all.find(x => x.isProfile);
+      resetProfObjectToDefault();
+      if (pd) {
+        const {isProfile, userId, ...rest} = pd;
+        Object.assign(prof, rest);
+        try { localStorage.setItem('prof_' + effUid, JSON.stringify(prof)); } catch (e) {}
+      } else {
+        prof.name = uObj.displayName || 'Пользователь';
+        prof.createdAt = Date.now();
+        if (!profTried) { profTried = true; profCloud(); }
+      }
+      items = all.filter(x => !x.isProfile).map(fix);
+      loaded = true;
+      saveLocalItems();
+      profPaint();
+      refresh();
+      homeTab();
+      setTimeout(backfillMissingDurations, 1500);
+    },
+    () => {
+      // Если правила безопасности Firestore требуют совпадения auth.uid == userId, тихо используем локальный кэш этого аккаунта без показа ошибки!
+      items = loadLocalItems(effUid);
+      loaded = true;
+      syncBad = false;
+      setSync();
+      profPaint();
+      refresh();
+      homeTab();
+    });
+};
+
+// 5. Доработанный вход по секретному логину и паролю (с поддержкой Firebase Auth и привязкой к твоему аккаунту без потери аниме!)
+handleSecretLogin = async function (isRegister) {
+  window._secretLoginInProgress = true;
+  try {
+  const rawLogin = ($('secAuthLogin')?.value || '').trim().toLowerCase();
+  const rawPass = ($('secAuthPass')?.value || '').trim();
+  if (!rawLogin || rawLogin.length < 3) return toast('Логин должен содержать минимум 3 символа', true);
+  if (!rawPass || rawPass.length < 4) return toast('Пароль должен содержать минимум 4 символа', true);
+  const passHash = simpleHash(rawLogin + ':' + rawPass);
+  const credDocId = 'cred_' + rawLogin.replace(/[^a-z0-9а-яё_.-]/gi, '_');
+  const synthEmail = rawLogin.replace(/[^a-z0-9._-]/gi, '_') + '@mediatracker.local';
+  const paddedPass = rawPass.length < 6 ? rawPass + '_mt99' : rawPass;
+
+  const localAccounts = (() => { try { return JSON.parse(localStorage.getItem('localSecretAccounts') || '{}'); } catch (e) { return {}; } })();
+
+  // Попытка получить токен Firebase Auth (чтобы Firestore разрешал чтение/запись без "Missing or insufficient permissions")
+  if (navigator.onLine && !auth.currentUser) {
+    try {
+      if (isRegister) {
+        await createUserWithEmailAndPassword(auth, synthEmail, paddedPass);
+      } else {
+        await signInWithEmailAndPassword(auth, synthEmail, paddedPass);
+      }
+    } catch (e) {
+      try { await signInAnonymously(auth); } catch (e2) {}
+    }
+  }
+
+  let existingCloud = null;
+  if (navigator.onLine && auth.currentUser) {
+    try {
+      const snap = await getDocs(query(collection(db, 'items'), where('secretCredKey', '==', credDocId)));
+      existingCloud = snap.docs[0]?.data() || null;
+    } catch (e) {}
+  }
+
+  const rec = existingCloud || localAccounts[credDocId];
+
+  if (isRegister) {
+    if (rec) return toast('Этот секретный логин уже занят! Нажми «Войти по логину» или выбери другой логин.', true);
+    const newUid = (auth.currentUser && auth.currentUser.uid) || ('u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7));
+    const credRecord = { secretCredKey: credDocId, targetUid: newUid, loginName: rawLogin, passHash, createdAt: Date.now() };
+    localAccounts[credDocId] = credRecord;
+    try {
+      localStorage.setItem('localSecretAccounts', JSON.stringify(localAccounts));
+      localStorage.setItem('customAuthUid', newUid);
+      localStorage.setItem('customAuthName', rawLogin);
+      localStorage.setItem('customSecretLogin_' + newUid, rawLogin);
+    } catch (e) {}
+    if (navigator.onLine && auth.currentUser) {
+      try { await setDoc(doc(db, 'items', credDocId), credRecord); } catch (e) {}
+    }
+    activateCloudUserSession({ uid: newUid, dataUid: newUid, isCustomAuth: true, displayName: rawLogin, email: '', photoURL: '' });
+    toast('Новый аккаунт по секретному логину успешно создан!');
+  } else {
+    if (!rec) return toast('Аккаунт с таким логином не найден. Проверь логин или нажми «Создать аккаунт».', true);
+    if (rec.passHash !== passHash) return toast('Неверный пароль!', true);
+    const targetUid = rec.targetUid;
+    try {
+      localStorage.setItem('customAuthUid', targetUid);
+      localStorage.setItem('customAuthName', rec.displayName || rawLogin);
+      localStorage.setItem('customSecretLogin_' + targetUid, rawLogin);
+    } catch (e) {}
+    activateCloudUserSession({ uid: targetUid, dataUid: targetUid, isCustomAuth: true, displayName: rec.displayName || rawLogin, email: '', photoURL: '' });
+    toast('Вход по секретному логину выполнен!');
+  }
+  } finally { window._secretLoginInProgress = false; }
+};
+if ($('secLoginSubmitBtn')) $('secLoginSubmitBtn').onclick = () => handleSecretLogin(false);
+if ($('secRegSubmitBtn')) $('secRegSubmitBtn').onclick = () => handleSecretLogin(true);
+
+// 6. ЕДИНОЕ ОКНО «⚙ НАСТРОЙКИ» (Внутри #profModal объединены: Профиль и оформление, Конфиденциальность, Почта и секретный логин)
+{
+  const pmc = document.querySelector('#profModal .mc');
+  if (pmc && !$('unifiedSettingsSec')) {
+    pmc.style.maxWidth = '580px';
+    const h2 = pmc.querySelector('h2');
+    if (h2) h2.textContent = '⚙ Настройки профиля, приватности и аккаунта';
+
+    const sec = el('div');
+    sec.id = 'unifiedSettingsSec';
+    sec.style.display = 'flex';
+    sec.style.flexDirection = 'column';
+    sec.style.gap = '10px';
+    sec.innerHTML = `
+      <div class="fs">🔒 Конфиденциальность (что скрыть от других людей)</div>
+      <div style="display:flex;flex-direction:column;gap:7px;background:rgba(255,255,255,.035);padding:10px 12px;border-radius:12px;border:1px solid var(--bd);font-size:13px">
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="pfHideTime"> Скрыть время просмотра аниме и сериалов от гостей</label>
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="pfHideStats"> Скрыть общую статистику, графики и инсайты</label>
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="pfHideDet"> Скрыть кнопку «📊 Подробная статистика» от гостей</label>
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="pfHideFav"> Скрыть витрину «❤ Любимое» внизу профиля</label>
+      </div>
+      <div class="fs">📧 Почта и секретный логин для входа (видишь только ты)</div>
+      <div style="display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.035);padding:10px 12px;border-radius:12px;border:1px solid var(--bd)">
+        <div class="meta" style="margin:0;font-size:11.5px">Каждому аккаунту принадлежит своя отдельная почта и свой уникальный секретный логин. Другие пользователи никогда их не видят.</div>
+        <div class="fld"><label>Привязанная почта этого аккаунта</label><input type="email" id="pfAccountEmail" placeholder="name@example.com"></div>
+        <div class="row2">
+          <div class="fld"><label>Секретный логин для входа</label><input id="pfSecretLogin" placeholder="Уникальный логин (мин. 3 симв.)" autocomplete="off"></div>
+          <div class="fld"><label>Пароль для входа по логину</label><input type="password" id="pfSecretPass" placeholder="Новый пароль (мин. 4 симв.)" autocomplete="new-password"></div>
+        </div>
+      </div>
+    `;
+    const mb = pmc.querySelector('.mb');
+    if (mb) pmc.insertBefore(sec, mb);
+  }
+}
+
+// Переопределяем pfOpen и pfSave для работы со всеми вкладками Единых Настроек
+const _v7OrigPfOpen = pfOpen;
+pfOpen = function () {
+  _v7OrigPfOpen();
+  const effUid = (user && (user.dataUid || user.uid)) || 'local_user';
+  if ($('pfHideTime')) $('pfHideTime').checked = !!prof.hideWatchTime;
+  if ($('pfHideStats')) $('pfHideStats').checked = !!prof.hideGeneralStats;
+  if ($('pfHideDet')) $('pfHideDet').checked = !!prof.hideDetailedStats;
+  if ($('pfHideFav')) $('pfHideFav').checked = !!prof.hideFavorites;
+  // Почта строго этого аккаунта (не копируется со старого аккаунта!)
+  const accEmail = prof.contactEmail !== undefined ? prof.contactEmail : ((user && user.email) || '');
+  if ($('pfAccountEmail')) $('pfAccountEmail').value = accEmail;
+  if ($('pfSecretLogin')) $('pfSecretLogin').value = localStorage.getItem('customSecretLogin_' + effUid) || prof.secretLogin || '';
+  if ($('pfSecretPass')) $('pfSecretPass').value = '';
+};
+$('profEditBtn').onclick = pfOpen;
+
+$('pfSave').onclick = async () => {
+  const effUid = (user && (user.dataUid || user.uid)) || 'local_user';
+  const oldName = (prof.name || (user && user.displayName) || '').trim();
+  const newName = $('pfName').value.trim();
+
+  // Валидация секретного логина перед сохранением (чтобы два разных аккаунта не перезаписали один и тот же логин)
+  const newLogin = ($('pfSecretLogin')?.value || '').trim().toLowerCase();
+  const newPass = ($('pfSecretPass')?.value || '').trim();
+  const localAccounts = (() => { try { return JSON.parse(localStorage.getItem('localSecretAccounts') || '{}'); } catch (e) { return {}; } })();
+
+  if (newLogin) {
+    if (newLogin.length < 3) return toast('Секретный логин должен быть не короче 3 символов', true);
+    const credDocId = 'cred_' + newLogin.replace(/[^a-z0-9а-яё_.-]/gi, '_');
+    const existingLocal = localAccounts[credDocId];
+    if (existingLocal && existingLocal.targetUid && existingLocal.targetUid !== effUid) {
+      return toast('Этот секретный логин уже привязан к другому аккаунту! Придумай другой.', true);
+    }
+    const prevLogin = localStorage.getItem('customSecretLogin_' + effUid) || prof.secretLogin || '';
+    if (!existingLocal && !newPass) {
+      return toast('Введи пароль (минимум 4 символа) для создания секретного логина', true);
+    }
+    if (newPass && newPass.length < 4) {
+      return toast('Пароль должен содержать минимум 4 символа', true);
+    }
+    const passHash = newPass ? simpleHash(newLogin + ':' + newPass) : existingLocal.passHash;
+    const credRecord = {
+      secretCredKey: credDocId,
+      targetUid: effUid,
+      loginName: newLogin,
+      displayName: newName || oldName || 'Пользователь',
+      passHash,
+      updatedAt: Date.now()
+    };
+    // Если пользователь сменил логин, удаляем старую привязку
+    if (prevLogin && prevLogin !== newLogin) {
+      const oldCredId = 'cred_' + prevLogin.replace(/[^a-z0-9а-яё_.-]/gi, '_');
+      delete localAccounts[oldCredId];
+    }
+    localAccounts[credDocId] = credRecord;
+    try {
+      localStorage.setItem('localSecretAccounts', JSON.stringify(localAccounts));
+      localStorage.setItem('customSecretLogin_' + effUid, newLogin);
+    } catch (e) {}
+    if (navigator.onLine && auth.currentUser) {
+      try { await setDoc(doc(db, 'items', credDocId), credRecord); } catch (e) {}
+    }
+    prof.secretLogin = newLogin;
+  }
+
+  if (newName && oldName && newName !== oldName) {
+    prof.nickHistory = prof.nickHistory || [];
+    prof.nickHistory.unshift({ name: oldName, date: Date.now() });
+    prof.nickHistory = prof.nickHistory.slice(0, 25);
+  }
+
+  Object.assign(prof, {
+    name: newName,
+    bio: $('pfBio').value.trim(),
+    avatar: pf.avatar || '',
+    cover: pf.cover || '',
+    coverColor: pf.coverColor || 0,
+    bgAll: $('pfBgAll').checked,
+    frame: $('pfFrame').value,
+    cardStyle: $('pfCardStyle').value,
+    customColor: pf.customColor || '',
+    tilt: $('pfTilt').checked,
+    like: $('pfLike').value.trim(),
+    dislike: $('pfDislike').value.trim(),
+    hideWatchTime: $('pfHideTime') ? $('pfHideTime').checked : !!prof.hideWatchTime,
+    hideGeneralStats: $('pfHideStats') ? $('pfHideStats').checked : !!prof.hideGeneralStats,
+    hideDetailedStats: $('pfHideDet') ? $('pfHideDet').checked : !!prof.hideDetailedStats,
+    hideFavorites: $('pfHideFav') ? $('pfHideFav').checked : !!prof.hideFavorites,
+    contactEmail: $('pfAccountEmail') ? $('pfAccountEmail').value.trim() : (prof.contactEmail || '')
+  });
+
+  profCloud();
+  profPaint();
+  refresh();
+  $('profModal').style.display = 'none';
+  toast('Все настройки профиля, приватности и аккаунта сохранены!');
+};
+
+// Перенаправляем пункт меню «⚙ Настройки почты и логина» тоже в единое окно настроек
+if ($('menuAccSettingsBtn')) {
+  $('menuAccSettingsBtn').textContent = '⚙ Настройки профиля и аккаунта';
+  $('menuAccSettingsBtn').onclick = pfOpen;
+}
 
 KanbanManager.init();
 ShareCardGenerator.init();

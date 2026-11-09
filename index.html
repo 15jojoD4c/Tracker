@@ -601,7 +601,7 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
   .modal{align-items:flex-end!important;padding:0!important}
   .modal .mc{max-width:100%!important;width:100%!important;max-height:86vh!important;padding:16px 14px calc(18px + env(safe-area-inset-bottom))!important;border-radius:20px 20px 0 0!important}
   #modalX.show{display:block!important;top:10px!important;bottom:auto!important;right:12px!important;left:auto!important;transform:none!important;padding:7px 14px!important;font-size:13px!important;font-weight:700!important;box-shadow:0 6px 20px rgba(0,0,0,.6)!important}
-  #botnav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%;position:fixed;left:0;right:0;bottom:0;z-index:55;background:rgba(14,15,26,.96);border-top:1px solid var(--bd);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+  #botnav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;position:fixed;left:0;right:0;bottom:0;z-index:55;background:rgba(14,15,26,.96);border-top:1px solid var(--bd);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
   #botnav button{width:100%;min-width:0;background:none;border:0;color:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:18px;padding:4px 2px;cursor:pointer}
   #botnav span{font-size:10.5px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
   #selbar{bottom:76px;width:calc(100% - 20px)}
@@ -648,6 +648,66 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
 .ach-modal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;max-height:62vh;overflow-y:auto;padding:4px}
 .ach-card{background:rgba(255,255,255,.035);border:1px solid var(--bd);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px}
 .ach-card.unlocked{border-color:rgba(52,211,153,.45);background:rgba(16,185,129,.08)}
+
+/* Дополнения Раунда 3: Компактный мобильный профиль, овальные статусы, карточки сообщества, контакты создателя и окно оформления */
+.hyb-qc-item.clickable{cursor:pointer;padding:3px 9px;border-radius:9px;background:rgba(139,92,246,.14);border:1px solid rgba(192,132,252,.32);transition:.15s;display:inline-flex;align-items:center}
+.hyb-qc-item.clickable:hover{background:rgba(139,92,246,.26);border-color:var(--ac);transform:translateY(-1px)}
+
+.creator-contact-box{display:none;flex-direction:column;gap:8px;background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(139,92,246,.14));border:1px solid rgba(251,191,36,.38);border-radius:14px;padding:10px 12px;font-size:12.5px}
+.creator-contact-box a{color:#fde68a;font-weight:700;text-decoration:none}
+.creator-contact-box a:hover{text-decoration:underline}
+
+.comm-user-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:14px;border:1px solid var(--bd);background:var(--card);cursor:pointer;transition:.15s;flex-wrap:wrap}
+.comm-user-card:hover{background:rgba(139,92,246,.12);border-color:rgba(192,132,252,.35)}
+.comm-user-main{display:flex;align-items:center;gap:12px;flex:1;min-width:220px}
+.comm-user-main img{width:46px;height:46px;border-radius:50%;object-fit:cover;background:#222633;flex-shrink:0}
+.comm-user-info{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.comm-user-badges{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.comm-user-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+
+@media(max-width:600px){
+  /* Компактный профиль на телефоне (п. 3) */
+  .hyb-profile-shell{border-radius:18px;margin-bottom:12px}
+  .hyb-banner{height:126px!important;padding:10px 12px!important}
+  .hyb-now-watching{max-width:210px;padding:5px 9px 5px 5px;gap:8px}
+  .hyb-now-watching img{width:30px;height:42px}
+  .hyb-nw-title{font-size:11.5px;max-width:140px}
+  .hyb-cover-btn{padding:6px 10px;font-size:11.5px}
+  .hyb-main-body{grid-template-columns:1fr!important;gap:12px!important;padding:0 12px 14px!important}
+  .hyb-left-col{margin-top:-38px!important;gap:8px!important}
+  .av-wrap{width:82px!important;height:82px!important;padding:3px}
+  .av-lvl-dot{min-width:24px;height:24px;font-size:11px}
+  .hyb-name-line{gap:6px;margin-top:2px}
+  .hyb-name-line b#profName{font-size:19px!important}
+  .hyb-mood-pill{padding:5px 10px;font-size:11.5px}
+  .hyb-meta-stack{padding:6px 0;gap:3px;font-size:11.5px}
+  .pbio{padding:8px 10px;font-size:12.5px}
+  .hyb-right-col{gap:12px!important;padding-top:2px!important}
+  .hyb-top-bar{gap:10px!important;padding-bottom:10px!important}
+  .hyb-hero-time-num{font-size:22px!important}
+  .hyb-hero-time-sub{font-size:11.5px}
+  .hyb-quick-counters{gap:8px 12px!important;margin-top:8px!important}
+  .hyb-qc-item b{font-size:15px!important}
+  .hyb-qc-item span{font-size:11.5px}
+  .hyb-clean-actions{width:100%;gap:6px}
+  .hyb-clean-actions>.btn{flex:1;padding:7px 8px;font-size:12px;text-align:center}
+  .my-lists-sec{padding:10px 12px!important;margin-bottom:10px!important;border-radius:14px}
+
+  /* Компактные овальные плашки статусов и подвидов на телефоне (п. 4) */
+  .hyb-subtabs-bar{padding:6px!important;gap:6px!important;margin-bottom:10px!important;border-radius:14px}
+  .hyb-status-tabs{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;width:100%;gap:5px;padding-bottom:2px}
+  .hyb-status-tabs::-webkit-scrollbar{display:none}
+  .hyb-st-tab{flex:0 0 auto;padding:7px 11px!important;font-size:12px!important;white-space:nowrap;border-radius:999px}
+  #cgCats,#catFilters,#kindFilters,#animeKindFilters,#videoKindFilters{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;gap:6px;margin:8px 0 4px;padding-bottom:3px}
+  #cgCats::-webkit-scrollbar,#catFilters::-webkit-scrollbar,#kindFilters::-webkit-scrollbar,#animeKindFilters::-webkit-scrollbar,#videoKindFilters::-webkit-scrollbar{display:none}
+  #cgCats .tb,#catFilters .fb,#catFilters .tb,#kindFilters .kb,#animeKindFilters .kb,#videoKindFilters .kb{flex:0 0 auto;padding:6px 12px!important;font-size:12px!important;min-height:34px!important;white-space:nowrap}
+
+  /* Карточки пользователей в Сообществе на телефоне в колонку с переносом (п. 7) */
+  .comm-user-card{flex-direction:column;align-items:stretch;padding:12px;gap:10px}
+  .comm-user-main{width:100%;min-width:0;align-items:flex-start}
+  .comm-user-acts{width:100%;margin-left:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+  .comm-user-acts button{width:100%;min-height:38px;font-size:12.5px;padding:7px 10px}
+}
 </style>
 </head>
 <body>
@@ -694,13 +754,10 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
             <div class="creator-menu-pill" id="creatorMenuStatus">👑 Режим создателя: активен</div>
             <button id="accProfile" type="button">👤 Мой профиль</button>
             <button id="menuSettingsBtn" type="button">⚙ Настройки профиля</button>
+            <button id="accThemeModalBtn" type="button">🎨 Оформление</button>
             <button id="accDataBtn" type="button">💾 Данные</button>
-            <div class="sw" id="accSw" title="Цвет оформления"></div>
-            <div class="th" id="accTh"></div>
             <button id="accRu" type="button">🌐 Перевести всё на русский</button>
             <button id="accKey" type="button">🔑 Свой ключ TMDB…</button>
-            <div class="mrow">Оценки<select id="accRt"><option value="">Внешние и мои</option><option value="ext">Только внешние</option><option value="mine">Только мои</option><option value="none">Скрыть</option></select></div>
-            <button id="accReset" type="button">↺ Сбросить оформление</button>
             <button class="out" id="logoutBtn" type="button">⎋ Выйти</button>
           </div>
         </div>
@@ -714,19 +771,7 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
         <button class="tab on" data-v="catalog" type="button">🌐 Каталог</button>
         <button class="tab" data-v="profile" type="button">👤 Мой профиль</button>
         <button class="tab" data-v="users" id="usersTabBtn" type="button">👥 Сообщество (<span id="totalUsersBadgeCount">1</span>)</button>
-        <button class="tab" data-v="feed" type="button">📰 Лента друзей</button>
         <button class="tab" data-v="admin" id="adminTabBtn" type="button" style="display:none">👑 Админ-панель</button>
-      </div>
-
-      <div class="top-social-bar" id="topSocialBar">
-        <div class="row" style="gap:8px">
-          <span class="online-badge" id="realOnlineBadge"><span class="pulse-dot"></span><span id="realOnlineTxt">В сети: 1</span></span>
-        </div>
-        <div class="user-search-wrap" id="userSearchWrap">
-          <input type="text" id="userSearchInput" placeholder="🔎 Найти пользователя по нику или ID...">
-          <button class="btn btn-s" id="userSearchBtn" type="button" style="padding:7px 14px;font-size:12.5px">Найти</button>
-          <div class="user-results-pop" id="userResultsPop"></div>
-        </div>
       </div>
     </div>
 
@@ -860,6 +905,18 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
             </div>
 
             <div class="pbio" id="profBio" style="display:none"></div>
+
+            <!-- Контакты Создателя сайта и кнопка «Сообщить об ошибке» (п. 6) -->
+            <div class="creator-contact-box" id="creatorContactBox">
+              <div class="row" style="justify-content:space-between;gap:6px">
+                <b style="color:#fbbf24">👑 Связь с Создателем сайта</b>
+                <button class="fp-act" id="editCreatorTgBtn" type="button" style="display:none" title="Изменить ссылку/юзернейм Telegram">✎</button>
+              </div>
+              <div id="creatorTgLine">✈ Telegram: <a id="creatorTgLink" href="https://t.me/" target="_blank" rel="noopener">не указан</a></div>
+              <div class="row" style="gap:6px">
+                <button class="btn btn-s" id="reportBugToCreatorBtn" type="button" style="flex:1;padding:6px 10px;font-size:12px">🐞 Сообщить об ошибке</button>
+              </div>
+            </div>
 
             <!-- Надетые медальоны (до 3 штук) и спец-значок от Создателя -->
             <div class="hyb-medals-showcase" id="profEquippedMedalsWrap"></div>
@@ -1008,21 +1065,23 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
             <option>Брошено</option>
             <option value="Архив">📦 Архив</option>
           </select>
-          <select id="sortSelect">
-            <option value="dateDesc">Сортировать: сначала новые</option>
-            <option value="dateAsc">Сначала старые</option>
-            <option value="titleAsc">По алфавиту (А-Я)</option>
-            <option value="ratingDesc">По моей оценке</option>
-            <option value="extDesc">По внешней оценке</option>
-            <option value="yearDesc">По году (новые)</option>
-            <option value="yearAsc">По году (старые)</option>
-          </select>
           <button class="btn btn-s" id="viewBtn" type="button">☰ Список</button>
           <button class="btn btn-s" id="kanbanBtn" type="button">📋 Канбан</button>
           <button class="btn btn-s" id="selBtn" type="button">☑ Выбрать</button>
           <div class="toolbar-more-wrap" id="colMoreWrap">
             <button class="btn btn-s" id="colMoreBtn" type="button">⚙ Дополнительно ▾</button>
             <div class="toolbar-more-pop" id="colMorePop">
+              <div class="fld"><label style="font-size:11.5px;color:var(--mu)">Сортировка списка</label>
+                <select id="sortSelect" style="width:100%">
+                  <option value="dateDesc">Сортировать: сначала новые</option>
+                  <option value="dateAsc">Сначала старые</option>
+                  <option value="titleAsc">По алфавиту (А-Я)</option>
+                  <option value="ratingDesc">По моей оценке</option>
+                  <option value="extDesc">По внешней оценке</option>
+                  <option value="yearDesc">По году (новые)</option>
+                  <option value="yearAsc">По году (старые)</option>
+                </select>
+              </div>
               <div class="fld"><label style="font-size:11.5px;color:var(--mu)">Фильтр по жанру</label><select id="tagFilter" style="width:100%"><option value="Все">Жанры: Все</option></select></div>
               <div class="fld"><label style="font-size:11.5px;color:var(--mu)">Фильтр по подборке</label><select id="listFilter" style="width:100%"><option value="Все">📁 Все подборки</option></select></div>
               <div class="row" style="gap:6px">
@@ -1058,7 +1117,7 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
           <button class="kb" data-k="Комикс" type="button">Комикс</button>
         </div>
         <div class="filters" id="animeKindFilters" style="display:none;margin-top:8px">
-          <button class="kb on" data-ak="Все" type="button">Вид: Все аниме</option>
+          <button class="kb on" data-ak="Все" type="button">Вид: Все аниме</button>
           <button class="kb" data-ak="Сериал" type="button">Аниме-сериалы</button>
           <button class="kb" data-ak="Фильм" type="button">Аниме-фильмы</button>
         </div>
@@ -1073,29 +1132,28 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
       </div>
     </div>
 
-    <!-- Вкладка 3: СООБЩЕСТВО / ПОЛЬЗОВАТЕЛИ САЙТА -->
+    <!-- Вкладка 3: СООБЩЕСТВО / ПОЛЬЗОВАТЕЛИ САЙТА (с блоком «В сети» и поиском пользователей только здесь — п. 1) -->
     <div id="usersView" style="display:none">
-      <div class="pb" style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-        <div>
-          <h2 style="margin:0 0 4px">👥 Участники сообщества</h2>
-          <div class="meta" style="margin:0">Открывай профили других участников, сравнивай вкусы («Совместимость %»), добавляй в друзья и оставляй записи на стене.</div>
+      <div class="pb" style="margin-bottom:14px;display:flex;flex-direction:column;gap:12px">
+        <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 style="margin:0 0 4px">👥 Участники сообщества</h2>
+            <div class="meta" style="margin:0">Открывай профили других участников, сравнивай вкусы («Совместимость %»), добавляй в друзья и пиши в ЛС.</div>
+          </div>
+          <button class="btn btn-s" id="usersRefreshBtn" type="button">↻ Обновить список</button>
         </div>
-        <button class="btn btn-s" id="usersRefreshBtn" type="button">↻ Обновить список</button>
+        <div class="top-social-bar" id="topSocialBar" style="width:100%">
+          <div class="row" style="gap:8px">
+            <span class="online-badge" id="realOnlineBadge"><span class="pulse-dot"></span><span id="realOnlineTxt">В сети: 1</span></span>
+          </div>
+          <div class="user-search-wrap" id="userSearchWrap">
+            <input type="text" id="userSearchInput" placeholder="🔎 Найти пользователя по нику или ID...">
+            <button class="btn btn-s" id="userSearchBtn" type="button" style="padding:7px 14px;font-size:12.5px">Найти</button>
+            <div class="user-results-pop" id="userResultsPop"></div>
+          </div>
+        </div>
       </div>
       <div id="publicUsersList" style="display:flex;flex-direction:column;gap:10px"></div>
-    </div>
-
-    <!-- Вкладка 4: ЛЕНТА ДРУЗЕЙ (А3) -->
-    <div id="feedView" style="display:none">
-      <div class="pb" style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-        <div>
-          <h2 style="margin:0 0 4px">📰 Активность и лента друзей</h2>
-          <div class="meta" style="margin:0">Последние просмотренные тайтлы, оценки и заметки пользователей, на которых ты подписан</div>
-        </div>
-        <button class="btn btn-s" id="refreshFeedBtn" type="button">↻ Обновить ленту</button>
-      </div>
-      <div id="friendsListBar" class="chips" style="margin-bottom:14px"></div>
-      <div id="friendsFeedList" style="display:flex;flex-direction:column;gap:10px"></div>
     </div>
 
     <!-- Вкладка 5: АДМИН-ПАНЕЛЬ (Видна ТОЛЬКО подтверждённому Создателю сайта) -->
@@ -1280,7 +1338,6 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
   <button data-go="catalog" type="button">🌐<span>Каталог</span></button>
   <button data-go="profile" type="button">👤<span>Мой профиль</span></button>
   <button data-go="users" type="button">👥<span>Сообщество</span></button>
-  <button data-go="feed" type="button">📰<span>Лента друзей</span></button>
 </nav>
 <div id="selbar">
   <span id="selN" style="font-weight:800;color:var(--ach)">Выбрано: 0</span>
@@ -1366,6 +1423,27 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
     <input type="text" id="dmInput" maxlength="500" placeholder="Написать личное сообщение (до 500 символов)..." style="flex:1">
     <button class="btn" id="dmSendBtn" type="button">Отправить</button>
   </div>
+</div></div>
+
+<!-- Модальное окно: Оформление, темы и цвета (п. 5 — сохранены id accSw, accTh, accRt, accReset) -->
+<div id="themeModal" class="modal"><div class="mc" style="max-width:480px">
+  <div class="row" style="justify-content:space-between"><h2 style="margin:0">🎨 Оформление сайта</h2><button class="btn btn-s" id="closeThemeModalBtn" type="button">✕</button></div>
+  <div class="fs">Цвет акцента</div>
+  <div class="sw" id="accSw" title="Цвет оформления" style="padding:4px 0"></div>
+  <div class="fs">Тема оформления</div>
+  <div class="th" id="accTh" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+  <div class="fs">Отображение оценок на карточках</div>
+  <div class="mrow" style="padding:4px 0"><span>Оценки:</span><select id="accRt" style="flex:1"><option value="">Внешние и мои</option><option value="ext">Только внешние</option><option value="mine">Только мои</option><option value="none">Скрыть</option></select></div>
+  <div class="mb" style="justify-content:space-between;margin-top:12px">
+    <button class="btn btn-s" id="accReset" type="button">↺ Сбросить оформление</button>
+    <button class="btn" id="doneThemeModalBtn" type="button">Готово</button>
+  </div>
+</div></div>
+
+<!-- Модальное окно: Список друзей профиля с кнопкой «Написать» (п. 2) -->
+<div id="friendsListModal" class="modal"><div class="mc" style="max-width:520px">
+  <div class="row" style="justify-content:space-between"><h2 style="margin:0" id="friendsModalTitle">🤝 Список друзей</h2><button class="btn btn-s" id="closeFriendsModalBtn" type="button">✕</button></div>
+  <div id="friendsModalBody" style="display:flex;flex-direction:column;gap:8px;max-height:64vh;overflow-y:auto"></div>
 </div></div>
 
 <!-- Плавающее меню выбора статуса поверх страницы (Этап 3 п.7) -->
@@ -1784,12 +1862,19 @@ const profCloud = (onlyHeartbeat = false) => {
       }, { merge: true }).catch(() => {});
       return;
     }
+    // Защита от конфликта с модерацией Создателя (п. 7): обычный пользователь не отправляет banned / specialBadge и пишет через { merge: true }
+    if (!isCreatorAdmin()) {
+      delete safeProf.banned;
+      delete safeProf.specialBadge;
+      delete safeProf.isCreator;
+      delete safeProf.creatorHash;
+    }
     track(setDoc(doc(db, 'items', 'prof_' + user.uid), {
       ...safeProf,
       kind: 'profile',
       isProfile: true,
       userId: user.uid
-    })).catch(e => {
+    }, { merge: true })).catch(e => {
       toast('Ошибка сохранения профиля: ' + e.message, true);
     });
   }
@@ -1805,44 +1890,21 @@ const cloudSave = it => {
   return track(setDoc(doc(db, 'items', docId), payload)).catch(e => toast('Не удалось сохранить в облако: ' + e.message, true));
 };
 
-// Подписка ТОЛЬКО на документы профилей (kind == 'profile')
-function subscribePublicProfilesIfAllowed() {
+// Экономия чтений Firestore (п. 5): загружаем профили через getDocs по требованию (с кэшем), без постоянного скачивания всех профилей через onSnapshot
+let _lastProfilesFetchTs = 0;
+function subscribePublicProfilesIfAllowed(force = false) {
   if (!auth.currentUser) {
     updateRealOnlineCounter();
     renderPublicUsersDirectory();
     return;
   }
-  if (publicProfilesUnsub) {
+  if (!force && allRegisteredProfiles.length && (Date.now() - _lastProfilesFetchTs) < 180000) {
     updateRealOnlineCounter();
     renderPublicUsersDirectory();
     return;
   }
-  try {
-    publicProfilesUnsub = onSnapshot(query(collection(db, 'items'), where('kind', '==', 'profile')), snap => {
-      const byUid = new Map();
-      const takenIds = new Set([CREATOR_PUBLIC_ID]);
-      snap.docs.forEach(d => {
-        const p = d.data();
-        if (p && p.userId) {
-          if (!p.publicId || (String(p.publicId) === CREATOR_PUBLIC_ID && !isProfileCreator(p)) || (takenIds.has(String(p.publicId)) && !isProfileCreator(p))) {
-            p.publicId = deterministicIdFromUid(p.userId, takenIds);
-          }
-          takenIds.add(String(p.publicId));
-          byUid.set(p.userId, p);
-        }
-      });
-      allRegisteredProfiles = [...byUid.values()];
-      updateRealOnlineCounter();
-      renderPublicUsersDirectory();
-      if ($('adminView').style.display !== 'none') renderAdminDashboard();
-    }, () => {
-      updateRealOnlineCounter();
-      renderPublicUsersDirectory();
-    });
-  } catch (e) {
-    updateRealOnlineCounter();
-    renderPublicUsersDirectory();
-  }
+  _lastProfilesFetchTs = Date.now();
+  refreshProfilesOnlyFromFirestore();
 }
 
 function startLocalMode(msg) {
@@ -2660,7 +2722,8 @@ $('sizeSel').value = localStorage.getItem('cw') || '190'; setSize($('sizeSel').v
 const closeAll = () => {
   if (dlgDone) dlgDone(null);
   if ($('qaFloatMenu')) $('qaFloatMenu').classList.remove('open');
-  ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'calModal', 'shareModal', 'charPopupModal', 'dataModal', 'achModal', 'notifModal', 'dmModal'].forEach(id => {
+  if (typeof cleanupActiveDmSubscriptions === 'function') cleanupActiveDmSubscriptions();
+  ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'calModal', 'shareModal', 'charPopupModal', 'dataModal', 'achModal', 'notifModal', 'dmModal', 'themeModal', 'friendsListModal'].forEach(id => {
     if ($(id)) $(id).style.display = 'none';
   });
 };
@@ -2849,6 +2912,16 @@ function rtApply() {
   if ($('accRt')) $('accRt').value = prof.rt || '';
 }
 if ($('accRt')) $('accRt').onchange = () => { prof.rt = $('accRt').value; profCloud(); rtApply(); };
+if ($('accThemeModalBtn')) {
+  $('accThemeModalBtn').onclick = () => {
+    $('accMenu')?.classList.remove('open');
+    rtApply();
+    $('themeModal').style.display = 'flex';
+  };
+}
+if ($('closeThemeModalBtn')) $('closeThemeModalBtn').onclick = () => { $('themeModal').style.display = 'none'; };
+if ($('doneThemeModalBtn')) $('doneThemeModalBtn').onclick = () => { $('themeModal').style.display = 'none'; };
+if ($('closeFriendsModalBtn')) $('closeFriendsModalBtn').onclick = () => { $('friendsListModal').style.display = 'none'; };
 
 function profPaint() {
   rtApply();
@@ -3579,7 +3652,7 @@ if ($('recommendToFriendBtn')) {
       others.sort((a, b) => (myFriends.includes(b.userId) ? 1 : 0) - (myFriends.includes(a.userId) ? 1 : 0)).forEach(p => {
         selUser.add(new Option(`${myFriends.includes(p.userId) ? '⭐ ' : ''}${p.name || p.displayName || 'Пользователь'} (ID ${p.publicId || '—'})`, p.userId));
       });
-      inpComment = el('input'); inpComment.placeholder = 'Короткий комментарий (почему стоит посмотреть)...';
+      inpComment = el('input'); inpComment.maxLength = 500; inpComment.placeholder = 'Короткий комментарий (до 500 символов)...';
       $('dlgBody').replaceChildren(selUser, inpComment);
     }, 'Отправить совет', false, () => ({ targetUid: selUser.value, msg: inpComment.value.trim() })).then(async res => {
       if (!res || !res.targetUid) return;
@@ -3904,11 +3977,12 @@ function profDash() {
   }
   {
     const p = mk('lists', 'Мои подборки'), l = topBy(i => i.lists || []);
+    const activeListProf = window._viewingGuestUid ? (window._guestProf || {}) : prof;
     if (!l.length) p.append(el('div', 'meta', 'Подборок пока нет. Нажми «＋ Подборка» в блоке «Мои подборки».'));
     l.forEach(([n, c]) => {
       const r = el('div', 'sr go'), b = el('div', 'bar'), nm = el('span', null, '📁 ' + n);
       b.style.width = (c / l[0][1] * 100) + '%';
-      const lm = (prof.listMeta || {})[n] || {};
+      const lm = (activeListProf.listMeta || {})[n] || {};
       if (lm.cn && LCOL[lm.cn]) nm.style.color = LCOL[lm.cn];
       if (lm.desc) nm.title = lm.desc;
       if (!window._viewingGuestUid) {
@@ -4345,7 +4419,6 @@ document.querySelectorAll('#botnav button').forEach(b => b.onclick = () => {
   const g = b.dataset.go;
   if (g === 'profile') { document.querySelector('.tab[data-v="profile"]')?.click(); }
   else if (g === 'users') { document.querySelector('.tab[data-v="users"]')?.click(); }
-  else if (g === 'feed') { document.querySelector('.tab[data-v="feed"]')?.click(); }
   else document.querySelector('.tab[data-v="catalog"]')?.click();
   window.scrollTo({top: 0, behavior: 'smooth'});
 });
@@ -5213,7 +5286,7 @@ async function cgThree() {
   try {
     const md = $('cgMode').value, rp = cg.q ? 1 : 1 + Math.floor(Math.random() * (md === 'new' || md === 'soon' ? 3 : md === 'top' ? 10 : 20));
     let res = await cgFetch(rp, 24, cg.q, md);
-    if (!res.length && rp > 1) res = await cgFetch(1, 24, q, md);
+    if (!res.length && rp > 1) res = await cgFetch(1, 24, cg.q, md);
     const pool = res.filter(r => !has(r) && cgPass(r) && !rndSeen.has(cgKey(r))).sort(() => Math.random() - 0.5).slice(0, 3);
     if (!pool.length) throw new Error('ничего подходящего');
     cgGrid.replaceChildren(); pool.forEach(cgCard); $('cgMore').style.display = 'none';
@@ -6823,9 +6896,13 @@ function renderAnixartHeroAndCategoryCards() {
   const qcBox = $('hybQuickCounters');
   if (qcBox) {
     qcBox.replaceChildren();
-    const addQc = (val, lbl) => {
-      const d = el('div', 'hyb-qc-item');
+    const addQc = (val, lbl, onClickFn = null) => {
+      const d = el('div', 'hyb-qc-item' + (onClickFn ? ' clickable' : ''));
       d.append(el('b', null, String(val)), el('span', null, lbl));
+      if (onClickFn) {
+        d.title = 'Нажми, чтобы открыть список друзей и написать сообщение';
+        d.onclick = onClickFn;
+      }
       qcBox.append(d);
     };
     addQc(totalEpisodes.toLocaleString('ru-RU'), pluralRu(totalEpisodes, 'серия', 'серии', 'серий'));
@@ -6833,7 +6910,9 @@ function renderAnixartHeroAndCategoryCards() {
     if (totalChapters > 0) addQc(totalChapters.toLocaleString('ru-RU'), pluralRu(totalChapters, 'глава', 'главы', 'глав'));
     addQc(favCount, 'в избранном');
     addQc(ratedCount, pluralRu(ratedCount, 'оценка', 'оценки', 'оценок'));
-    addQc(friendsCount, pluralRu(friendsCount, 'друг', 'друга', 'друзей'));
+    addQc(friendsCount, pluralRu(friendsCount, 'друг', 'друга', 'друзей') + ' ▾', () => {
+      if (typeof openFriendsListModal === 'function') openFriendsListModal(targetUidForFriends);
+    });
   }
 
   // Полоса прогресса и 5 карточек списков с мини-коллажем постеров (Скриншот 2)
@@ -7000,6 +7079,78 @@ function updateProfileMetaAndPrivacyUI() {
   const ts = activeProf.lastVisit || Date.now(), diffMin = Math.floor((Date.now() - ts) / 60000);
   const visitTxt = diffMin < 5 ? '● в сети' : diffMin < 60 ? `● был(а) ${diffMin} мин. назад` : diffMin < 1440 ? `● был(а) ${Math.floor(diffMin / 60)} ч. назад` : diffMin < 2880 ? '● был(а) вчера' : '● был(а) ' + new Date(ts).toLocaleDateString('ru-RU');
   if ($('profLastVisit')) $('profLastVisit').textContent = visitTxt;
+
+  // Блок контактов Создателя сайта (Telegram + кнопка «Сообщить об ошибке» — п. 6)
+  const ccBox = $('creatorContactBox');
+  if (ccBox) {
+    const isViewingCreator = isGuest ? isProfileCreator(activeProf) : isCreatorAdmin();
+    ccBox.style.display = isViewingCreator ? 'flex' : 'none';
+    if (isViewingCreator) {
+      const rawTg = String(activeProf.creatorTelegram || prof.creatorTelegram || '').trim();
+      const cleanUser = rawTg.replace(/^https?:\/\/(t\.me|telegram\.me)\//i, '').replace(/^@/, '').trim();
+      const tgLink = $('creatorTgLink'), tgLine = $('creatorTgLine'), editTgB = $('editCreatorTgBtn'), bugB = $('reportBugToCreatorBtn');
+      if (tgLink && tgLine) {
+        if (cleanUser) {
+          tgLine.style.display = '';
+          tgLink.href = 'https://t.me/' + encodeURIComponent(cleanUser);
+          tgLink.textContent = '@' + cleanUser;
+        } else {
+          tgLine.style.display = (!isGuest && isCreatorAdmin()) ? '' : 'none';
+          tgLink.href = '#';
+          tgLink.textContent = 'укажи свой @username (нажми ✎)';
+          tgLink.onclick = e => { if (!cleanUser) { e.preventDefault(); editTgB?.click(); } };
+        }
+      }
+      if (editTgB) {
+        editTgB.style.display = (!isGuest && isCreatorAdmin()) ? 'inline-block' : 'none';
+        editTgB.onclick = async () => {
+          const val = await uiPrompt('✈ Твой Telegram для связи в профиле Создателя', prof.creatorTelegram || '', 'Например: @username или https://t.me/username');
+          if (val === null) return;
+          prof.creatorTelegram = val.trim();
+          profCloud();
+          updateProfileMetaAndPrivacyUI();
+          toast('Контакт Telegram сохранён в профиле Создателя!');
+        };
+      }
+      if (bugB) {
+        bugB.onclick = async () => {
+          if (cleanUser && (!user || user.isLocal || (!isGuest && isCreatorAdmin()))) {
+            window.open('https://t.me/' + encodeURIComponent(cleanUser), '_blank', 'noopener');
+            return;
+          }
+          const creatorUid = isGuest ? activeProf.userId : (user && user.uid);
+          if (creatorUid && user && !user.isLocal && creatorUid !== user.uid && (isMutualFriend(creatorUid) || isCreatorAdmin())) {
+            openDirectMessagesModal(creatorUid);
+            return;
+          }
+          const msg = await uiPrompt('🐞 Сообщить об ошибке Создателю сайта', '', 'Опиши, что не сработало или какую идею хочешь предложить (до 280 символов)...');
+          if (!msg || !msg.trim()) {
+            if (cleanUser) window.open('https://t.me/' + encodeURIComponent(cleanUser), '_blank', 'noopener');
+            return;
+          }
+          if (creatorUid && user && !user.isLocal && auth.currentUser) {
+            const now = Date.now();
+            await setDoc(doc(db, 'items', `wall_${creatorUid}_${now}`), {
+              kind: 'wall',
+              isWallComment: true,
+              targetUid: creatorUid,
+              authorUid: user.uid,
+              authorName: prof.name || user.displayName || 'Участник',
+              text: ('🐞 [Сообщение об ошибке]: ' + msg.trim()).slice(0, 280),
+              createdAt: now
+            }).then(() => {
+              loadProfileWallComments();
+              toast('Сообщение об ошибке отправлено Создателю сайта!');
+            }).catch(() => {
+              if (cleanUser) window.open('https://t.me/' + encodeURIComponent(cleanUser), '_blank', 'noopener');
+            });
+          } else if (cleanUser) {
+            window.open('https://t.me/' + encodeURIComponent(cleanUser), '_blank', 'noopener');
+          }
+        };
+      }
+    }
+  }
 }
 
 if ($('profPrivacyBtn')) {
@@ -7252,7 +7403,6 @@ async function openFullTitlePage(itemObj) {
   $('catalogView').style.display = 'none';
   $('profileView').style.display = 'none';
   $('usersView').style.display = 'none';
-  $('feedView').style.display = 'none';
   $('adminView').style.display = 'none';
   page.style.display = 'block';
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -7269,7 +7419,6 @@ async function openFullTitlePage(itemObj) {
     const activeTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
     if (activeTab === 'profile') $('profileView').style.display = '';
     else if (activeTab === 'users') $('usersView').style.display = '';
-    else if (activeTab === 'feed') $('feedView').style.display = '';
     else if (activeTab === 'admin') $('adminView').style.display = '';
     else $('catalogView').style.display = '';
   };
@@ -7598,52 +7747,81 @@ function renderPublicUsersDirectory() {
     return;
   }
   const myFriends = getAcceptedFriendUids();
+  const amCreator = isCreatorAdmin();
+
   list.forEach(p => {
-    const r = el('div', 'u-res-row'); r.style.border = '1px solid var(--bd)'; r.style.background = 'var(--card)';
-    const im = el('img'); im.src = safePosterUrl(p.avatar); im.onerror = () => { im.onerror = null; im.src = FALL; };
-    const isOn = p.lastVisit && (now - p.lastVisit) < 240000;
+    const isMe = Boolean(user && p.userId === user.uid);
+    const isFr = myFriends.includes(p.userId);
+    const isOn = p.lastVisit && (now - p.lastVisit) < 300000;
     const isCr = isProfileCreator(p);
     const displayId = isCr ? CREATOR_PUBLIC_ID : (p.publicId || deterministicIdFromUid(p.userId));
-    const inf = el('div'); inf.style.flex = '1';
-    const topRow = el('div', 'row'); topRow.style.gap = '8px';
-    const nameB = el('b', null, p.name || p.displayName || 'Пользователь'); nameB.style.fontSize = '15.5px';
-    topRow.append(nameB);
+
+    // Адаптивная карточка участника (.comm-user-card — на телефоне аккуратно перестраивается в колонку с переносом! п. 7)
+    const card = el('div', 'comm-user-card');
+    const mainRow = el('div', 'comm-user-main');
+    const im = el('img'); im.src = safePosterUrl(p.avatar); im.onerror = () => { im.onerror = null; im.src = FALL; };
+    const inf = el('div', 'comm-user-info');
+    const badges = el('div', 'comm-user-badges');
+
+    const nameB = el('b', null, p.name || p.displayName || 'Пользователь');
+    nameB.style.fontSize = '15.5px';
+    badges.append(nameB);
     if (isCr) {
-      const cb = el('span', 'creator-badge', '👑 ' + (p.creatorTitle || 'Создатель сайта')); cb.style.cursor = 'default';
-      topRow.append(cb);
+      const cb = el('span', 'creator-badge', '👑 ' + (p.creatorTitle || 'Создатель сайта'));
+      cb.style.cursor = 'default';
+      badges.append(cb);
     }
     if (p.specialBadge) {
-      const sb = el('span', 'creator-badge', p.specialBadge); sb.style.cursor = 'default';
-      topRow.append(sb);
+      const sb = el('span', 'creator-badge', p.specialBadge);
+      sb.style.cursor = 'default';
+      badges.append(sb);
     }
-    topRow.append(el('span', 'chip', 'ID ' + displayId));
-    if (myFriends.includes(p.userId)) topRow.append(el('span', 'chip', '🤝 Ваш друг'));
-    if (user && p.userId === user.uid) topRow.append(el('span', 'chip', 'Это вы'));
+    badges.append(el('span', 'chip', 'ID ' + displayId));
+    if (isFr) badges.append(el('span', 'chip', '🤝 Ваш друг'));
+    if (isMe) badges.append(el('span', 'chip', 'Это вы'));
 
     const subText = (isOn ? '🟢 Сейчас в сети' : 'Был(а): ' + (p.lastVisit ? new Date(p.lastVisit).toLocaleString('ru-RU') : 'недавно')) +
       (p.mood ? ` · ${p.mood}` : '') +
       (p.bio ? ` · «${p.bio.slice(0, 70)}»` : '');
-    const metaDiv = el('div', 'meta', subText); metaDiv.style.marginTop = '4px';
-    inf.append(topRow, metaDiv);
+    const metaDiv = el('div', 'meta', subText);
+    metaDiv.style.margin = '0';
+    inf.append(badges, metaDiv);
+    mainRow.append(im, inf);
 
-    const actionsWrap = el('div', 'row'); actionsWrap.style.gap = '6px';
-    if (myFriends.includes(p.userId) && (!user || p.userId !== user.uid)) {
-      const dmB = el('button', 'btn btn-s', '✉ ЛС'); dmB.type = 'button';
+    const acts = el('div', 'comm-user-acts');
+    // Кнопка «✉ Написать» прямо на карточке пользователя в Сообществе (для друзей и для Создателя — п. 2)
+    if (!isMe && (isFr || amCreator)) {
+      const dmB = el('button', 'btn btn-s', '✉ Написать');
+      dmB.type = 'button';
       dmB.onclick = e => { e.stopPropagation(); openDirectMessagesModal(p.userId); };
-      actionsWrap.append(dmB);
+      acts.append(dmB);
+    } else if (!isMe) {
+      const rel = getFriendshipRelationWith(p.userId);
+      const frB = el('button', 'btn btn-s', rel.state === 'outgoing_pending' ? '⏳ Заявка отправлена' : rel.state === 'incoming_pending' ? '👋 Принять в друзья' : '➕ В друзья');
+      frB.type = 'button';
+      frB.onclick = e => {
+        e.stopPropagation();
+        if (rel.state === 'outgoing_pending') removeFriendshipOrRequest(rel.doc);
+        else if (rel.state === 'incoming_pending') respondToFriendRequest(rel.doc, 'accepted');
+        else sendFriendRequestTo(p.userId);
+      };
+      acts.append(frB);
     }
-    const btn = el('button', 'btn btn-s', user && p.userId === user.uid ? 'Мой профиль →' : 'Открыть профиль →'); btn.type = 'button';
-    btn.onclick = e => { e.stopPropagation(); openUserPublicProfile(p); };
-    actionsWrap.append(btn);
-    r.append(im, inf, actionsWrap);
-    r.onclick = () => openUserPublicProfile(p);
-    box.append(r);
+
+    const openB = el('button', 'btn btn-s', isMe ? 'Мой профиль →' : 'Открыть профиль →');
+    openB.type = 'button';
+    openB.onclick = e => { e.stopPropagation(); openUserPublicProfile(p); };
+    acts.append(openB);
+
+    card.append(mainRow, acts);
+    card.onclick = () => openUserPublicProfile(p);
+    box.append(card);
   });
 }
 
 if ($('usersRefreshBtn')) $('usersRefreshBtn').onclick = async () => { toast('Обновляю список участников…'); await refreshProfilesOnlyFromFirestore(); toast('Список обновлён!'); };
 
-// Этап 1 п.1 (строка 6632): одинарный слэш в /^id\s*/i, чтобы поиск вида «id123456» работал!
+// Поиск пользователей по нику или ID (включая формат id123456)
 function searchUsers(queryStr) {
   const q = (queryStr || '').trim().toLowerCase().replace(/^id\s*/i, '');
   const pop = $('userResultsPop'); if (!pop) return;
@@ -7664,7 +7842,7 @@ function searchUsers(queryStr) {
       const row = el('div', 'u-res-row'), im = el('img'), inf = el('div');
       im.src = safePosterUrl(p.avatar); im.onerror = () => { im.onerror = null; im.src = FALL; };
       const nm = p.name || p.displayName || 'Пользователь';
-      const isOnline = p.lastVisit && (Date.now() - p.lastVisit) < 240000;
+      const isOnline = p.lastVisit && (Date.now() - p.lastVisit) < 300000;
       const isCr = isProfileCreator(p);
       const displayId = isCr ? CREATOR_PUBLIC_ID : (p.publicId || deterministicIdFromUid(p.userId));
       inf.append(el('b', null, nm), document.createTextNode(' '));
@@ -7853,23 +8031,41 @@ if ($('wallSendBtn')) {
 }
 
 // =========================================================================
-// ЭТАП 4 п.1 и п.2: ЗАЯВКИ В ДРУЗЬЯ (kind:'friendReq'), УВЕДОМЛЕНИЯ (🔔) И ЛИЧНЫЕ СООБЩЕНИЯ (kind:'dm')
-// Список друзей и лента строятся ТОЛЬКО из принятых заявок (status === 'accepted'), поле prof.friends не используется!
+// ЗАЯВКИ В ДРУЗЬЯ (kind:'friendReq'), КЛИКАБЕЛЬНОЕ ОКНО ДРУЗЕЙ, УВЕДОМЛЕНИЯ (🔔) И МГНОВЕННЫЙ ЧАТ (kind:'dm' с onSnapshot)
+// Без глобального слушателя friendReqUnsub3 (экономия чтений Firestore — п. 6)!
 // =========================================================================
 let allFriendRequests = [];
+let guestFriendRequestsCache = [];
 let unreadDmMessages = [];
 let friendReqUnsub1 = null, friendReqUnsub2 = null, friendReqUnsub3 = null, unreadDmUnsub = null;
 
 function getAcceptedFriendUids(forUid = (user && user.uid)) {
   if (!forUid) return [];
   const set = new Set();
-  allFriendRequests.forEach(fr => {
+  const sourceList = (user && forUid === user.uid) ? allFriendRequests : [...allFriendRequests, ...guestFriendRequestsCache];
+  sourceList.forEach(fr => {
     if (fr && fr.status === 'accepted') {
       if (fr.fromUid === forUid && fr.toUid) set.add(fr.toUid);
       else if (fr.toUid === forUid && fr.fromUid) set.add(fr.fromUid);
     }
   });
   return [...set];
+}
+
+// Точечная загрузка друзей выбранного гостя (вместо глобального слушателя всех дружб сайта — п. 6)
+async function loadGuestAcceptedFriends(guestUid) {
+  guestFriendRequestsCache = [];
+  if (!guestUid || !auth.currentUser) return;
+  try {
+    const [s1, s2] = await Promise.all([
+      getDocs(query(collection(db, 'items'), where('kind', '==', 'friendReq'), where('fromUid', '==', guestUid), where('status', '==', 'accepted'))),
+      getDocs(query(collection(db, 'items'), where('kind', '==', 'friendReq'), where('toUid', '==', guestUid), where('status', '==', 'accepted')))
+    ]);
+    const m = new Map();
+    [...s1.docs, ...s2.docs].forEach(d => m.set(d.id, { _docId: d.id, ...d.data() }));
+    guestFriendRequestsCache = [...m.values()];
+    if (window._viewingGuestUid === guestUid) renderAnixartHeroAndCategoryCards();
+  } catch (e) {}
 }
 
 function getFriendshipRelationWith(otherUid) {
@@ -7899,6 +8095,7 @@ function rebuildFriendRequestsMemory(mapById) {
 function initFriendsAndNotifications() {
   if (!auth.currentUser || !user || user.isLocal) return;
   [friendReqUnsub1, friendReqUnsub2, friendReqUnsub3, unreadDmUnsub].forEach(u => { if (u) try { u(); } catch (e) {} });
+  friendReqUnsub3 = null;
   const frMap = new Map();
   const handleSnap = snap => {
     snap.docChanges().forEach(ch => {
@@ -7908,9 +8105,9 @@ function initFriendsAndNotifications() {
     rebuildFriendRequestsMemory(frMap);
   };
   try {
+    // Слушаем только свои исходящие и входящие заявки (без глобального скачивания всех дружб сайта — п. 6)
     friendReqUnsub1 = onSnapshot(query(collection(db, 'items'), where('kind', '==', 'friendReq'), where('fromUid', '==', user.uid)), handleSnap, () => {});
     friendReqUnsub2 = onSnapshot(query(collection(db, 'items'), where('kind', '==', 'friendReq'), where('toUid', '==', user.uid)), handleSnap, () => {});
-    friendReqUnsub3 = onSnapshot(query(collection(db, 'items'), where('kind', '==', 'friendReq'), where('status', '==', 'accepted')), handleSnap, () => {});
     unreadDmUnsub = onSnapshot(query(collection(db, 'items'), where('kind', '==', 'dm'), where('toUid', '==', user.uid), where('read', '==', false)), snap => {
       unreadDmMessages = snap.docs.map(d => ({ _docId: d.id, ...d.data() })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       updateNotificationBellBadge();
@@ -7932,6 +8129,8 @@ function updateNotificationBellBadge() {
   badge.textContent = total > 99 ? '99+' : String(total);
 }
 
+// Исправление повторной отправки заявки после отклонения (Баг №1):
+// Если документ fr_{from}_{to} уже существует (например, со статусом declined), обновляем только разрешённые поля с { merge: true }, не трогая createdAt!
 async function sendFriendRequestTo(targetUid) {
   if (!user || user.isLocal || !auth.currentUser) return toast('Войди в облачный аккаунт для добавления в друзья', true);
   if (prof.banned && !isCreatorAdmin()) return toast('Твой профиль заблокирован', true);
@@ -7939,17 +8138,29 @@ async function sendFriendRequestTo(targetUid) {
   const targetProf = getEffectiveProfilesList().find(p => p.userId === targetUid) || window._guestProf || {};
   const docId = `fr_${user.uid}_${targetUid}`;
   const now = Date.now();
+  const fromName = prof.name || user.displayName || 'Пользователь';
+  const toName = targetProf.name || targetProf.displayName || 'Пользователь';
   try {
-    await setDoc(doc(db, 'items', docId), {
-      kind: 'friendReq',
-      fromUid: user.uid,
-      toUid: targetUid,
-      fromName: prof.name || user.displayName || 'Пользователь',
-      toName: targetProf.name || targetProf.displayName || 'Пользователь',
-      status: 'pending',
-      createdAt: now,
-      updatedAt: now
-    });
+    const existingDoc = allFriendRequests.find(fr => fr._docId === docId) || (await getDoc(doc(db, 'items', docId)).then(s => s.exists() ? s.data() : null).catch(() => null));
+    if (existingDoc) {
+      await setDoc(doc(db, 'items', docId), {
+        status: 'pending',
+        updatedAt: now,
+        fromName,
+        toName
+      }, { merge: true });
+    } else {
+      await setDoc(doc(db, 'items', docId), {
+        kind: 'friendReq',
+        fromUid: user.uid,
+        toUid: targetUid,
+        fromName,
+        toName,
+        status: 'pending',
+        createdAt: now,
+        updatedAt: now
+      });
+    }
     toast('Заявка в друзья отправлена!');
   } catch (e) {
     toast('Не удалось отправить заявку: ' + (e.code || e.message), true);
@@ -7975,7 +8186,6 @@ async function removeFriendshipOrRequest(frDoc) {
   if (!frDoc || !auth.currentUser) return;
   try {
     await deleteDoc(doc(db, 'items', frDoc._docId));
-    // На случай если была встречная заявка — удаляем и её
     const reverseId = `fr_${frDoc.toUid}_${frDoc.fromUid}`;
     await deleteDoc(doc(db, 'items', reverseId)).catch(() => {});
     toast('Заявка / дружба отменена');
@@ -7989,8 +8199,10 @@ function updateFriendBtnUI() {
   const dmBtn = $('dmGuestBtn');
   if (!btn || !window._viewingGuestUid) return;
   const rel = getFriendshipRelationWith(window._viewingGuestUid);
+  // Создатель может писать любому участнику без дружбы (п. 2)!
   if (dmBtn) {
-    dmBtn.style.display = rel.state === 'accepted' ? 'inline-block' : 'none';
+    dmBtn.style.display = (rel.state === 'accepted' || isCreatorAdmin()) ? 'inline-block' : 'none';
+    dmBtn.textContent = '✉ Написать';
     dmBtn.onclick = () => openDirectMessagesModal(window._viewingGuestUid);
   }
   if (rel.state === 'accepted') {
@@ -8016,7 +8228,68 @@ function updateFriendBtnUI() {
   }
 }
 
-// Центр уведомлений (🔔: входящие заявки в друзья, непрочитанные ЛС, рекомендации — Этап 4 п.1)
+// Модальное окно списка друзей при клике на счётчик «N друг / друзей» в профиле (п. 2)
+async function openFriendsListModal(forUid = (user && user.uid)) {
+  const modal = $('friendsListModal'), body = $('friendsModalBody'), titleEl = $('friendsModalTitle');
+  if (!modal || !body) return;
+  if (!allRegisteredProfiles.length) subscribePublicProfilesIfAllowed(true);
+  const friendUids = getAcceptedFriendUids(forUid);
+  const profiles = getEffectiveProfilesList();
+  const isMyOwnList = Boolean(user && forUid === user.uid);
+  const myFriends = getAcceptedFriendUids(user && user.uid);
+  const amCreator = isCreatorAdmin();
+
+  if (titleEl) {
+    titleEl.textContent = `🤝 Список друзей (${friendUids.length})`;
+  }
+  body.replaceChildren();
+
+  if (!friendUids.length) {
+    body.append(el('div', 'msg', isMyOwnList ? 'У тебя пока нет подтверждённых друзей. Открой вкладку «👥 Сообщество» и добавь единомышленников!' : 'У этого пользователя пока нет добавленных друзей.'));
+  } else {
+    friendUids.forEach(fUid => {
+      const fProf = profiles.find(p => p.userId === fUid) || { userId: fUid, name: 'Участник' };
+      const isMe = Boolean(user && fUid === user.uid);
+      const canMessage = !isMe && (isMyOwnList || myFriends.includes(fUid) || amCreator);
+      const card = el('div', 'comm-user-card');
+      const mainRow = el('div', 'comm-user-main');
+      const im = el('img'); im.src = safePosterUrl(fProf.avatar); im.onerror = () => { im.onerror = null; im.src = FALL; };
+      const inf = el('div', 'comm-user-info');
+      const displayId = isProfileCreator(fProf) ? CREATOR_PUBLIC_ID : (fProf.publicId || deterministicIdFromUid(fUid));
+      inf.append(
+        el('b', null, fProf.name || fProf.displayName || 'Участник'),
+        el('div', 'meta', `ID ${displayId}${fProf.mood ? ' · ' + fProf.mood : ''}`)
+      );
+      mainRow.append(im, inf);
+
+      const acts = el('div', 'comm-user-acts');
+      if (canMessage) {
+        const dmB = el('button', 'btn', '✉ Написать');
+        dmB.type = 'button';
+        dmB.onclick = e => {
+          e.stopPropagation();
+          modal.style.display = 'none';
+          openDirectMessagesModal(fUid);
+        };
+        acts.append(dmB);
+      }
+      const openB = el('button', 'btn btn-s', isMe ? 'Мой профиль' : '👁 Профиль');
+      openB.type = 'button';
+      openB.onclick = e => {
+        e.stopPropagation();
+        modal.style.display = 'none';
+        openUserPublicProfile(fProf);
+      };
+      acts.append(openB);
+      card.append(mainRow, acts);
+      card.onclick = () => { modal.style.display = 'none'; openUserPublicProfile(fProf); };
+      body.append(card);
+    });
+  }
+  modal.style.display = 'flex';
+}
+
+// Центр уведомлений (🔔: входящие заявки в друзья, непрочитанные ЛС, рекомендации)
 function renderNotificationsModalBody() {
   const body = $('notifModalBody');
   if (!body) return;
@@ -8032,19 +8305,23 @@ function renderNotificationsModalBody() {
   } else {
     incFr.forEach(fr => {
       const sProf = profiles.find(p => p.userId === fr.fromUid) || { userId: fr.fromUid, name: fr.fromName || 'Пользователь' };
-      const row = el('div', 'u-res-row'); row.style.border = '1px solid var(--bd)'; row.style.marginTop = '8px';
+      const row = el('div', 'comm-user-card'); row.style.marginTop = '8px';
+      const mainRow = el('div', 'comm-user-main');
       const im = el('img'); im.src = safePosterUrl(sProf.avatar); im.onerror = () => { im.onerror = null; im.src = FALL; };
-      const inf = el('div'); inf.style.flex = '1';
+      const inf = el('div', 'comm-user-info');
       inf.append(
         el('b', null, sProf.name || fr.fromName || 'Пользователь'),
         el('div', 'meta', 'Хочет добавить тебя в друзья · нажми, чтобы открыть профиль')
       );
-      inf.onclick = () => { closeAll(); openUserPublicProfile(sProf); };
-      const accB = el('button', 'btn', '✓ Принять'); accB.type = 'button'; accB.style.padding = '6px 10px'; accB.style.fontSize = '12px';
+      mainRow.append(im, inf);
+      mainRow.onclick = () => { closeAll(); openUserPublicProfile(sProf); };
+      const acts = el('div', 'comm-user-acts');
+      const accB = el('button', 'btn', '✓ Принять'); accB.type = 'button';
       accB.onclick = e => { e.stopPropagation(); respondToFriendRequest(fr, 'accepted'); };
-      const decB = el('button', 'btn btn-s', '✕ Отклонить'); decB.type = 'button'; decB.style.padding = '6px 10px'; decB.style.fontSize = '12px';
+      const decB = el('button', 'btn btn-s', '✕ Отклонить'); decB.type = 'button';
       decB.onclick = e => { e.stopPropagation(); respondToFriendRequest(fr, 'declined'); };
-      row.append(im, inf, accB, decB);
+      acts.append(accB, decB);
+      row.append(mainRow, acts);
       secFr.append(row);
     });
   }
@@ -8066,17 +8343,21 @@ function renderNotificationsModalBody() {
       const fProf = profiles.find(p => p.userId === fUid) || { userId: fUid, name: 'Друг' };
       const unreadCnt = unreadBySender.get(fUid) || 0;
       const lastUnread = unreadDmMessages.find(m => m.fromUid === fUid);
-      const row = el('div', 'u-res-row'); row.style.border = '1px solid var(--bd)'; row.style.marginTop = '8px';
+      const row = el('div', 'comm-user-card'); row.style.marginTop = '8px';
+      const mainRow = el('div', 'comm-user-main');
       const im = el('img'); im.src = safePosterUrl(fProf.avatar); im.onerror = () => { im.onerror = null; im.src = FALL; };
-      const inf = el('div'); inf.style.flex = '1';
+      const inf = el('div', 'comm-user-info');
       inf.append(
         el('b', null, `${fProf.name || fProf.displayName || 'Друг'}${unreadCnt ? ` (🔴 +${unreadCnt} новых)` : ''}`),
         el('div', 'meta', lastUnread ? `«${lastUnread.text.slice(0, 65)}»` : 'Нажми, чтобы открыть приватный диалог')
       );
-      const chatB = el('button', unreadCnt ? 'btn' : 'btn btn-s', '✉ Открыть чат');
-      chatB.type = 'button'; chatB.style.padding = '6px 12px'; chatB.style.fontSize = '12px';
+      mainRow.append(im, inf);
+      const acts = el('div', 'comm-user-acts');
+      const chatB = el('button', unreadCnt ? 'btn' : 'btn btn-s', '✉ Написать');
+      chatB.type = 'button';
       chatB.onclick = e => { e.stopPropagation(); closeAll(); openDirectMessagesModal(fUid); };
-      row.append(im, inf, chatB);
+      acts.append(chatB);
+      row.append(mainRow, acts);
       row.onclick = () => { closeAll(); openDirectMessagesModal(fUid); };
       secDm.append(row);
     });
@@ -8106,6 +8387,7 @@ function renderNotificationsModalBody() {
 if ($('notifBellBtn')) {
   $('notifBellBtn').onclick = () => {
     if (!user || user.isLocal) return toast('Уведомления доступны при входе в облачный аккаунт', true);
+    if (!allRegisteredProfiles.length) subscribePublicProfilesIfAllowed(true);
     renderNotificationsModalBody();
     $('notifModal').style.display = 'flex';
   };
@@ -8113,11 +8395,18 @@ if ($('notifBellBtn')) {
 if ($('closeNotifModalBtn')) $('closeNotifModalBtn').onclick = () => { $('notifModal').style.display = 'none'; };
 
 // =========================================================================
-// ЭТАП 4 п.2: ПРИВАТНЫЙ ЧАТ / ЛИЧНЫЕ СООБЩЕНИЯ МЕЖДУ ВЗАИМНЫМИ ДРУЗЬЯМИ (kind: 'dm')
+// ПРИВАТНЫЙ ЧАТ / ЛИЧНЫЕ СООБЩЕНИЯ С МГНОВЕННЫМ ОБНОВЛЕНИЕМ ЧЕРЕЗ onSnapshot (п. 2)
+// Создатель может писать любому участнику без дружбы (isMutualFriend || isCreatorAdmin)
 // =========================================================================
 let activeDmPeerUid = null;
 let activeDmLimit = 50;
 let lastDmSendTs = 0;
+let dmChatUnsub1 = null, dmChatUnsub2 = null;
+
+function cleanupActiveDmSubscriptions() {
+  if (dmChatUnsub1) { try { dmChatUnsub1(); } catch (e) {} dmChatUnsub1 = null; }
+  if (dmChatUnsub2) { try { dmChatUnsub2(); } catch (e) {} dmChatUnsub2 = null; }
+}
 
 function getSortedChatId(uid1, uid2) {
   return [String(uid1 || ''), String(uid2 || '')].sort().join('_');
@@ -8126,50 +8415,45 @@ function getSortedChatId(uid1, uid2) {
 async function openDirectMessagesModal(peerUid) {
   if (!user || user.isLocal || !auth.currentUser) return toast('Войди в облачный аккаунт для отправки личных сообщений', true);
   if (!peerUid || peerUid === user.uid) return;
-  if (!isMutualFriend(peerUid)) {
+  // Создатель может писать любому без дружбы; также можно ответить, если уже есть входящее сообщение от этого пользователя (например, от Создателя)
+  const hasIncomingFromPeer = unreadDmMessages.some(m => m.fromUid === peerUid);
+  if (!isMutualFriend(peerUid) && !isCreatorAdmin() && !hasIncomingFromPeer) {
     return toast('Личные сообщения доступны только между взаимными друзьями (сначала отправь и прими заявку в друзья)', true);
   }
   activeDmPeerUid = peerUid;
   activeDmLimit = 50;
-  const peerProf = getEffectiveProfilesList().find(p => p.userId === peerUid) || { userId: peerUid, name: 'Друг' };
+  const peerProf = getEffectiveProfilesList().find(p => p.userId === peerUid) || { userId: peerUid, name: 'Участник' };
   if ($('dmPeerAvatar')) {
     $('dmPeerAvatar').src = safePosterUrl(peerProf.avatar);
     $('dmPeerAvatar').onerror = () => { $('dmPeerAvatar').onerror = null; $('dmPeerAvatar').src = FALL; };
   }
-  if ($('dmPeerName')) $('dmPeerName').textContent = peerProf.name || peerProf.displayName || 'Друг';
-  if ($('dmPeerSub')) $('dmPeerSub').textContent = `Взаимный друг · ID ${peerProf.publicId || deterministicIdFromUid(peerUid)}`;
+  if ($('dmPeerName')) $('dmPeerName').textContent = peerProf.name || peerProf.displayName || 'Участник';
+  const relLabel = isMutualFriend(peerUid) ? 'Взаимный друг' : (isCreatorAdmin() ? 'Режим Создателя (без заявки)' : 'Диалог');
+  if ($('dmPeerSub')) $('dmPeerSub').textContent = `${relLabel} · ID ${isProfileCreator(peerProf) ? CREATOR_PUBLIC_ID : (peerProf.publicId || deterministicIdFromUid(peerUid))}`;
   $('dmModal').style.display = 'flex';
-  await loadDirectMessagesHistory();
+  subscribeDirectMessagesHistory();
 }
 
-async function loadDirectMessagesHistory() {
+function subscribeDirectMessagesHistory() {
+  cleanupActiveDmSubscriptions();
   const box = $('dmMessagesBox'), olderBtn = $('dmLoadOlderBtn');
   if (!box || !activeDmPeerUid || !user || user.isLocal) return;
   const chatId = getSortedChatId(user.uid, activeDmPeerUid);
-  try {
-    // Два запроса с явным участием user.uid (fromUid == user.uid и toUid == user.uid), чтобы правила Firestore всегда доказывали доступ
-    const fetchHalf = async (field) => {
-      try {
-        const s = await getDocs(query(collection(db, 'items'), where('kind', '==', 'dm'), where('chatId', '==', chatId), where(field, '==', user.uid), orderBy('createdAt', 'desc'), limit(activeDmLimit)));
-        return s.docs;
-      } catch (e) {
-        const s = await getDocs(query(collection(db, 'items'), where('kind', '==', 'dm'), where('chatId', '==', chatId), where(field, '==', user.uid), limit(activeDmLimit)));
-        return s.docs;
-      }
-    };
-    const [sentDocs, recDocs] = await Promise.all([fetchHalf('fromUid'), fetchHalf('toUid')]);
-    const map = new Map();
-    [...sentDocs, ...recDocs].forEach(d => map.set(d.id, { _docId: d.id, ...d.data() }));
-    const allMsgs = [...map.values()].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)).slice(-activeDmLimit);
+  const sentMap = new Map();
+  const recMap = new Map();
+
+  const renderMergedMessages = () => {
+    const merged = new Map([...sentMap.entries(), ...recMap.entries()]);
+    const allMsgs = [...merged.values()].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)).slice(-activeDmLimit);
 
     if (olderBtn) {
-      olderBtn.style.display = (sentDocs.length >= activeDmLimit || recDocs.length >= activeDmLimit) ? 'inline-block' : 'none';
-      olderBtn.onclick = () => { activeDmLimit += 50; loadDirectMessagesHistory(); };
+      olderBtn.style.display = (sentMap.size >= activeDmLimit || recMap.size >= activeDmLimit) ? 'inline-block' : 'none';
+      olderBtn.onclick = () => { activeDmLimit += 50; subscribeDirectMessagesHistory(); };
     }
 
     box.replaceChildren();
     if (!allMsgs.length) {
-      box.append(el('div', 'meta', 'Сообщений пока нет — напиши другу первым!'));
+      box.append(el('div', 'meta', 'Сообщений пока нет — напиши первым!'));
     } else {
       allMsgs.forEach(m => {
         const isMine = m.fromUid === user.uid;
@@ -8183,29 +8467,64 @@ async function loadDirectMessagesHistory() {
           delB.type = 'button'; delB.title = 'Удалить сообщение';
           delB.onclick = async () => {
             await deleteDoc(doc(db, 'items', m._docId)).catch(() => {});
-            b.remove();
           };
           meta.append(delB);
         }
         b.append(txt, meta);
         box.append(b);
 
-        // Если сообщение адресовано нам и ещё не прочитано — помечаем только поле read: true (разрешено правилами!)
         if (!isMine && m.toUid === user.uid && m.read === false) {
           setDoc(doc(db, 'items', m._docId), { read: true }, { merge: true }).catch(() => {});
         }
       });
       box.scrollTop = box.scrollHeight;
     }
-  } catch (e) {
-    box.replaceChildren(el('div', 'meta', 'Ошибка загрузки сообщений: ' + (e.code || e.message)));
-  }
+  };
+
+  const attachHalfListener = (field, targetMap) => {
+    const qSorted = query(
+      collection(db, 'items'),
+      where('kind', '==', 'dm'),
+      where('chatId', '==', chatId),
+      where(field, '==', user.uid),
+      orderBy('createdAt', 'desc'),
+      limit(activeDmLimit)
+    );
+    return onSnapshot(qSorted, snap => {
+      targetMap.clear();
+      snap.docs.forEach(d => targetMap.set(d.id, { _docId: d.id, ...d.data() }));
+      renderMergedMessages();
+    }, err => {
+      // Если составной индекс для ЛС ещё не создан в Firebase Console — подписываемся без orderBy и уведомляем
+      if ($('dmPeerSub') && err?.code === 'failed-precondition') {
+        $('dmPeerSub').textContent = '⚠ Создай 2 индекса для dm в Firebase Console для сортировки 50+ сообщений';
+      }
+      const qFallback = query(
+        collection(db, 'items'),
+        where('kind', '==', 'dm'),
+        where('chatId', '==', chatId),
+        where(field, '==', user.uid)
+      );
+      const fbUnsub = onSnapshot(qFallback, snap => {
+        targetMap.clear();
+        snap.docs.forEach(d => targetMap.set(d.id, { _docId: d.id, ...d.data() }));
+        renderMergedMessages();
+      }, () => {});
+      if (field === 'fromUid') dmChatUnsub1 = fbUnsub;
+      else dmChatUnsub2 = fbUnsub;
+    });
+  };
+
+  dmChatUnsub1 = attachHalfListener('fromUid', sentMap);
+  dmChatUnsub2 = attachHalfListener('toUid', recMap);
 }
 
 async function sendDirectMessage() {
   if (!user || user.isLocal || !auth.currentUser || !activeDmPeerUid) return;
   if (prof.banned && !isCreatorAdmin()) return toast('Твой профиль заблокирован — отправка сообщений недоступна', true);
-  if (!isMutualFriend(activeDmPeerUid)) return toast('Писать сообщения можно только взаимным друзьям', true);
+  if (!isMutualFriend(activeDmPeerUid) && !isCreatorAdmin()) {
+    return toast('Писать сообщения можно только взаимным друзьям', true);
+  }
   const now = Date.now();
   if (now - lastDmSendTs < 2500) return toast('Подожди пару секунд перед отправкой следующего сообщения', true);
   const inp = $('dmInput');
@@ -8227,7 +8546,6 @@ async function sendDirectMessage() {
       read: false
     });
     if (inp) inp.value = '';
-    await loadDirectMessagesHistory();
   } catch (e) {
     toast('Не удалось отправить сообщение: ' + (e.code || e.message), true);
   }
@@ -8235,91 +8553,13 @@ async function sendDirectMessage() {
 
 if ($('dmSendBtn')) $('dmSendBtn').onclick = sendDirectMessage;
 if ($('dmInput')) $('dmInput').onkeydown = e => { if (e.key === 'Enter') sendDirectMessage(); };
-if ($('closeDmModalBtn')) $('closeDmModalBtn').onclick = () => { $('dmModal').style.display = 'none'; activeDmPeerUid = null; };
-
-// А3. Лента друзей (строго по принятым заявкам getAcceptedFriendUids()! — Этап 4 п.1)
-async function renderFriendsFeed() {
-  const bar = $('friendsListBar'), listBox = $('friendsFeedList');
-  if (!bar || !listBox) return;
-  bar.replaceChildren(); listBox.replaceChildren();
-  const friends = getAcceptedFriendUids();
-  if (!friends.length) {
-    listBox.append(el('div', 'msg', 'У тебя пока нет подтверждённых друзей. Зайди в «👥 Сообщество», открой профиль участника и отправь заявку «➕ Добавить в друзья»!'));
-    return;
-  }
-  const profiles = getEffectiveProfilesList();
-  friends.forEach(fUid => {
-    const p = profiles.find(x => x.userId === fUid) || { userId: fUid, name: 'Друг' };
-    const wrap = el('span', 'chip'); wrap.style.display = 'inline-flex'; wrap.style.alignItems = 'center'; wrap.style.gap = '6px';
-    const nmSpan = el('span', null, `👤 ${p.name || p.displayName || 'Друг'}`);
-    nmSpan.onclick = () => openUserPublicProfile(p);
-    const dmIcon = el('b', null, '✉'); dmIcon.title = 'Открыть приватный чат с другом';
-    dmIcon.onclick = e => { e.stopPropagation(); openDirectMessagesModal(fUid); };
-    wrap.append(nmSpan, dmIcon);
-    bar.append(wrap);
-  });
-
-  listBox.append(el('div', 'meta', 'Загружаю 20 последних обновлений каждого друга…'));
-  try {
-    const feedEvents = [];
-    for (const fUid of friends.slice(0, 12)) {
-      const fProf = profiles.find(x => x.userId === fUid) || { name: 'Друг', userId: fUid };
-      let docs = [];
-      try {
-        const snap = await getDocs(query(
-          collection(db, 'items'),
-          where('kind', '==', 'title'),
-          where('userId', '==', fUid),
-          where('hiddenFromGuests', '==', false),
-          orderBy('updatedAt', 'desc'),
-          limit(20)
-        ));
-        docs = snap.docs;
-      } catch (idxErr) {
-        const snap = await getDocs(query(
-          collection(db, 'items'),
-          where('kind', '==', 'title'),
-          where('userId', '==', fUid),
-          where('hiddenFromGuests', '==', false),
-          limit(20)
-        ));
-        docs = snap.docs;
-      }
-      docs.forEach(d => {
-        const it = fix({ ...d.data(), _docId: d.id });
-        if (it.hiddenFromGuests || (fProf.hide18 && isAdultItem(it))) return;
-        feedEvents.push({ friend: fProf, item: it, ts: it.updatedAt || it.completedAt || born(it) || 0 });
-      });
-    }
-    feedEvents.sort((a, b) => b.ts - a.ts);
-    listBox.replaceChildren();
-    if (!feedEvents.length) {
-      listBox.append(el('div', 'msg', 'У друзей пока нет публичных записей в коллекциях.'));
-      return;
-    }
-    feedEvents.slice(0, 40).forEach(({ friend, item, ts }) => {
-      const row = el('div', 'u-res-row'); row.style.border = '1px solid var(--bd)'; row.style.background = 'var(--card)';
-      const im = el('img'); im.src = safePosterUrl(item.poster); im.style.borderRadius = '8px'; im.style.width = '48px'; im.style.height = '68px';
-      const inf = el('div'); inf.style.flex = '1';
-      const top = el('div', 'row'); top.style.gap = '8px';
-      top.append(
-        el('b', null, friend.name || friend.displayName || 'Друг'),
-        el('span', 'status', item.status),
-        (item.fav && !friend.hideFavorites) ? el('span', 'chip', '❤ Любимое') : '',
-        item.rating ? el('span', 'chip', '★ ' + item.rating + '/10') : ''
-      );
-      const titleLine = el('div', null, `${item.title} (${catLabel(item)}, ${item.year || '—'})`);
-      titleLine.style.fontWeight = '700'; titleLine.style.marginTop = '4px';
-      const dateStr = ts ? new Date(ts).toLocaleString('ru-RU') : '';
-      const noteAllowed = Boolean(friend.showMyNotes && item.myNote);
-      inf.append(top, titleLine, el('div', 'meta', (noteAllowed ? `💬 «${item.myNote.slice(0, 90)}» · ` : '') + dateStr));
-      row.append(im, inf);
-      row.onclick = () => openFullTitlePage(item);
-      listBox.append(row);
-    });
-  } catch (e) { listBox.replaceChildren(el('div', 'msg', 'Не удалось загрузить ленту: ' + e.message)); }
+if ($('closeDmModalBtn')) {
+  $('closeDmModalBtn').onclick = () => {
+    cleanupActiveDmSubscriptions();
+    $('dmModal').style.display = 'none';
+    activeDmPeerUid = null;
+  };
 }
-if ($('refreshFeedBtn')) $('refreshFeedBtn').onclick = renderFriendsFeed;
 
 if ($('shareProfileLinkBtn')) {
   $('shareProfileLinkBtn').onclick = () => {
@@ -8394,6 +8634,7 @@ function openUserPublicProfile(targetProf, pushHash = true) {
 
   document.querySelector('#mainTabs .tab[data-v="profile"]')?.click();
   subscribeGuestItems(targetProf.userId);
+  loadGuestAcceptedFriends(targetProf.userId);
 }
 
 function subscribeGuestItems(targetUid) {
@@ -9079,7 +9320,7 @@ if ($('shikiImportBtn')) {
   };
 }
 
-// ---------- Переключение главных вкладок (без вкладки лидеров) ----------
+// ---------- Переключение главных вкладок (без вкладки лидеров и без ленты друзей — п. 1) ----------
 document.querySelectorAll('#mainTabs .tab').forEach(b => {
   b.onclick = () => {
     document.querySelectorAll('#mainTabs .tab').forEach(x => x.classList.toggle('on', x === b));
@@ -9089,12 +9330,16 @@ document.querySelectorAll('#mainTabs .tab').forEach(b => {
     $('catalogView').style.display = v === 'catalog' ? '' : 'none';
     $('profileView').style.display = v === 'profile' ? '' : 'none';
     $('usersView').style.display = v === 'users' ? '' : 'none';
-    $('feedView').style.display = v === 'feed' ? '' : 'none';
     $('adminView').style.display = v === 'admin' ? '' : 'none';
     if (v === 'catalog') cgMarks();
-    if (v === 'users') renderPublicUsersDirectory();
-    if (v === 'feed') renderFriendsFeed();
-    if (v === 'admin') renderAdminDashboard();
+    if (v === 'users') {
+      subscribePublicProfilesIfAllowed(false);
+      renderPublicUsersDirectory();
+    }
+    if (v === 'admin') {
+      subscribePublicProfilesIfAllowed(false);
+      renderAdminDashboard();
+    }
   };
 });
 
@@ -9102,7 +9347,7 @@ let tabDone = false;
 function homeTab() {
   if (tabDone) return; tabDone = true;
   let t = ''; try { t = localStorage.getItem('lastTab'); } catch (e) {}
-  if (t === 'leaders' || (t === 'admin' && !isCreatorAdmin())) t = 'catalog';
+  if (t === 'leaders' || t === 'feed' || (t === 'admin' && !isCreatorAdmin())) t = 'catalog';
   const b = t && document.querySelector(`#mainTabs .tab[data-v="${t}"]`);
   if (b) b.click();
 }
@@ -9153,13 +9398,13 @@ document.querySelectorAll('#accMenu .mi, #accMenu .mrow').forEach(n => n.addEven
 document.addEventListener('load', e => { if (e.target && e.target.tagName === 'IMG') e.target.classList.add('ld'); }, true);
 document.addEventListener('error', e => { if (e.target && e.target.tagName === 'IMG') e.target.classList.add('ld'); }, true);
 
-// Лёгкий пинг онлайна раз в 5 минут (обновляет только lastVisit без nowWatching и без statsSummary!)
+// Экономный пинг онлайна раз в 15 минут (п. 5: не нагружает чтениями базу Firestore)
 setInterval(() => {
   if (document.visibilityState === 'visible' && user && !user.isLocal && !window._viewingGuestUid) {
     profCloud(true);
   }
   updateRealOnlineCounter();
-}, 300000);
+}, 900000);
 
 KanbanManager.init();
 ShareCardGenerator.init();

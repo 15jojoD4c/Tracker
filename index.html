@@ -248,9 +248,15 @@ textarea{resize:vertical;min-height:80px}
 .list .title{margin:0 0 4px;-webkit-line-clamp:1}
 .list .bd2{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
 
-.qa{position:absolute;right:10px;bottom:10px;z-index:3;width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(18,20,32,.72);backdrop-filter:blur(8px);color:#fff;font-size:18px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4);transition:transform .15s,background .15s}
-.qa:hover{background:var(--ac);transform:scale(1.1)}
-.qa.done{background:rgba(29,181,122,.92);border-color:transparent}
+.qa{position:absolute;right:10px;bottom:10px;z-index:3;min-width:34px;height:32px;padding:0 10px;border-radius:999px;border:1px solid rgba(255,255,255,.24);background:rgba(15,17,28,.88);backdrop-filter:blur(8px);color:#fff;font-size:12px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;box-shadow:0 4px 12px rgba(0,0,0,.48);transition:transform .15s,background .15s}
+.qa:hover{background:var(--ac);border-color:transparent;transform:scale(1.06)}
+.qa[data-s="В планах"]{background:#5b6b8c;border-color:rgba(255,255,255,.28);color:#fff}
+.qa[data-s="Смотрю/Читаю"],.qa[data-s="Пересматриваю"]{background:#2f8fe8;border-color:rgba(255,255,255,.28);color:#fff}
+.qa[data-s="Просмотрено/Прочитано"]{background:#1db57a;border-color:rgba(255,255,255,.28);color:#fff}
+.qa[data-s="Брошено"]{background:#c2543e;border-color:rgba(255,255,255,.28);color:#fff}
+.qa[data-s="Любимое"]{background:#e0457b;border-color:rgba(255,255,255,.28);color:#fff}
+.qa .qa-ic{font-size:12.5px;line-height:1}
+.qa .qa-lbl{white-space:nowrap}
 
 .tiles{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .tile{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px 18px;min-width:110px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;color:#fff;cursor:pointer;font-family:inherit;transition:.2s}
@@ -328,9 +334,7 @@ textarea{resize:vertical;min-height:80px}
 .mc>.fs:first-of-type{border-top:0;padding-top:0}
 .fld{display:flex;flex-direction:column;gap:5px;min-width:0}
 .fld>label{font-size:12px;color:var(--mu);font-weight:600}
-.hid{position:absolute;left:10px;bottom:10px;z-index:3;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(18,20,32,.62);backdrop-filter:blur(8px);color:#fff;font-size:12px;cursor:pointer;opacity:0;transition:.2s}
-.card:hover .hid,.hid:focus-visible{opacity:1}
-.hid:hover{background:#cf6679}
+/* Кнопка .hid удалена (Часть 1 п.4) */
 
 .fb[data-c="Аниме"]::before,#cgCats .tb[data-g="Аниме"]::before{content:"🌸 "}
 .fb[data-c="Манга"]::before,#cgCats .tb[data-g="Манга"]::before{content:"📖 "}
@@ -554,6 +558,15 @@ html[data-theme=white] .chip{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,
 html[data-theme=white] .donut::after{background:#fff}
 html[data-theme=white] .jutsu-chars-sec{background:#eef1f8;border-color:rgba(0,0,0,.1)}
 html[data-theme=white] .online-badge{color:#0f5132}
+html[data-theme=white] .folder-pill,html[data-theme=white] .cg-tchip,html[data-theme=white] .comm-user-card,html[data-theme=white] .my-lists-sec,html[data-theme=white] .hyb-subtabs-bar,html[data-theme=white] .ach-card,html[data-theme=white] .hyb-lcard,html[data-theme=white] .mt-card,html[data-theme=white] .insight-card,html[data-theme=white] .status-summary-banner,html[data-theme=white] .cg-source-badge,html[data-theme=white] .cg-subkind-pill:not(.on){background:#fff;color:#14161f;border-color:rgba(0,0,0,.13);box-shadow:0 2px 8px rgba(0,0,0,.04)}
+html[data-theme=white] .folder-pill.active{background:rgba(139,92,246,.15);color:#4c1d95;border-color:#8b5cf6}
+html[data-theme=white] .cg-tchip:hover{color:#14161f;border-color:rgba(0,0,0,.28)}
+html[data-theme=white] .dm-bubble.theirs{background:#eef0f6;color:#14161f;border-color:rgba(0,0,0,.12)}
+html[data-theme=white] .qa-float-menu,html[data-theme=white] .toolbar-more-pop,html[data-theme=white] .pick-menu-pop,html[data-theme=white] .hyb-more-pop{background:#fff;color:#14161f;border-color:rgba(0,0,0,.15);box-shadow:0 12px 32px rgba(0,0,0,.16)}
+html[data-theme=white] .qa-float-menu button,html[data-theme=white] .toolbar-more-pop button,html[data-theme=white] .pick-menu-pop button,html[data-theme=white] .hyb-more-pop button{color:#14161f}
+html[data-theme=white] .qa-float-menu button:hover,html[data-theme=white] .toolbar-more-pop button:hover,html[data-theme=white] .pick-menu-pop button:hover,html[data-theme=white] .hyb-more-pop button:hover{background:rgba(139,92,246,.12);color:#4c1d95}
+html[data-theme=white] .hyb-st-tab{color:#4b5563}
+html[data-theme=white] .hyb-st-tab.on{color:#fff}
 
 html[data-theme=neon]{--bg:#070510;--card:rgba(20,14,38,.76);--inp:rgba(255,0,128,.07);--bd:rgba(0,240,255,.22);--ac:#ff2a85;--ach:#00f0ff;--mu:#b4a5d9}
 html[data-theme=mocha]{--bg:#14110f;--card:rgba(36,30,27,.8);--inp:rgba(255,235,215,.06);--bd:rgba(255,220,190,.12);--ac:#c2593f;--ach:#f2cc8f;--mu:#b5a698}
@@ -612,11 +625,28 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
 /* Дополнения Раунда 2: Плавающее меню выбора статуса, Подборки, Достижения, Уведомления, Чат ЛС и Проверка облака */
-.qa-float-menu{display:none;position:fixed;z-index:2600;min-width:195px;background:#181a2a;border:1px solid rgba(192,132,252,.45);border-radius:14px;padding:6px;box-shadow:0 16px 42px rgba(0,0,0,.78);flex-direction:column;gap:3px}
+.qa-menu-backdrop{position:fixed;inset:0;z-index:2590;background:rgba(0,0,0,.32);display:none;backdrop-filter:blur(1.5px)}
+.qa-menu-backdrop.open{display:block}
+@media(min-width:601px){.qa-menu-backdrop{background:transparent;backdrop-filter:none}}
+.qa-float-menu{display:none;position:fixed;z-index:2600;min-width:210px;background:#181a2a;border:1px solid rgba(192,132,252,.45);border-radius:14px;padding:6px;box-shadow:0 16px 42px rgba(0,0,0,.78);flex-direction:column;gap:3px}
 .qa-float-menu.open{display:flex;animation:pop .14s ease}
-.qa-float-menu button{text-align:left;background:none;border:0;color:#e6e8f0;padding:8px 11px;border-radius:9px;cursor:pointer;font:inherit;font-size:12.5px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:8px;transition:.12s}
+.qa-float-menu .qa-menu-hdr{font-size:11px;font-weight:800;color:var(--mu);padding:4px 10px 6px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:2px;display:flex;justify-content:space-between;align-items:center}
+.qa-float-menu button{text-align:left;background:none;border:0;color:#e6e8f0;padding:8px 11px;border-radius:9px;cursor:pointer;font:inherit;font-size:12.5px;font-weight:700;display:flex;align-items:center;justify-content:space-between;gap:8px;transition:.12s}
 .qa-float-menu button:hover,.qa-float-menu button.active{background:rgba(139,92,246,.26);color:#fff}
-.qa{min-width:34px;height:34px;padding:0 8px;width:auto!important;border-radius:999px!important;font-size:13px!important;font-weight:800;display:inline-flex!important;align-items:center;justify-content:center;gap:4px}
+.qa-float-menu .st-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0;margin-right:7px}
+/* Убираем синюю вспышку при тапе на телефоне и контур фокуса после закрытия окна (Часть 1 п.8) */
+.card,.pc,button,a,select,input,.hyb-lcard,.hyb-st-tab,.tb,.fb,.kb{-webkit-tap-highlight-color:transparent}
+.card:focus:not(:focus-visible),button:focus:not(:focus-visible){outline:none}
+/* Всегда видимая горизонтальная полоса подкатегорий в каталоге (Часть 1 п.9) + активные чипы фильтров и источник */
+.cg-subkind-bar{display:flex;align-items:center;gap:6px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.cg-subkind-bar::-webkit-scrollbar{display:none}
+.cg-subkind-pill{background:rgba(255,255,255,.05);color:var(--mu);border:1px solid var(--bd);padding:6px 13px;border-radius:999px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:.16s;font-family:inherit}
+.cg-subkind-pill:hover{color:#fff;border-color:rgba(255,255,255,.24)}
+.cg-subkind-pill.on{background:rgba(139,92,246,.24);color:#fff;border-color:var(--ac);box-shadow:0 2px 10px rgba(139,92,246,.25)}
+html[data-theme=white] .cg-subkind-pill.on{background:var(--ac);color:#fff}
+.cg-feed-meta-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:4px 0 8px;font-size:12px;color:var(--mu)}
+.cg-source-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid var(--bd);font-weight:600;font-size:11.5px}
+.cg-active-chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
 
 .my-lists-sec{background:rgba(20,22,34,.82);border:1px solid var(--bd);border-radius:18px;padding:14px 18px;margin-bottom:16px}
 .my-lists-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
@@ -702,11 +732,26 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
   #cgCats::-webkit-scrollbar,#catFilters::-webkit-scrollbar,#kindFilters::-webkit-scrollbar,#animeKindFilters::-webkit-scrollbar,#videoKindFilters::-webkit-scrollbar{display:none}
   #cgCats .tb,#catFilters .fb,#catFilters .tb,#kindFilters .kb,#animeKindFilters .kb,#videoKindFilters .kb{flex:0 0 auto;padding:6px 12px!important;font-size:12px!important;min-height:34px!important;white-space:nowrap}
 
-  /* Карточки пользователей в Сообществе на телефоне в колонку с переносом (п. 7) */
+  /* Карточки пользователей в Сообществе на телефоне в колонку с переносом */
   .comm-user-card{flex-direction:column;align-items:stretch;padding:12px;gap:10px}
   .comm-user-main{width:100%;min-width:0;align-items:flex-start}
   .comm-user-acts{width:100%;margin-left:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
   .comm-user-acts button{width:100%;min-height:38px;font-size:12.5px;padding:7px 10px}
+  /* На телефоне кнопка на постере всегда компактная круглая (только цветная иконка статуса без длинной подписи), чтобы не закрывать постер и оценку (Часть 1 п.3) */
+  .card .qa,.qa{right:6px;bottom:6px;width:32px!important;height:32px!important;min-width:32px!important;min-height:32px!important;padding:0!important;border-radius:50%!important;font-size:13px!important}
+  .card .qa .qa-lbl,.qa .qa-lbl{display:none!important}
+  .card .mine{left:6px;right:auto;bottom:6px;font-size:11px;padding:2px 6px}
+  /* На телефоне скрываем Канбан-доску и делаем 5 карточек списков компактной горизонтальной лентой (Часть 1 п.2) */
+  #kanbanBtn,#kanbanBoard{display:none!important}
+  .hyb-list-cards-row{display:flex!important;grid-template-columns:none!important;overflow-x:auto;gap:8px;padding-bottom:6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .hyb-list-cards-row::-webkit-scrollbar{display:none}
+  .hyb-lcard{flex:0 0 116px;padding:7px}
+  .hyb-lcard-collage{height:60px;margin-bottom:5px}
+  .hyb-lcard-lbl{font-size:12px}
+  .hyb-lcard-cnt{font-size:10.5px}
+  /* На телефоне меню статуса qaFloatMenu открывается снизу как аккуратная шторка (bottom-sheet — Часть 1 п.3) */
+  .qa-float-menu{left:12px!important;right:12px!important;bottom:14px!important;top:auto!important;width:auto!important;min-width:0!important;max-width:none!important;border-radius:18px!important;padding:10px!important;box-shadow:0 20px 60px rgba(0,0,0,.85)!important}
+  .qa-float-menu button{padding:11px 14px!important;font-size:14px!important;min-height:42px!important}
 }
 </style>
 </head>
@@ -785,13 +830,20 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
         <button class="tb" data-g="Фильм" type="button" style="display:none">Фильмы</button>
         <button class="tb" data-g="Сериал" type="button" style="display:none">Сериалы</button>
       </div>
-      <div id="cgFilters" style="margin-top:12px">
+      <!-- Всегда видимая горизонтальная полоса подкатегорий под основными вкладками (Часть 1 п.9) -->
+      <div id="cgSubKindBar" class="cg-subkind-bar"></div>
+      <!-- Строка источника каталога и кнопки обновления подборки (Часть 1 п.5) -->
+      <div class="cg-feed-meta-bar">
+        <span id="cgSourceCaption" class="cg-source-badge">🌐 Источник каталога: AniList (Аниме)</span>
+        <button class="btn btn-s" id="cgQuickShuffleBtn" type="button" style="padding:4px 10px;font-size:11.5px">🔄 Обновить подборку</button>
+      </div>
+      <div id="cgFilters" style="margin-top:6px">
         <div class="cg-search-row">
           <input id="cgSearch" placeholder="Найти в каталоге по названию (Enter — поиск)...">
           <button id="cgClear" title="Очистить поиск" type="button">✕</button>
         </div>
         <div class="row">
-          <button class="tb" id="cgFltBtn" type="button">🔎 Фильтры</button>
+          <button class="tb" id="cgFltBtn" type="button" aria-expanded="false">🔎 Фильтры ▾</button>
           <select id="cgMode" class="cg-collapsible">
             <option value="pop">Популярное</option>
             <option value="top">Топ рейтинга</option>
@@ -805,22 +857,23 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
             <option value="classic">🏛 Классика</option>
             <option value="rare">🔭 Малоизвестные</option>
           </select>
-          <select id="cgKind" class="cg-collapsible" style="display:none"><option value="">Все виды</option><option value="JP">Манга</option><option value="KR">Манхва</option><option value="CN">Маньхуа</option></select>
+          <select id="cgKind" class="cg-collapsible" style="display:none"><option value="">Все виды</option><option value="JP">Манга</option><option value="KR">Манхва</option><option value="CN">Маньхуа</option><option value="COMIC">Комикс</option></select>
           <select id="cgAnimeKind" class="cg-collapsible" title="Вид аниме"><option value="">Вид: Все аниме</option><option value="TV">Аниме-сериалы</option><option value="MOVIE">Аниме-фильмы</option></select>
           <select id="cgVideoKind" class="cg-collapsible" style="display:none" title="Вид кино и сериалов"><option value="all">Вид: Все</option><option value="movie">Фильмы</option><option value="tv">Сериалы</option></select>
-          <div class="row cg-collapsible" style="gap:4px;background:rgba(255,255,255,.04);padding:3px 8px;border-radius:12px;border:1px solid var(--bd)" title="Диапазон годов выхода («Год от» — начиная с указанного года и позже; «Год до» — всё до указанного года)">
-            <input type="number" id="cgYear" placeholder="Год от" aria-label="Год от" min="1900" max="2100" style="width:82px;padding:6px 8px;border:0;background:transparent">
-            <span class="meta" style="margin:0">—</span>
-            <input type="number" id="cgYear2" placeholder="Год до" aria-label="Год до" min="1900" max="2100" style="width:82px;padding:6px 8px;border:0;background:transparent">
-          </div>
           <button class="tb cg-collapsible" id="cgTagsToggleBtn" type="button">🏷 Жанры и теги <span id="cgTagsCountBadge"></span></button>
           <button class="tb cg-collapsible" id="cgHide" type="button">Скрыть добавленные</button>
-          <select id="cgMood" class="cg-collapsible" title="Подобрать по настроению"><option value="">Настроение…</option><option value="fun">😄 Весёлое</option><option value="serious">🎭 Серьёзное</option><option value="scary">👻 Страшное</option><option value="love">💕 Романтичное</option><option value="thrill">⚡ Захватывающее</option><option value="mystery">🕵 Загадочное</option><option value="scifi">🚀 Фантастика</option><option value="short">⏱ Короткое</option></select>
           <button class="tb cg-collapsible" id="cgCal" type="button" title="Календарь выхода серий и премьер">📅 Календарь</button>
           <select id="cgMin" class="cg-collapsible" title="Минимальная внешняя оценка"><option value="0">Любой рейтинг</option><option value="6">★ 6+</option><option value="7">★ 7+</option><option value="8">★ 8+</option></select>
+          <!-- Поля «Год от / до» и «Настроение» убраны в «⚙ Дополнительно» с сохранением ID (Часть 1 п.6) -->
           <details class="adv cg-collapsible">
-            <summary>⚙ Дополнительно (сезоны, страны, объём, 18+)</summary>
+            <summary>⚙ Дополнительно (годы, настроение, сезоны, страны, объём, 18+)</summary>
             <div class="row">
+              <div class="row" style="gap:4px;background:rgba(255,255,255,.04);padding:3px 8px;border-radius:12px;border:1px solid var(--bd)" title="Диапазон годов выхода («Год от» — начиная с указанного года и позже; «Год до» — всё до указанного года)">
+                <input type="number" id="cgYear" placeholder="Год от" aria-label="Год от" min="1900" max="2100" style="width:82px;padding:6px 8px;border:0;background:transparent">
+                <span class="meta" style="margin:0">—</span>
+                <input type="number" id="cgYear2" placeholder="Год до" aria-label="Год до" min="1900" max="2100" style="width:82px;padding:6px 8px;border:0;background:transparent">
+              </div>
+              <select id="cgMood" title="Подобрать по настроению"><option value="">🎭 Настроение…</option><option value="fun">😄 Весёлое</option><option value="serious">🎭 Серьёзное</option><option value="scary">👻 Страшное</option><option value="love">💕 Романтичное</option><option value="thrill">⚡ Захватывающее</option><option value="mystery">🕵 Загадочное</option><option value="scifi">🚀 Фантастика</option><option value="short">⏱ Короткое</option></select>
               <select id="cgSeason"><option value="">Любой сезон</option><option value="WINTER">❄ Зима</option><option value="SPRING">🌸 Весна</option><option value="SUMMER">☀ Лето</option><option value="FALL">🍂 Осень</option></select>
               <select id="cgLen"></select>
               <select id="cgAge" title="Возрастной контент (для аниме и манги)"><option value="">Без 18+</option><option value="all">С 18+</option><option value="only">Только 18+</option></select>
@@ -828,6 +881,7 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
               <button class="tb" id="cgNow" type="button">📅 Текущий сезон</button>
             </div>
           </details>
+          <button class="tb cg-collapsible" id="cgRefreshFeedBtn" type="button" title="Загрузить другую страницу популярных тайтлов">🔄 Обновить подборку</button>
           <button class="tb cg-collapsible" id="cgReset" type="button">Сбросить <span id="cgActiveFiltersBadge"></span></button>
           <div class="pick-menu-wrap" id="cgPickMenuWrap">
             <button class="btn" id="cgPickMenuBtn" type="button">🎲 Подобрать ▾</button>
@@ -841,6 +895,8 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
         </div>
         <div class="cg-tags-panel" id="cgTagsPanel" style="display:none"></div>
       </div>
+      <!-- Видимые чипы активных фильтров каталога (показываются даже если панель фильтров свёрнута на телефоне — Часть 1 п.5) -->
+      <div id="cgActiveChipsBar" class="cg-active-chips" style="display:none"></div>
       <div class="grid" id="cgGrid"></div>
       <div style="text-align:center;margin:24px"><button class="btn btn-s" id="cgMore" type="button" style="display:none">Показать ещё</button></div>
     </div>
@@ -1446,7 +1502,8 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
   <div id="friendsModalBody" style="display:flex;flex-direction:column;gap:8px;max-height:64vh;overflow-y:auto"></div>
 </div></div>
 
-<!-- Плавающее меню выбора статуса поверх страницы (Этап 3 п.7) -->
+<!-- Подложка и плавающее меню выбора статуса поверх страницы (Часть 1 п.3 и п.8) -->
+<div id="qaMenuBackdrop" class="qa-menu-backdrop"></div>
 <div id="qaFloatMenu" class="qa-float-menu"></div>
 
 <div id="calModal" class="modal"><div class="mc" style="max-width:720px">
@@ -1499,7 +1556,7 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import {getAuth,signInWithPopup,signInWithRedirect,GoogleAuthProvider,signOut,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,deleteUser} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import {getFirestore,collection,doc,setDoc,deleteDoc,getDoc,query,where,onSnapshot,writeBatch,getDocs,limit,orderBy} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import {getFirestore,collection,doc,setDoc,deleteDoc,getDoc,query,where,onSnapshot,writeBatch,getDocs,limit,orderBy,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // Ключ TMDB по умолчанию
 const DEFAULT_TMDB_KEY = "ff768a3ef9a051ab90138e3a560e43e8";
@@ -1547,11 +1604,20 @@ function deterministicIdFromUid(uid, takenSet = null) {
 
 // ИСПРАВЛЕНИЕ БАГА №6 (Shikimori постеры): прокси для обхода блокировки картинок с shikimori.one без VPN
 function safePosterUrl(u) {
-  if (!u) return FALL;
-  if (/^https?:\/\/(shikimori\.(one|org|me)|desu\.shikimori\.one)/i.test(u)) {
-    return 'https://wsrv.nl/?url=' + encodeURIComponent(u);
+  if (!u || typeof u !== 'string') return FALL;
+  const s = u.trim();
+  if (!s) return FALL;
+  if (s.startsWith('data:image/')) return s;
+  if (!/^https?:\/\//i.test(s)) return FALL;
+  if (/^https?:\/\/(shikimori\.(one|org|me)|desu\.shikimori\.one)/i.test(s)) {
+    return 'https://wsrv.nl/?url=' + encodeURIComponent(s);
   }
-  return u;
+  return s;
+}
+function safeCssBgUrl(u) {
+  const clean = safePosterUrl(u);
+  if (!clean || clean === FALL) return '';
+  return `url("${clean.replace(/["\\()\r\n]/g, '')}")`;
 }
 
 const app = initializeApp({
@@ -1853,6 +1919,11 @@ const profCloud = (onlyHeartbeat = false) => {
     delete safeProf.ownerEmail;
     delete safeProf.statsSummary;
     delete safeProf.friends;
+    // Не храним огромную base64-обложку в публичном документе prof_{uid}, чтобы список профилей грузился мгновенно (Часть 2 Средние баги)
+    if (safeProf.cover && String(safeProf.cover).startsWith('data:') && String(safeProf.cover).length > 35000) {
+      try { localStorage.setItem('localCover_' + user.uid, safeProf.cover); } catch (e) {}
+      safeProf.cover = '';
+    }
     if (onlyHeartbeat) {
       setDoc(doc(db, 'items', 'prof_' + user.uid), {
         kind: 'profile',
@@ -1862,7 +1933,7 @@ const profCloud = (onlyHeartbeat = false) => {
       }, { merge: true }).catch(() => {});
       return;
     }
-    // Защита от конфликта с модерацией Создателя (п. 7): обычный пользователь не отправляет banned / specialBadge и пишет через { merge: true }
+    // Защита от конфликта с модерацией Создателя: обычный пользователь не отправляет banned / specialBadge и пишет через { merge: true }
     if (!isCreatorAdmin()) {
       delete safeProf.banned;
       delete safeProf.specialBadge;
@@ -1892,23 +1963,40 @@ const cloudSave = it => {
 
 // Экономия чтений Firestore (п. 5): загружаем профили через getDocs по требованию (с кэшем), без постоянного скачивания всех профилей через onSnapshot
 let _lastProfilesFetchTs = 0;
+let _profilesFetchPromise = null;
 function subscribePublicProfilesIfAllowed(force = false) {
   if (!auth.currentUser) {
     updateRealOnlineCounter();
     renderPublicUsersDirectory();
-    return;
+    return Promise.resolve();
   }
-  if (!force && allRegisteredProfiles.length && (Date.now() - _lastProfilesFetchTs) < 180000) {
+  if (!force && allRegisteredProfiles.length && (Date.now() - _lastProfilesFetchTs) < 90000) {
     updateRealOnlineCounter();
     renderPublicUsersDirectory();
-    return;
+    return Promise.resolve();
   }
   _lastProfilesFetchTs = Date.now();
-  refreshProfilesOnlyFromFirestore();
+  _profilesFetchPromise = refreshProfilesOnlyFromFirestore().finally(() => { _profilesFetchPromise = null; });
+  return _profilesFetchPromise;
 }
+async function ensureProfilesLoaded(force = false) {
+  if (!auth.currentUser) return;
+  if (force || !allRegisteredProfiles.length || (Date.now() - _lastProfilesFetchTs) >= 90000) {
+    await subscribePublicProfilesIfAllowed(force);
+  } else if (_profilesFetchPromise) {
+    await _profilesFetchPromise;
+  }
+}
+// Фоновое обновление lastVisit раз в 4 минуты при открытой вкладке для точного статуса «В сети» (Часть 2 Средние баги)
+setInterval(() => {
+  if (document.visibilityState === 'visible' && user && !user.isLocal && auth.currentUser && !window._viewingGuestUid) {
+    profCloud(true);
+  }
+}, 240000);
 
 function startLocalMode(msg) {
   if (unsub) { unsub(); unsub = null; }
+  if (typeof resetSessionMemoryState === 'function') resetSessionMemoryState();
   if (publicProfilesUnsub) { publicProfilesUnsub(); publicProfilesUnsub = null; }
   _verifiedCreatorSession = false;
   try { localStorage.setItem('useLocalMode', '1'); } catch (e) {}
@@ -2160,6 +2248,7 @@ async function migrateOldDocsToKindSchema(manual = false) {
 
 async function activateCloudUserSession(uObj) {
   if (unsub) { unsub(); unsub = null; }
+  if (typeof resetSessionMemoryState === 'function') resetSessionMemoryState();
   user = uObj;
   cloudAccessError = '';
   syncBad = false;
@@ -2195,7 +2284,9 @@ async function activateCloudUserSession(uObj) {
       }
       if (!window._viewingGuestUid) {
         const {isProfile, kind: _k, userId: _u, _docId, statsSummary, friends: _fr, ...rest} = pd;
+        const localSavedCover = localStorage.getItem('localCover_' + effUid) || '';
         Object.assign(prof, rest);
+        if (!prof.cover && localSavedCover) prof.cover = localSavedCover;
         ensureValidPublicIdForCurrentUser();
         profSaveLocal();
         profPaint();
@@ -2208,19 +2299,24 @@ async function activateCloudUserSession(uObj) {
     setTimeout(() => migrateOldDocsToKindSchema(false), 900);
   }
 
+  let _inboxLoadedForSession = false;
   unsub = onSnapshot(query(collection(db, 'items'), where('kind', '==', 'title'), where('userId', '==', effUid)),
     snap => {
       cloudAccessError = '';
       syncBad = false;
       setSync();
       const ownList = deduplicateListByIdAndCleanupCloud(snap.docs.map(d => fix({ ...d.data(), _docId: d.id })), true);
+      if (ownList.length > 0) {
+        try { localStorage.setItem('cloudHadSynced_' + effUid, '1'); } catch (e) {}
+      }
       if (window._viewingGuestUid) {
         window._myOwnItemsBackup = ownList;
         return;
       }
-      // Этап 1 п.4: Не затираем непустой локальный кэш пустым результатом из облака, если документы ещё не мигрированы
+      // Защищаем от потери до миграции, но если миграция уже прошла и коллекция была синхронизирована ранее — принимаем пустой список из облака (Часть 2 Средние баги)
       const existingCache = loadLocalItems(effUid);
-      if (ownList.length === 0 && existingCache.length > 0 && !window._explicitEmptyAllowed) {
+      const alreadyMigratedAndSynced = localStorage.getItem('schemaMigratedV3_' + effUid) === '1' && localStorage.getItem('cloudHadSynced_' + effUid) === '1';
+      if (ownList.length === 0 && existingCache.length > 0 && !window._explicitEmptyAllowed && !alreadyMigratedAndSynced) {
         items = deduplicateListByIdAndCleanupCloud(existingCache, false);
         loaded = true;
         if (!window._migrationRetriedOnEmpty) {
@@ -2236,14 +2332,17 @@ async function activateCloudUserSession(uObj) {
         profTried = true;
         profCloud();
         setTimeout(() => checkMigrateLocalItemsToCloud(false), 900);
-        setTimeout(checkInitialHashRoute, 400);
+        setTimeout(() => checkInitialHashRoute(), 400);
         setTimeout(resumeBackgroundCatalogLinkingIfNeeded, 1800);
         setTimeout(() => { if (typeof initFriendsAndNotifications === 'function') initFriendsAndNotifications(); }, 600);
       }
       profPaint();
       refresh();
       homeTab();
-      loadInboxRecommendations();
+      if (!_inboxLoadedForSession) {
+        _inboxLoadedForSession = true;
+        loadInboxRecommendations();
+      }
     },
     err => {
       // Этап 1 п.5: Показываем явную красную ошибку «⚠ Нет доступа к облаку: <код ошибки>» вместо молчаливого «Синхронизировано»
@@ -2334,15 +2433,32 @@ $('emailResetBtn').onclick = async () => {
   }
 };
 
+function resetSessionMemoryState() {
+  if (typeof cleanupActiveDmSubscriptions === 'function') cleanupActiveDmSubscriptions();
+  [friendReqUnsub1, friendReqUnsub2, friendReqUnsub3, unreadDmUnsub].forEach(u => { if (u) try { u(); } catch (e) {} });
+  friendReqUnsub1 = friendReqUnsub2 = friendReqUnsub3 = unreadDmUnsub = null;
+  allFriendRequests = [];
+  guestFriendRequestsCache = [];
+  unreadDmMessages = [];
+  if (typeof lastDmByPeerMap !== 'undefined') lastDmByPeerMap.clear();
+  window._cachedInboxRecs = [];
+  window._explicitEmptyAllowed = false;
+  window._migrationRetriedOnEmpty = false;
+  if (typeof uncertainMatchesQueue !== 'undefined') uncertainMatchesQueue.length = 0;
+  if (typeof selSet !== 'undefined') selSet.clear();
+  if (typeof reviewSelSet !== 'undefined') reviewSelSet.clear();
+  if ($('inboxRecsBox')) { $('inboxRecsBox').replaceChildren(); $('inboxRecsBox').style.display = 'none'; }
+  if ($('inboxRecsTabBtn')) $('inboxRecsTabBtn').style.display = 'none';
+  if ($('reviewItemsBox')) { $('reviewItemsBox').replaceChildren(); $('reviewItemsBox').style.display = 'none'; }
+  updateNotificationBellBadge();
+}
+
 $('logoutBtn').onclick = async () => {
   if (window._viewingGuestUid) exitGuestProfile();
   try { localStorage.removeItem('useLocalMode'); } catch (e) {}
   if (unsub) { unsub(); unsub = null; }
   if (publicProfilesUnsub) { publicProfilesUnsub(); publicProfilesUnsub = null; }
-  [friendReqUnsub1, friendReqUnsub2, friendReqUnsub3, unreadDmUnsub].forEach(u => { if (u) try { u(); } catch (e) {} });
-  friendReqUnsub1 = friendReqUnsub2 = friendReqUnsub3 = unreadDmUnsub = null;
-  allFriendRequests = []; unreadDmMessages = [];
-  updateNotificationBellBadge();
+  resetSessionMemoryState();
   _verifiedCreatorSession = false;
   resetProfObjectToDefault();
   user = null; items = []; loaded = false;
@@ -2449,7 +2565,12 @@ const same = (a, b) => {
 };
 
 const findDuplicateMatch = (candidate, pool = items) => {
-  return (pool || []).find(existing => existing.id !== candidate.id && same(existing, candidate)) || null;
+  if (!candidate) return null;
+  return (pool || []).find(existing => {
+    if (!existing || existing === candidate) return false;
+    if (existing.id && candidate.id && existing.id === candidate.id && pool === items) return false;
+    return same(existing, candidate);
+  }) || null;
 };
 
 function isAdultItem(it) {
@@ -2721,7 +2842,7 @@ $('sizeSel').value = localStorage.getItem('cw') || '190'; setSize($('sizeSel').v
 // ---------- Модальные окна ----------
 const closeAll = () => {
   if (dlgDone) dlgDone(null);
-  if ($('qaFloatMenu')) $('qaFloatMenu').classList.remove('open');
+  if (typeof closeQuickAddStatusMenu === 'function') closeQuickAddStatusMenu();
   if (typeof cleanupActiveDmSubscriptions === 'function') cleanupActiveDmSubscriptions();
   ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'calModal', 'shareModal', 'charPopupModal', 'dataModal', 'achModal', 'notifModal', 'dmModal', 'themeModal', 'friendsListModal'].forEach(id => {
     if ($(id)) $(id).style.display = 'none';
@@ -2933,8 +3054,9 @@ function profPaint() {
   }
   const u = user || {};
   const fallbackName = u.displayName || (u.email ? u.email.split('@')[0] : 'Пользователь');
-  const av = activeP.avatar || (!window._viewingGuestUid && u.photoURL) || FALL;
-  const bg = activeP.cover ? `url("${activeP.cover}")` : activeP.coverColor ? GRAD[activeP.coverColor - 1] : '';
+  const av = safePosterUrl(activeP.avatar || (!window._viewingGuestUid && u.photoURL) || '') || FALL;
+  const rawCover = activeP.cover || (!window._viewingGuestUid && u.uid ? (localStorage.getItem('localCover_' + u.uid) || '') : '');
+  const bg = rawCover ? safeCssBgUrl(rawCover) : activeP.coverColor ? GRAD[activeP.coverColor - 1] : '';
   $('avatar').src = av;
   if (!window._viewingGuestUid) $('hdrAvatar').src = av;
   $('profName').textContent = activeP.name || activeP.displayName || fallbackName;
@@ -3030,7 +3152,7 @@ if ($('quickCoverChangeBtn')) $('quickCoverChangeBtn').onclick = pfOpen;
 ['pfAvBtn', 'pfCvBtn'].forEach(id => $(id).onclick = () => { pfTarget = id; $('pfFile').value = ''; $('pfFile').click(); });
 $('pfFile').onchange = async () => {
   const f = $('pfFile').files[0]; if (!f) return;
-  try { if (pfTarget === 'pfAvBtn') pf.avatar = await imgData(f, 256, 256, 0.85); else { pf.cover = await imgData(f, 1280, 360, 0.75); pf.coverColor = 0; } pfDraw(); }
+  try { if (pfTarget === 'pfAvBtn') pf.avatar = await imgData(f, 112, 112, 0.74); else { pf.cover = await imgData(f, 1100, 320, 0.72); pf.coverColor = 0; } pfDraw(); }
   catch (e) { toast('Не удалось прочитать картинку — попробуй другой файл.', true); }
 };
 $('pfAvDel').onclick = () => { pf.avatar = ''; pfDraw(); };
@@ -3462,9 +3584,10 @@ $('saveItemBtn').onclick = async () => {
       it.criteria = null;
     }
 
+    if (picked.trailerId) it.trailerId = picked.trailerId;
     const old = items.find(x => x.id === it.id);
     if (old) {
-      ['pin', 'archived', 'seasons', 'format', 'aniId', 'mal', 'tmdb', 'imdbId', 'vols', 'badgeCharImg', 'badgeCharName', '_docId', 'importBatchId', 'importSource', 'isAdult'].forEach(k => {
+      ['pin', 'archived', 'seasons', 'format', 'aniId', 'mal', 'tmdb', 'imdbId', 'vols', 'trailerId', 'badgeCharImg', 'badgeCharName', '_docId', 'importBatchId', 'importSource', 'isAdult'].forEach(k => {
         if (old[k] && !it[k]) it[k] = old[k];
       });
     } else if (user && user.uid) {
@@ -3596,7 +3719,9 @@ function openDetail(id) {
   ds.onchange = () => {
     if (window._viewingGuestUid) return;
     i.status = ds.value;
+    i.needsReview = false;
     if (i.status === 'Просмотрено/Прочитано' && !i.completedAt) i.completedAt = Date.now();
+    else if (i.status === 'В планах') i.completedAt = 0;
     $('detailStatus').textContent = i.status + (i.fav ? ' · ❤ Любимое' : '');
     $('detailStatus').dataset.s = i.status;
     cloudSave(i); profCloud(true); refresh(); toast('Статус изменён: ' + i.status);
@@ -3638,9 +3763,10 @@ function openDetail(id) {
 
 // Кнопка «Посоветовать другу»
 if ($('recommendToFriendBtn')) {
-  $('recommendToFriendBtn').onclick = () => {
+  $('recommendToFriendBtn').onclick = async () => {
     const it = items.find(x => x.id === curId);
     if (!it || !user || user.isLocal) return toast('Войди в облачный аккаунт, чтобы советовать тайтлы друзьям', true);
+    await ensureProfilesLoaded();
     const others = getEffectiveProfilesList().filter(p => p.userId !== user.uid);
     if (!others.length) return toast('Пока нет других участников для отправки совета', true);
     let selUser, inpComment;
@@ -4463,24 +4589,19 @@ $('manageListBtn').onclick = async () => {
   toast(nn ? `Подборка «${nn}» сохранена` : `Подборка «${canonical}» удалена`);
 };
 
-// ---------- Каталог (AniList и TMDB) с кликабельной панелью жанров/тегов (3 состояния) ----------
-const cg = {g: 'Аниме', page: 1, q: '', t: 0, hide: false, min: 0}, cgGrid = $('cgGrid');
+// ---------- Каталог (AniList и TMDB) с кликабельной панелью жанров/тегов, полосой подкатегорий и живой подборкой ----------
+// Часть 1 п.4: Убрана кнопка «✕ Не показывать в каталоге» (.hid / cgHid)
+// Часть 1 п.5: Не восстанавливаем старые жанровые фильтры из localStorage при перезагрузке страницы, чтобы выдача не оказывалась скрыто урезанной на телефоне
+const cg = {g: 'Аниме', page: 1, q: '', t: 0, hide: false, min: 0, feedSeedPage: 1}, cgGrid = $('cgGrid');
 const has = r => items.some(i => same(i, r));
-const cgKey = r => r.url || r.title + '|' + r.category, cgHid = new Set();
-try { JSON.parse(localStorage.getItem('cgHid') || '[]').forEach(k => cgHid.add(k)); } catch (e) {}
-const cgHidSave = () => { try { localStorage.setItem('cgHid', JSON.stringify([...cgHid].slice(-500))); } catch (e) {} };
+const cgKey = r => r.url || r.title + '|' + r.category;
+try { localStorage.removeItem('cgHid'); localStorage.removeItem('cgTagStateV2'); } catch (e) {}
 
 // Состояние кликабельных жанров и тегов: Map(key -> 1 (включить, зелёный) | -1 (исключить, красный))
 const cgTagState = new Map();
-try {
-  const savedTags = JSON.parse(localStorage.getItem('cgTagStateV2') || '{}');
-  Object.entries(savedTags).forEach(([k, v]) => { if (v === 1 || v === -1) cgTagState.set(k, v); });
-} catch (e) {}
-const saveCgTagState = () => {
-  try { localStorage.setItem('cgTagStateV2', JSON.stringify(Object.fromEntries(cgTagState))); } catch (e) {}
-};
+const saveCgTagState = () => {};
 
-const cgPass = r => !cgHid.has(cgKey(r)) && !(cg.hide && has(r)) && num(r.ext) >= cg.min;
+const cgPass = r => !(cg.hide && has(r)) && num(r.ext) >= cg.min;
 
 const CLASSIC_GENRES = [
   ['g:Action', 'Экшен'], ['g:Adventure', 'Приключения'], ['g:Comedy', 'Комедия'], ['g:Drama', 'Драма'],
@@ -4523,10 +4644,33 @@ const CANONICAL_TAG_SYNONYMS = {
 };
 const MOVIE_G = [28, 12, 16, 35, 80, 99, 18, 10751, 14, 36, 27, 10402, 9648, 10749, 878, 10770, 53, 10752, 37];
 const TV_G = [10759, 16, 35, 80, 99, 18, 10751, 10762, 9648, 10763, 10764, 10765, 10766, 10767, 10768, 37];
+// Маппинг жанров Фильмов <-> Сериалов для TMDB (Часть 2 Важные баги: 28/12 <-> 10759, 14/878 <-> 10765, 10752 <-> 10768)
+const TMDB_GENRE_EQUIV = {
+  '28': ['28', '10759'],
+  '12': ['12', '10759'],
+  '10759': ['10759', '28', '12'],
+  '14': ['14', '10765'],
+  '878': ['878', '10765'],
+  '10765': ['10765', '14', '878'],
+  '10752': ['10752', '10768'],
+  '10768': ['10768', '10752']
+};
+function mapTmdbGenreIdForMedia(idStr, mediaType) {
+  const s = String(idStr);
+  if (mediaType === 'tv') {
+    if (s === '28' || s === '12') return '10759';
+    if (s === '14' || s === '878') return '10765';
+    if (s === '10752') return '10768';
+  } else if (mediaType === 'movie') {
+    if (s === '10759') return '28';
+    if (s === '10765') return '878';
+    if (s === '10768') return '10752';
+  }
+  return s;
+}
 
 function aniOptions() {
-  const adult = $('cgAge').value !== '';
-  // Этап 1 п.12: Показываем чип всегда, если он уже активен в cgTagState, либо если разрешён 18+
+  const adult = ($('cgAge')?.value || '') !== '';
   const flt = arr => arr.filter(([v]) => (adult || v !== 'g:Hentai' || cgTagState.has(v)));
   return [
     ['Жанры (1 клик — включить, 2 клик — исключить)', flt(CLASSIC_GENRES)],
@@ -4534,6 +4678,115 @@ function aniOptions() {
     ['Темы и сюжет', flt(THEME_PLOT_TAGS)],
     ['Демография и дополнительные теги', flt(EXTRA_SENSITIVE_TAGS)]
   ].filter(([, list]) => list.length > 0);
+}
+
+// Всегда видимая горизонтальная полоса подкатегорий под основными вкладками (Часть 1 п.9)
+function renderCatalogSubKindBar() {
+  const bar = $('cgSubKindBar');
+  if (!bar) return;
+  bar.replaceChildren();
+  let itemsDef = [];
+  if (cg.g === 'Аниме') {
+    const cur = $('cgAnimeKind')?.value || '';
+    itemsDef = [
+      ['', 'Все аниме'],
+      ['TV', '📺 Аниме-сериалы'],
+      ['MOVIE', '🎬 Аниме-фильмы']
+    ].map(([val, lbl]) => ({
+      lbl,
+      on: cur === val,
+      fn: () => { if ($('cgAnimeKind')) $('cgAnimeKind').value = val; renderCatalogSubKindBar(); updateActiveFiltersCounterUI(); cgLoad(true); }
+    }));
+  } else if (cg.g === 'Манга') {
+    const cur = $('cgKind')?.value || '';
+    itemsDef = [
+      ['', 'Все виды'],
+      ['JP', '🇯🇵 Манга'],
+      ['KR', '🇰🇷 Манхва'],
+      ['CN', '🇨🇳 Маньхуа'],
+      ['COMIC', '🗯 Комиксы']
+    ].map(([val, lbl]) => ({
+      lbl,
+      on: cur === val,
+      fn: () => { if ($('cgKind')) $('cgKind').value = val; renderCatalogSubKindBar(); updateActiveFiltersCounterUI(); cgLoad(true); }
+    }));
+  } else if (cg.g === 'Кино и сериалы') {
+    const cur = $('cgVideoKind')?.value || 'all';
+    itemsDef = [
+      ['all', 'Все (Фильмы и сериалы)'],
+      ['movie', '🎬 Фильмы'],
+      ['tv', '📺 Сериалы']
+    ].map(([val, lbl]) => ({
+      lbl,
+      on: cur === val,
+      fn: () => { if ($('cgVideoKind')) $('cgVideoKind').value = val; renderCatalogSubKindBar(); updateActiveFiltersCounterUI(); cgLoad(true); }
+    }));
+  } else {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  itemsDef.forEach(d => {
+    const b = el('button', 'cg-subkind-pill' + (d.on ? ' on' : ''), d.lbl);
+    b.type = 'button';
+    b.onclick = d.fn;
+    bar.append(b);
+  });
+}
+
+function updateCatalogFilterBtnState() {
+  const btn = $('cgFltBtn'), panel = $('cgFilters');
+  if (!btn || !panel) return;
+  const isOpen = panel.classList.contains('fopen');
+  const cnt = Number(btn.dataset.cnt || 0);
+  btn.classList.toggle('on', isOpen || cnt > 0);
+  btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  btn.textContent = `🔎 Фильтры${cnt > 0 ? ` (${cnt})` : ''} ${isOpen ? '▴' : '▾'}`;
+}
+
+function renderCatalogActiveChipsBar() {
+  const bar = $('cgActiveChipsBar');
+  if (!bar) return;
+  bar.replaceChildren();
+  const chips = [];
+  const addChip = (lbl, onClear) => {
+    const b = el('button', 'chip', lbl + ' ✕');
+    b.type = 'button';
+    b.onclick = onClear;
+    chips.push(b);
+  };
+  if (cg.q) addChip(`🔍 «${cg.q}»`, () => { $('cgSearch').value = ''; cg.q = ''; $('cgClear').style.display = 'none'; cgLoad(true); });
+  if ($('cgYear')?.value) addChip(`Год от: ${$('cgYear').value}`, () => { $('cgYear').value = ''; cgLoad(true); });
+  if ($('cgYear2')?.value) addChip(`Год до: ${$('cgYear2').value}`, () => { $('cgYear2').value = ''; cgLoad(true); });
+  if ($('cgSeason')?.value && cg.g === 'Аниме') addChip(`Сезон: ${$('cgSeason').selectedOptions[0]?.textContent}`, () => { $('cgSeason').value = ''; cgLoad(true); });
+  if ($('cgLen')?.value) addChip(`Длина: ${$('cgLen').selectedOptions[0]?.textContent}`, () => { $('cgLen').value = ''; cgLoad(true); });
+  if ($('cgCountry')?.value && cg.g === 'Кино и сериалы') addChip(`Страна: ${$('cgCountry').selectedOptions[0]?.textContent}`, () => { $('cgCountry').value = ''; cgLoad(true); });
+  if ($('cgAge')?.value && cg.g !== 'Кино и сериалы') addChip(`${$('cgAge').selectedOptions[0]?.textContent}`, () => { $('cgAge').value = ''; cgGenres(); cgLoad(true); });
+  if (cg.min > 0) addChip(`★ от ${cg.min}+`, () => { cg.min = 0; $('cgMin').value = '0'; cgLoad(true); });
+  if (cg.hide) addChip('👁 Скрыто добавленное', () => { cg.hide = false; $('cgHide').classList.remove('on'); cgLoad(true); });
+
+  const allAniPairs = [...CLASSIC_GENRES, ...ROMANCE_REL_TAGS, ...THEME_PLOT_TAGS, ...EXTRA_SENSITIVE_TAGS];
+  cgTagState.forEach((st, k) => {
+    if (!st) return;
+    let lbl = k;
+    if (/^\d+$/.test(k)) lbl = TG[k] || k;
+    else {
+      const hit = allAniPairs.find(x => x[0] === k);
+      if (hit) lbl = hit[1];
+    }
+    addChip(`${st === 1 ? '✓ ' : '✕ без: '}${lbl}`, () => {
+      cgTagState.delete(k);
+      cgGenres();
+      cgLoad(true);
+    });
+  });
+
+  if (!chips.length) {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  chips.forEach(c => bar.append(c));
 }
 
 function updateActiveFiltersCounterUI() {
@@ -4560,6 +4813,17 @@ function updateActiveFiltersCounterUI() {
   if ($('cgAge')?.value && !isVideo) totalActive++;
   if ($('cgCountry')?.value && isVideo) totalActive++;
   if ($('cgActiveFiltersBadge')) $('cgActiveFiltersBadge').textContent = totalActive ? `(${totalActive})` : '';
+  if ($('cgFltBtn')) $('cgFltBtn').dataset.cnt = String(totalActive);
+  updateCatalogFilterBtnState();
+
+  const srcCap = $('cgSourceCaption');
+  if (srcCap) {
+    srcCap.textContent = isVideo
+      ? `🌐 Источник каталога: TMDB (${cg.g})${cg.feedSeedPage > 1 ? ` · подборка #${cg.feedSeedPage}` : ''}`
+      : `🌐 Источник каталога: AniList (${cg.g})${cg.feedSeedPage > 1 ? ` · подборка #${cg.feedSeedPage}` : ''}`;
+  }
+  renderCatalogSubKindBar();
+  renderCatalogActiveChipsBar();
 }
 
 function cgGenres() {
@@ -4599,12 +4863,15 @@ function cgGenres() {
   }
 
   if ($('cgAnimeKind')) $('cgAnimeKind').style.display = cg.g === 'Аниме' ? '' : 'none';
+  if ($('cgKind')) $('cgKind').style.display = cg.g === 'Манга' ? '' : 'none';
   if ($('cgVideoKind')) $('cgVideoKind').style.display = cg.g === 'Кино и сериалы' ? '' : 'none';
   $('cgCountry').style.display = isVideo ? '' : 'none';
   $('cgSeason').style.display = cg.g === 'Аниме' ? '' : 'none';
   $('cgAge').style.display = isVideo ? 'none' : '';
   const L = cg.g === 'Аниме' ? [['', 'Любая длина'], ['s', 'Короткие (до 13 серий)'], ['m', 'До 26 серий'], ['l', 'Длинные (50+ серий)']] : isVideo ? [['', 'Любая длина'], ['s', 'До 100 минут'], ['m', 'До 130 минут'], ['l', 'Длинные (от 150 мин)']] : cg.g === 'Манга' ? [['', 'Любой объём'], ['s', 'Короткие (до 30 глав)'], ['m', 'До 100 глав'], ['l', 'Длинные (200+ глав)']] : [['', 'Любая длина']];
+  const prevLen = $('cgLen').value;
   $('cgLen').replaceChildren(...L.map(([v, t]) => new Option(t, v)));
+  if ([...$('cgLen').options].some(o => o.value === prevLen)) $('cgLen').value = prevLen;
   $('cgLen').style.display = L.length > 1 ? '' : 'none';
   updateActiveFiltersCounterUI();
 }
@@ -4661,6 +4928,12 @@ function verifyCatalogItemMatchesFilters(r) {
       const ak = $('cgAnimeKind')?.value || '';
       if (ak === 'MOVIE' && r.format && r.format !== 'MOVIE') return false;
       if (ak === 'TV' && r.format && r.format === 'MOVIE') return false;
+    } else if (cg.g === 'Манга') {
+      const mk = $('cgKind')?.value || '';
+      if (mk === 'COMIC' && (r.subKind || r.kind) !== 'Комикс') return false;
+      if (mk === 'JP' && (r.subKind || r.kind || 'Манга') !== 'Манга') return false;
+      if (mk === 'KR' && (r.subKind || r.kind) !== 'Манхва') return false;
+      if (mk === 'CN' && (r.subKind || r.kind) !== 'Маньхуа') return false;
     }
     const itemHasGenre = gEn => {
       const gRu = RU[gEn] || gEn;
@@ -4680,16 +4953,22 @@ function verifyCatalogItemMatchesFilters(r) {
       if (vk === 'movie' && r.category !== 'Фильм') return false;
       if (vk === 'tv' && r.category !== 'Сериал') return false;
     }
-    for (const id of incVid) if (TG[id] && !(r.tags || []).includes(TG[id])) return false;
-    for (const id of excVid) if (TG[id] && (r.tags || []).includes(TG[id])) return false;
+    const matchesTmdbGenre = id => {
+      const equivIds = TMDB_GENRE_EQUIV[String(id)] || [String(id)];
+      return equivIds.some(eqId => TG[eqId] && (r.tags || []).includes(TG[eqId]));
+    };
+    for (const id of incVid) if (!matchesTmdbGenre(id)) return false;
+    for (const id of excVid) if (matchesTmdbGenre(id)) return false;
   }
   return true;
 }
 
-// Этап 1 п.8: «Год от» без «Год до» ищет yrFrom и позже (>= yrFrom); «Год до» без «Год от» ищет всё до yrTo (<= yrTo)
+// Запрос фильмов/сериалов TMDB с маппингом жанров Movie <-> TV (Часть 2 Важные баги)
 async function cgFetchSingleVideo(m, page, q, mode) {
   const { incVid, excVid } = getActiveCatalogTagLists();
-  const gens = incVid.join(','), withoutGens = excVid.join(','), len = $('cgLen').value;
+  const mappedInc = [...new Set(incVid.map(id => mapTmdbGenreIdForMedia(id, m)))];
+  const mappedExc = [...new Set(excVid.map(id => mapTmdbGenreIdForMedia(id, m)))];
+  const gens = mappedInc.join(','), withoutGens = mappedExc.join(','), len = $('cgLen').value;
   const yrFrom = parseInt($('cgYear').value) || 0;
   const yrTo = parseInt($('cgYear2').value) || 0;
   const iso = d => d.toISOString().slice(0, 10), today = iso(new Date()), ago = n => iso(new Date(Date.now() - n * 864e5));
@@ -4718,13 +4997,14 @@ async function cgFetchSingleVideo(m, page, q, mode) {
 
 async function cgFetch(page, per, q, mode) {
   const g = cg.g;
+  const effPage = (!q && page === 1 && cg.feedSeedPage > 1) ? cg.feedSeedPage : ((page > 1 && cg.feedSeedPage > 1) ? page + cg.feedSeedPage - 1 : page);
   if (g === 'Кино и сериалы' || g === 'Фильм' || g === 'Сериал') {
     const vk = g === 'Фильм' ? 'movie' : g === 'Сериал' ? 'tv' : ($('cgVideoKind')?.value || 'all');
     if (vk === 'movie' || vk === 'tv') {
-      return (await cgFetchSingleVideo(vk, page, q, mode)).filter(verifyCatalogItemMatchesFilters);
+      return (await cgFetchSingleVideo(vk, effPage, q, mode)).filter(verifyCatalogItemMatchesFilters);
     }
-    const r1 = await cgFetchSingleVideo('movie', page, q, mode).catch(() => []);
-    const r2 = await cgFetchSingleVideo('tv', page, q, mode).catch(() => []);
+    const r1 = await cgFetchSingleVideo('movie', effPage, q, mode).catch(() => []);
+    const r2 = await cgFetchSingleVideo('tv', effPage, q, mode).catch(() => []);
     return [...r1, ...r2].filter(verifyCatalogItemMatchesFilters);
   }
 
@@ -4734,7 +5014,7 @@ async function cgFetch(page, per, q, mode) {
   const yrTo = parseInt($('cgYear2').value) || 0;
   const iso = d => d.toISOString().slice(0, 10), today = iso(new Date()), ago = n => iso(new Date(Date.now() - n * 864e5)), num8 = t => Number(t.replace(/-/g, ''));
   const SO = {top: 'SCORE_DESC', trend: 'TRENDING_DESC', date: 'START_DATE_DESC', votes: 'FAVOURITES_DESC', hidden: 'SCORE_DESC', classic: 'SCORE_DESC', rare: 'SCORE_DESC'};
-  const age = $('cgAge').value, o = {page, per, sort: [q ? 'SEARCH_MATCH' : SO[mode] || 'POPULARITY_DESC'], ad: age === 'only' ? true : age === 'all' ? undefined : false};
+  const age = $('cgAge').value, o = {page: effPage, per, sort: [q ? 'SEARCH_MATCH' : SO[mode] || 'POPULARITY_DESC'], ad: age === 'only' ? true : age === 'all' ? undefined : false};
   if (!q) {
     if (mode === 'top' && age !== 'only') o.pg = 3000;
     if (mode === 'new') o.status = 'RELEASING';
@@ -4757,12 +5037,17 @@ async function cgFetch(page, per, q, mode) {
   }
   if (g === 'Аниме') {
     const ak = $('cgAnimeKind')?.value || '';
-    if (ak === 'MOVIE') o.format = 'MOVIE'; else if (ak === 'TV') o.format = 'TV';
+    if (ak === 'MOVIE') o.format = 'MOVIE';
+    else if (ak === 'TV') o.fn = 'MOVIE';
     if (len === 's') o.el = 14; else if (len === 'm') o.el = 27; else if (len === 'l') o.eg = 49;
   }
   if (g === 'Манга') { if (len === 's') o.cl = 31; else if (len === 'm') o.cl = 101; else if (len === 'l') o.cg = 199; }
   if (g === 'Ранобэ') o.format = 'NOVEL';
-  if (g === 'Манга') { o.fn = 'NOVEL'; if ($('cgKind').value) o.country = $('cgKind').value; }
+  if (g === 'Манга') {
+    o.fn = 'NOVEL';
+    const mk = $('cgKind')?.value || '';
+    if (mk === 'JP' || mk === 'KR' || mk === 'CN') o.country = mk;
+  }
 
   let res = await anilist(q || null, g === 'Аниме' ? 'ANIME' : 'MANGA', o);
   if (!res.length && incT.some(t => t === 'Yuri' || t === 'Yaoi')) {
@@ -4774,11 +5059,11 @@ async function cgFetch(page, per, q, mode) {
 
 const adding = new Set();
 const QUICK_STATUS_OPTIONS = [
-  ['В планах', '📋 В планы'],
-  ['Смотрю/Читаю', '▶ Смотрю / Читаю'],
-  ['Просмотрено/Прочитано', '✅ Просмотрено'],
-  ['Брошено', '🛑 Брошено'],
-  ['Любимое', '❤ Любимое']
+  ['В планах', 'В планах', '#5b6b8c', '📋'],
+  ['Смотрю/Читаю', 'Смотрю / Читаю', '#2f8fe8', '▶'],
+  ['Просмотрено/Прочитано', 'Просмотрено', '#1db57a', '●'],
+  ['Брошено', 'Брошено', '#c2543e', '✕'],
+  ['Любимое', 'В любимое', '#e0457b', '❤']
 ];
 const SHORT_ST_BTN = {
   'В планах': 'В планах',
@@ -4787,14 +5072,22 @@ const SHORT_ST_BTN = {
   'Пересматриваю': 'Пересматриваю',
   'Брошено': 'Брошено'
 };
+const SHORT_ST_ICON = {
+  'В планах': '📋',
+  'Смотрю/Читаю': '▶',
+  'Просмотрено/Прочитано': '●',
+  'Пересматриваю': '🔁',
+  'Брошено': '✕',
+  'Любимое': '❤'
+};
 
-// Единая функция quickAdd(r, targetStatus) для каталога, предпросмотра, полной страницы, «Три варианта» и «Случайное» (Этап 3 п.6, п.7)
+// Единая функция quickAdd(r, targetStatus): выбор «Любимое» ставит сердечко fav:true и не подменяет молча статус на «Просмотрено» у новых тайтлов (Часть 1 п.3)
 async function quickAdd(r, targetStatus = 'В планах') {
   if (window._viewingGuestUid) return toast('Вернись в свой профиль для добавления тайтлов', true);
   if (!r) return;
   const isFavPick = (targetStatus === 'Любимое' || targetStatus === '❤ Любимое');
   const resolvedSt = isFavPick
-    ? 'Просмотрено/Прочитано'
+    ? 'В планах'
     : ( targetStatus === 'Просмотрено' ? 'Просмотрено/Прочитано' : ( targetStatus === 'Смотрю' ? 'Смотрю/Читаю' : (STATS.includes(targetStatus) ? targetStatus : 'В планах') ) );
   const isDoneSt = (resolvedSt === 'Просмотрено/Прочитано' || resolvedSt === 'Пересматриваю');
 
@@ -4809,13 +5102,14 @@ async function quickAdd(r, targetStatus = 'В планах') {
       existing.status = resolvedSt;
       existing.needsReview = false;
       if (isDoneSt && !existing.completedAt) existing.completedAt = Date.now();
+      else if (resolvedSt === 'В планах') existing.completedAt = 0;
     }
     cloudSave(existing);
     profCloud(true);
     refresh();
     toast(
       isFavPick
-        ? (existing.fav ? `«${existing.title}» отмечено как ❤ Любимое` : `«${existing.title}» убрано из Любимого`)
+        ? (existing.fav ? `«${existing.title}» отмечено как ❤ Любимое (${existing.status})` : `«${existing.title}» убрано из Любимого`)
         : `Статус «${existing.title}» изменён: ${existing.status}`,
       false,
       {
@@ -4851,7 +5145,8 @@ async function quickAdd(r, targetStatus = 'В планах') {
       status: resolvedSt,
       poster: r.poster || '', year: r.year || '', rating: '', extRating: r.ext || '',
       description: r.desc || '', titleEn: r.en || (r.titleEn || ''), titleOrig: r.orig || (r.titleOrig || ''), alt: r.alt || '',
-      tags: r.tags || [], author: r.author || '', studio: r.studio || '', source: r.source || '', ongoing: !!r.ongoing
+      tags: r.tags || [], author: r.author || '', studio: r.studio || '', source: r.source || '', ongoing: !!r.ongoing,
+      trailerId: r.trailerId || ''
     });
     if (r.tmdb) { try { Object.assign(it, await tmdbInfo(r)); } catch (e) {} }
     if (r.tmdb) it.tmdb = r.tmdb;
@@ -4863,36 +5158,47 @@ async function quickAdd(r, targetStatus = 'В планах') {
     }
     if (has(r)) { cgMarks(); return items.find(i => same(i, r)); }
     items.push(it); refresh(); cloudSave(it); profCloud(true);
-    toast(`Добавлено (${isFavPick ? '❤ Любимое' : it.status}): ${it.title}`, false, {label: 'Отменить', fn: () => removeItem(it.id)});
+    toast(`Добавлено (${isFavPick ? '❤ Любимое · ' + it.status : it.status}): ${it.title}`, false, {label: 'Отменить', fn: () => removeItem(it.id)});
     return it;
   } finally { adding.delete(ak); }
 }
 
-// Плавающее меню выбора статуса поверх страницы (не обрезается краем карточки! — Этап 3 п.7)
+// Меню выбора статуса с цветными точками и перехватом первого клика мимо через #qaMenuBackdrop (Часть 1 п.3 и п.8)
 let _qaMenuHideTimer = 0;
+function closeQuickAddStatusMenu() {
+  $('qaFloatMenu')?.classList.remove('open');
+  $('qaMenuBackdrop')?.classList.remove('open');
+}
+
 function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null) {
-  const menu = $('qaFloatMenu');
+  const menu = $('qaFloatMenu'), backdrop = $('qaMenuBackdrop');
   if (!menu || !anchorBtn || !r || window._viewingGuestUid) return;
   clearTimeout(_qaMenuHideTimer);
   const existing = items.find(i => same(i, r));
   menu.replaceChildren();
 
-  QUICK_STATUS_OPTIONS.forEach(([stKey, stLabel]) => {
+  const hdr = el('div', 'qa-menu-hdr');
+  hdr.append(el('span', null, existing ? `В коллекции: ${existing.status}` : 'Добавить в список:'));
+  menu.append(hdr);
+
+  QUICK_STATUS_OPTIONS.forEach(([stKey, stLabel, dotColor, stIcon]) => {
     const b = el('button'); b.type = 'button';
-    const isAct = existing && ((stKey === 'Любимое' && existing.fav) || existing.status === stKey);
+    const isAct = existing && ((stKey === 'Любимое' && existing.fav) || (stKey !== 'Любимое' && existing.status === stKey));
     if (isAct) b.classList.add('active');
-    b.append(el('span', null, stLabel), el('span', 'meta', isAct ? '✓' : ''));
+    const leftSpan = el('span');
+    leftSpan.style.cssText = 'display:inline-flex;align-items:center';
+    const dot = el('span', 'st-dot');
+    dot.style.background = dotColor;
+    leftSpan.append(dot, document.createTextNode(`${stIcon} ${stLabel}`));
+    b.append(leftSpan, el('span', 'meta', isAct ? '●' : ''));
     b.onclick = async e => {
       e.stopPropagation();
-      menu.classList.remove('open');
+      closeQuickAddStatusMenu();
       anchorBtn.disabled = true;
-      const oldTxt = anchorBtn.textContent;
-      anchorBtn.textContent = '…';
       await quickAdd(r, stKey);
       anchorBtn.disabled = false;
       cgMarks();
       if (onAfterPick) onAfterPick(items.find(i => same(i, r)));
-      else if (!anchorBtn.classList.contains('qa')) anchorBtn.textContent = oldTxt;
     };
     menu.append(b);
   });
@@ -4902,7 +5208,7 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null) {
     delB.append(el('span', null, '🗑 Удалить из коллекции'));
     delB.onclick = e => {
       e.stopPropagation();
-      menu.classList.remove('open');
+      closeQuickAddStatusMenu();
       removeItem(existing.id, true);
       if (onAfterPick) onAfterPick(null);
     };
@@ -4910,31 +5216,41 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null) {
   }
 
   menu.classList.add('open');
-  const rect = anchorBtn.getBoundingClientRect();
-  const menuW = 205;
-  const menuH = menu.offsetHeight || 210;
-  let left = Math.min(window.innerWidth - menuW - 10, Math.max(10, rect.right - menuW));
-  // Раскрываем вверх над кнопкой; если сверху мало места — вниз
-  let top = rect.top - menuH - 6;
-  if (top < 10) top = Math.min(window.innerHeight - menuH - 10, rect.bottom + 6);
-  menu.style.left = left + 'px';
-  menu.style.top = top + 'px';
+  if (backdrop) backdrop.classList.add('open');
+  if (window.innerWidth > 600) {
+    const rect = anchorBtn.getBoundingClientRect();
+    const menuW = 215;
+    const menuH = menu.offsetHeight || 230;
+    let left = Math.min(window.innerWidth - menuW - 10, Math.max(10, rect.right - menuW));
+    let top = rect.top - menuH - 6;
+    if (top < 10) top = Math.min(window.innerHeight - menuH - 10, rect.bottom + 6);
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+  } else {
+    menu.style.left = '';
+    menu.style.top = '';
+  }
 }
 
 {
-  const menu = $('qaFloatMenu');
+  const menu = $('qaFloatMenu'), backdrop = $('qaMenuBackdrop');
   if (menu) {
     menu.addEventListener('mouseenter', () => clearTimeout(_qaMenuHideTimer));
     menu.addEventListener('mouseleave', () => {
-      _qaMenuHideTimer = setTimeout(() => menu.classList.remove('open'), 220);
+      if (window.matchMedia('(hover: hover)').matches) {
+        _qaMenuHideTimer = setTimeout(() => closeQuickAddStatusMenu(), 220);
+      }
     });
   }
-  document.addEventListener('click', e => {
-    if (!e.target.closest('#qaFloatMenu') && !e.target.closest('.qa') && !e.target.closest('.qa-trigger')) {
-      $('qaFloatMenu')?.classList.remove('open');
-    }
-  });
-  window.addEventListener('scroll', () => $('qaFloatMenu')?.classList.remove('open'), { passive: true });
+  if (backdrop) {
+    // Клик по подложке только закрывает меню и НЕ проваливается в карточку под ним (Часть 1 п.8)
+    backdrop.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeQuickAddStatusMenu();
+    });
+  }
+  window.addEventListener('scroll', () => closeQuickAddStatusMenu(), { passive: true });
 }
 
 function removeItem(id, undo) {
@@ -4952,20 +5268,39 @@ function removeItem(id, undo) {
   });
 }
 
+// Отрисовка меток на карточках каталога: без зелёной заливки и без галочки ✓, со своим цветом для каждого статуса (Часть 1 п.3)
 function cgMarks() {
   [...cgGrid.children].forEach(c => {
     if (!c._r) return;
-    const b = c.querySelector('.qa'), m = items.find(i => same(i, c._r)), pc = c.querySelector('.pc'); let st = pc.querySelector('.status');
-    b.textContent = m ? `✓ ${SHORT_ST_BTN[m.status] || m.status}` : '＋';
-    b.title = m ? `В коллекции: ${m.status}${m.fav ? ' (❤)' : ''} — нажми для смены статуса` : 'Выбрать статус и добавить в коллекцию';
-    b.classList.toggle('done', !!m);
-    if (m) { if (!st) { st = el('span', 'status'); pc.append(st); } st.dataset.s = m.status; st.textContent = (SHORT_ST_BTN[m.status] || m.status) + (m.fav ? ' ❤' : ''); } else if (st) st.remove();
+    const b = c.querySelector('.qa'), m = items.find(i => same(i, c._r)), pc = c.querySelector('.pc');
+    let st = pc.querySelector('.status');
+    b.replaceChildren();
+    if (m) {
+      const colorKey = m.fav ? 'Любимое' : m.status;
+      b.dataset.s = colorKey;
+      const ic = el('span', 'qa-ic', m.fav ? '❤' : (SHORT_ST_ICON[m.status] || '●'));
+      const lbl = el('span', 'qa-lbl', SHORT_ST_BTN[m.status] || m.status);
+      b.append(ic, lbl);
+      b.title = `В коллекции: ${m.status}${m.fav ? ' (❤ В любимом)' : ''} — нажми для смены статуса`;
+    } else {
+      delete b.dataset.s;
+      b.append(el('span', 'qa-ic', '＋'));
+      b.title = 'Выбрать статус и добавить в коллекцию';
+    }
+    if (m) {
+      if (!st) { st = el('span', 'status'); pc.append(st); }
+      st.dataset.s = m.status;
+      st.textContent = (SHORT_ST_BTN[m.status] || m.status) + (m.fav ? ' ❤' : '');
+    } else if (st) {
+      st.remove();
+    }
   });
 }
 
-// В карточке каталога и предпросмотре показываем реальный вид (Манхва, Маньхуа, Манга) через catLabel(r)
+// Карточка каталога без кнопки «✕ Не показывать это в каталоге» (Часть 1 п.4)
 function cgCard(r) {
   const card = el('div', 'card'), pc = el('div', 'pc'), img = el('img'), ov = el('div', 'ov'), add = el('button', 'qa');
+  add.type = 'button';
   card._r = r; img.loading = 'lazy'; img.src = safePosterUrl(r.poster); img.onerror = () => { img.onerror = null; img.src = FALL; };
   ov.append(el('p', null, r.desc || 'Описание отсутствует.')); add.title = 'Выбрать статус и добавить';
   add.addEventListener('mouseenter', () => {
@@ -4973,7 +5308,7 @@ function cgCard(r) {
   });
   add.addEventListener('mouseleave', () => {
     if (window.matchMedia('(hover: hover)').matches) {
-      _qaMenuHideTimer = setTimeout(() => $('qaFloatMenu')?.classList.remove('open'), 240);
+      _qaMenuHideTimer = setTimeout(() => closeQuickAddStatusMenu(), 240);
     }
   });
   add.onclick = e => {
@@ -4984,10 +5319,12 @@ function cgCard(r) {
   const info = el('div', 'ci'), row = el('div', 'cm');
   row.append(el('span', null, [r.year, catLabel(r)].filter(Boolean).join('  |  ')), Object.assign(el('span', 'star', r.ext ? '★ ' + r.ext : ''), {title: r.src ? 'Оценка: ' + r.src : 'Внешняя оценка'}));
   info.append(Object.assign(el('h3', 'title', r.title), {title: r.title}), row, el('div', 'tg', r.tags.slice(0, 3).join(', ')));
-  const hb = el('button', 'hid', '✕'); hb.title = 'Не показывать это в каталоге';
-  hb.onclick = e => { e.stopPropagation(); cgHid.add(cgKey(r)); cgHidSave(); card.remove(); toast('Скрыто. Вернуть скрытое можно кнопкой «Сбросить».'); };
-  pc.append(hb);
-  card.append(pc, info); card.tabIndex = 0; card.onclick = () => showPreview(r, false); card.onkeydown = e => { if (e.key === 'Enter') showPreview(r, false); };
+  card.append(pc, info); card.tabIndex = 0;
+  card.onclick = () => {
+    if ($('qaFloatMenu')?.classList.contains('open')) { closeQuickAddStatusMenu(); return; }
+    showPreview(r, false);
+  };
+  card.onkeydown = e => { if (e.key === 'Enter') showPreview(r, false); };
   cgGrid.append(card); cgMarks();
 }
 
@@ -5015,14 +5352,27 @@ async function cgLoad(reset) {
   }
 }
 
+// Кнопки «🔄 Обновить подборку» (Часть 1 п.5)
+function refreshCatalogFeedWithNewPage() {
+  ALC.clear();
+  const nextSeed = 1 + ((cg.feedSeedPage % 8));
+  cg.feedSeedPage = nextSeed === cg.feedSeedPage ? 2 : nextSeed;
+  updateActiveFiltersCounterUI();
+  cgLoad(true);
+  toast(`Показана подборка популярных #${cg.feedSeedPage} (${cg.g})`);
+}
+if ($('cgRefreshFeedBtn')) $('cgRefreshFeedBtn').onclick = refreshCatalogFeedWithNewPage;
+if ($('cgQuickShuffleBtn')) $('cgQuickShuffleBtn').onclick = refreshCatalogFeedWithNewPage;
+
 document.querySelectorAll('#cgCats .tb').forEach(b => b.onclick = () => {
   document.querySelectorAll('#cgCats .tb').forEach(x => x.classList.toggle('on', x === b));
   cg.g = b.dataset.g;
+  cg.feedSeedPage = 1;
   $('cgKind').style.display = cg.g === 'Манга' ? '' : 'none';
   cgGenres(); cgLoad(true);
 });
 ['cgMode', 'cgKind', 'cgYear2', 'cgSeason', 'cgLen', 'cgCountry'].forEach(id => {
-  if ($(id)) $(id).onchange = () => { updateActiveFiltersCounterUI(); cgLoad(true); };
+  if ($(id)) $(id).onchange = () => { cg.feedSeedPage = 1; updateActiveFiltersCounterUI(); cgLoad(true); };
 });
 $('cgAge').onchange = () => {
   if ($('cgAge').value === '' && cgTagState.has('g:Hentai')) {
@@ -5030,6 +5380,7 @@ $('cgAge').onchange = () => {
     saveCgTagState();
     toast('Фильтр «Хентай (18+)» сброшен при переключении в режим «Без 18+»');
   }
+  cg.feedSeedPage = 1;
   cgGenres();
   cgLoad(true);
 };
@@ -5041,26 +5392,28 @@ $('cgNow').onclick = () => {
   cgLoad(true);
 };
 
-let cgT; const cgGo = () => { clearTimeout(cgT); cg.q = $('cgSearch').value.trim(); cgLoad(true); };
+let cgT; const cgGo = () => { clearTimeout(cgT); cg.q = $('cgSearch').value.trim(); cg.feedSeedPage = 1; cgLoad(true); };
 $('cgSearch').oninput = () => { $('cgClear').style.display = $('cgSearch').value ? 'grid' : 'none'; clearTimeout(cgT); cgT = setTimeout(cgGo, 450); };
 $('cgSearch').onkeydown = e => { if (e.key === 'Enter') cgGo(); };
-$('cgHide').onclick = e => { cg.hide = !cg.hide; e.currentTarget.classList.toggle('on', cg.hide); cgLoad(true); };
-let cgY; $('cgYear').oninput = () => { clearTimeout(cgY); cgY = setTimeout(() => cgLoad(true), 600); };
+$('cgHide').onclick = e => { cg.hide = !cg.hide; e.currentTarget.classList.toggle('on', cg.hide); updateActiveFiltersCounterUI(); cgLoad(true); };
+let cgY; $('cgYear').oninput = () => { clearTimeout(cgY); cgY = setTimeout(() => { cg.feedSeedPage = 1; updateActiveFiltersCounterUI(); cgLoad(true); }, 600); };
 $('cgReset').onclick = () => {
-  cgHid.clear(); cgHidSave();
   cgTagState.clear(); saveCgTagState();
   ['cgYear2', 'cgSeason', 'cgLen', 'cgCountry', 'cgMood', 'cgAge'].forEach(i => { if ($(i)) $(i).value = ''; });
   $('cgSearch').value = ''; cg.q = ''; $('cgYear').value = ''; $('cgKind').value = ''; $('cgMode').value = 'pop';
   if ($('cgAnimeKind')) $('cgAnimeKind').value = '';
   if ($('cgVideoKind')) $('cgVideoKind').value = 'all';
-  cg.hide = false; cg.min = 0; $('cgMin').value = '0'; $('cgClear').style.display = 'none';
+  cg.hide = false; cg.min = 0; cg.feedSeedPage = 1; $('cgMin').value = '0'; $('cgClear').style.display = 'none';
   $('cgHide').classList.remove('on');
   cgGenres(); cgLoad(true);
 };
 $('cgMore').onclick = () => cgLoad(false);
-$('cgMin').onchange = () => { cg.min = +$('cgMin').value || 0; cgLoad(true); };
+$('cgMin').onchange = () => { cg.min = +$('cgMin').value || 0; updateActiveFiltersCounterUI(); cgLoad(true); };
 $('cgClear').onclick = () => { $('cgSearch').value = ''; $('cgClear').style.display = 'none'; cgGo(); };
-$('cgFltBtn').onclick = () => $('cgFilters').classList.toggle('fopen');
+$('cgFltBtn').onclick = () => {
+  $('cgFilters').classList.toggle('fopen');
+  updateCatalogFilterBtnState();
+};
 
 const MOODS = {fun: ['g:Comedy', '35'], serious: ['g:Drama', '18'], scary: ['g:Horror', '27'], love: ['g:Romance', '10749'], thrill: ['g:Action', '28'], mystery: ['g:Mystery', '9648'], scifi: ['g:Sci-Fi', '878']};
 $('cgMood').onchange = () => {
@@ -5239,7 +5592,7 @@ function syncRndAddBtnUI(r) {
   const m = items.find(i => same(i, r));
   a.disabled = false;
   a.classList.add('qa-trigger');
-  a.textContent = m ? `✓ ${SHORT_ST_BTN[m.status] || m.status}${m.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾';
+  a.textContent = m ? `${SHORT_ST_ICON[m.status] || '●'} ${SHORT_ST_BTN[m.status] || m.status}${m.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾';
 }
 
 function showPreview(r, rnd) {
@@ -5965,11 +6318,11 @@ function parseKinopoiskContent(text) {
       const cOrig = findCol(/оригинальн|original|eng/i);
       const cYear = findCol(/год|year/i);
       const cRate = findCol(/моя оценка|оценка|rating|vote|балл/i);
-      const cDate = findCol(/дата|date|время/i);
+      const cDate = findCol(/дата|date|voted/i);
       const cImdb = findCol(/imdb/i);
       const cKpRate = findCol(/кинопоиск|kp|рейтинг/i);
       const cGenre = findCol(/жанр|genre/i);
-      const cDur = findCol(/время|мин|длительн|runtime/i);
+      const cDur = findCol(/мин|длительн|runtime|хронометраж/i);
 
       const out = [];
       for (let rIdx = 1; rIdx < rows.length; rIdx++) {
@@ -5993,8 +6346,31 @@ function parseKinopoiskContent(text) {
     }
   }
 
-  // 3. CSV / TSV или построчный список (одинарный слэш в /\r?\n/ и '\t'!)
-  const lines = trimmed.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  // 3. CSV / TSV или построчный список с поддержкой многострочных кавычек внутри ячеек CSV
+  const splitCsvLogicalLines = raw => {
+    const out = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw[i];
+      if (ch === '"') {
+        cur += ch;
+        if (inQ && raw[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if ((ch === '\n' || ch === '\r') && !inQ) {
+        if (ch === '\r' && raw[i + 1] === '\n') i++;
+        if (cur.trim()) out.push(cur.trim());
+        cur = '';
+      } else if ((ch === '\n' || ch === '\r') && inQ) {
+        if (ch === '\r' && raw[i + 1] === '\n') i++;
+        cur += ' ';
+      } else {
+        cur += ch;
+      }
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  };
+  const lines = splitCsvLogicalLines(trimmed);
   if (!lines.length) return [];
   const first = lines[0];
   const sep = first.includes(';') ? ';' : first.includes('\t') ? '\t' : first.includes(',') ? ',' : '';
@@ -6737,19 +7113,35 @@ class KanbanManager {
     { key: 'В планах', label: '📋 В планах', color: '#64748b' },
     { key: 'Смотрю/Читаю', label: '▶ Смотрю / Читаю', color: '#38bdf8' },
     { key: 'Просмотрено/Прочитано', label: '✅ Завершено', color: '#1db57a' },
-    { key: 'Любимое', label: '❤ Любимое (Отметка)', color: '#f43f5e' },
     { key: 'Брошено', label: '🛑 Брошено', color: '#ef4444' }
   ];
-  static isKanbanActive = (localStorage.getItem('view') === 'kanban');
+  static isKanbanActive = (window.innerWidth > 600 && localStorage.getItem('view') === 'kanban');
   static draggedId = null;
 
   static init() {
     const btn = $('kanbanBtn'); if (!btn) return;
-    btn.onclick = () => { this.isKanbanActive = !this.isKanbanActive; view = this.isKanbanActive ? 'kanban' : 'grid'; try { localStorage.setItem('view', view); } catch (e) {} this.sync(); };
+    btn.onclick = () => {
+      if (window.innerWidth <= 600) return toast('На телефоне используй удобные вкладки статусов выше');
+      this.isKanbanActive = !this.isKanbanActive;
+      view = this.isKanbanActive ? 'kanban' : 'grid';
+      try { localStorage.setItem('view', view); } catch (e) {}
+      this.sync();
+    };
     $('viewBtn').addEventListener('click', () => { this.isKanbanActive = false; this.sync(); });
+    window.addEventListener('resize', () => {
+      if (window.innerWidth <= 600 && this.isKanbanActive) {
+        this.isKanbanActive = false;
+        if (view === 'kanban') view = 'grid';
+        this.sync();
+      }
+    });
     this.sync();
   }
   static sync() {
+    if (window.innerWidth <= 600 && this.isKanbanActive) {
+      this.isKanbanActive = false;
+      if (view === 'kanban') view = 'grid';
+    }
     const b = $('kanbanBoard'), g = $('itemsGrid'), btn = $('kanbanBtn'); if (!b || !g || !btn) return;
     btn.classList.toggle('on', this.isKanbanActive);
     g.style.display = this.isKanbanActive ? 'none' : '';
@@ -6764,25 +7156,38 @@ class KanbanManager {
     const pool = vis.filter(i => !i.archived && (!q || names(i).includes(q)) && (cat === 'Всё' || (cat === 'Кино и сериалы' ? KINO.includes(i.category) : i.category === cat)) && (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) && (lf === 'Все' || (i.lists || []).some(t => t.toLowerCase() === lf)));
     this.STATUSES.forEach(stCol => {
       const col = el('div', 'kanban-col'), list = el('div', 'kanban-list');
-      const colItems = pool.filter(i => stCol.key === 'Любимое' ? !!i.fav : stCol.key === 'Смотрю/Читаю' ? (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю') : i.status === stCol.key);
+      const colItems = pool.filter(i => stCol.key === 'Смотрю/Читаю' ? (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю') : i.status === stCol.key);
       const hdr = el('div', 'kanban-hdr'); const sp = el('span', null, stCol.label); sp.style.color = stCol.color; hdr.append(sp, el('span', 'meta', String(colItems.length)));
       col.ondragover = e => { e.preventDefault(); col.classList.add('drag-over'); };
       col.ondragleave = () => col.classList.remove('drag-over');
       col.ondrop = e => { e.preventDefault(); col.classList.remove('drag-over'); const id = Number(e.dataTransfer?.getData('text/plain') || this.draggedId); if (id) this.move(id, stCol.key); };
       colItems.forEach(it => {
-        const c = el('div', 'k-card'); c.draggable = !window._viewingGuestUid;
+        const c = el('div', 'k-card' + (selMode && selSet.has(it.id) ? ' sel' : ''));
+        c.dataset.id = String(it.id);
+        c.draggable = !window._viewingGuestUid && !selMode;
         c.ondragstart = e => { this.draggedId = it.id; e.dataTransfer?.setData('text/plain', String(it.id)); };
         const im = el('img'); im.loading = 'lazy'; im.src = safePosterUrl(it.poster); im.onerror = () => { im.onerror = null; im.src = FALL; };
         const inf = el('div'); inf.style.minWidth = '0';
-        const mRow = el('div', 'k-meta'); mRow.append(el('span', null, [it.year, catLabel(it)].filter(Boolean).join(' • ')), el('span', null, it.rating ? '★ ' + it.rating : ''));
+        const mRow = el('div', 'k-meta'); mRow.append(el('span', null, [it.year, catLabel(it), it.fav ? '❤' : ''].filter(Boolean).join(' • ')), el('span', null, it.rating ? '★ ' + it.rating : ''));
         const qm = el('div', 'k-quick-move');
         if (!window._viewingGuestUid) {
-          this.STATUSES.filter(s => s.key !== stCol.key).slice(0, 3).forEach(ts => {
+          this.STATUSES.filter(s => s.key !== stCol.key).forEach(ts => {
             const mb = el('button', 'k-move-btn', '→ ' + ts.label.split(' ')[0]); mb.type = 'button';
             mb.onclick = ev => { ev.stopPropagation(); this.move(it.id, ts.key); }; qm.append(mb);
           });
         }
-        inf.append(el('div', 'k-title', it.title), mRow, qm); c.append(im, inf); c.onclick = () => openDetail(it.id); list.append(c);
+        inf.append(el('div', 'k-title', it.title), mRow, qm); c.append(im, inf);
+        c.onclick = () => {
+          if (selMode) {
+            if (selSet.has(it.id)) selSet.delete(it.id);
+            else selSet.add(it.id);
+            selPaint();
+            this.renderBoard();
+            return;
+          }
+          openDetail(it.id);
+        };
+        list.append(c);
       });
       col.append(hdr, list); board.append(col);
     });
@@ -7077,7 +7482,7 @@ function updateProfileMetaAndPrivacyUI() {
   }
 
   const ts = activeProf.lastVisit || Date.now(), diffMin = Math.floor((Date.now() - ts) / 60000);
-  const visitTxt = diffMin < 5 ? '● в сети' : diffMin < 60 ? `● был(а) ${diffMin} мин. назад` : diffMin < 1440 ? `● был(а) ${Math.floor(diffMin / 60)} ч. назад` : diffMin < 2880 ? '● был(а) вчера' : '● был(а) ' + new Date(ts).toLocaleDateString('ru-RU');
+  const visitTxt = diffMin < 6 ? '● в сети' : diffMin < 60 ? `● был(а) ${diffMin} мин. назад` : diffMin < 1440 ? `● был(а) ${Math.floor(diffMin / 60)} ч. назад` : diffMin < 2880 ? '● был(а) вчера' : '● был(а) ' + new Date(ts).toLocaleDateString('ru-RU');
   if ($('profLastVisit')) $('profLastVisit').textContent = visitTxt;
 
   // Блок контактов Создателя сайта (Telegram + кнопка «Сообщить об ошибке» — п. 6)
@@ -7707,7 +8112,7 @@ function getEffectiveProfilesList() {
 function updateRealOnlineCounter() {
   const now = Date.now();
   const list = getEffectiveProfilesList();
-  const activeCloudCount = list.filter(p => p.lastVisit && (now - p.lastVisit) < 240000).length;
+  const activeCloudCount = list.filter(p => p.lastVisit && (now - p.lastVisit) < 360000).length;
   const realOnline = Math.max(1, activeCloudCount);
   if ($('realOnlineTxt')) $('realOnlineTxt').textContent = `В сети: ${realOnline}`;
   if ($('totalUsersBadgeCount')) $('totalUsersBadgeCount').textContent = String(Math.max(1, list.length));
@@ -7752,7 +8157,7 @@ function renderPublicUsersDirectory() {
   list.forEach(p => {
     const isMe = Boolean(user && p.userId === user.uid);
     const isFr = myFriends.includes(p.userId);
-    const isOn = p.lastVisit && (now - p.lastVisit) < 300000;
+    const isOn = p.lastVisit && (now - p.lastVisit) < 360000;
     const isCr = isProfileCreator(p);
     const displayId = isCr ? CREATOR_PUBLIC_ID : (p.publicId || deterministicIdFromUid(p.userId));
 
@@ -7790,7 +8195,7 @@ function renderPublicUsersDirectory() {
 
     const acts = el('div', 'comm-user-acts');
     // Кнопка «✉ Написать» прямо на карточке пользователя в Сообществе (для друзей и для Создателя — п. 2)
-    if (!isMe && (isFr || amCreator)) {
+    if (!isMe && (isFr || amCreator || isCr)) {
       const dmB = el('button', 'btn btn-s', '✉ Написать');
       dmB.type = 'button';
       dmB.onclick = e => { e.stopPropagation(); openDirectMessagesModal(p.userId); };
@@ -7842,7 +8247,7 @@ function searchUsers(queryStr) {
       const row = el('div', 'u-res-row'), im = el('img'), inf = el('div');
       im.src = safePosterUrl(p.avatar); im.onerror = () => { im.onerror = null; im.src = FALL; };
       const nm = p.name || p.displayName || 'Пользователь';
-      const isOnline = p.lastVisit && (Date.now() - p.lastVisit) < 300000;
+      const isOnline = p.lastVisit && (Date.now() - p.lastVisit) < 360000;
       const isCr = isProfileCreator(p);
       const displayId = isCr ? CREATOR_PUBLIC_ID : (p.publicId || deterministicIdFromUid(p.userId));
       inf.append(el('b', null, nm), document.createTextNode(' '));
@@ -8109,7 +8514,8 @@ function initFriendsAndNotifications() {
     friendReqUnsub1 = onSnapshot(query(collection(db, 'items'), where('kind', '==', 'friendReq'), where('fromUid', '==', user.uid)), handleSnap, () => {});
     friendReqUnsub2 = onSnapshot(query(collection(db, 'items'), where('kind', '==', 'friendReq'), where('toUid', '==', user.uid)), handleSnap, () => {});
     unreadDmUnsub = onSnapshot(query(collection(db, 'items'), where('kind', '==', 'dm'), where('toUid', '==', user.uid), where('read', '==', false)), snap => {
-      unreadDmMessages = snap.docs.map(d => ({ _docId: d.id, ...d.data() })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      unreadDmMessages = snap.docs.map(d => ({ _docId: d.id, ...d.data() })).sort((a, b) => getDmMessageMillis(b) - getDmMessageMillis(a));
+      unreadDmMessages.forEach(m => recordDmActivityForPeer(m.fromUid, m));
       updateNotificationBellBadge();
     }, () => {});
   } catch (e) {}
@@ -8201,7 +8607,7 @@ function updateFriendBtnUI() {
   const rel = getFriendshipRelationWith(window._viewingGuestUid);
   // Создатель может писать любому участнику без дружбы (п. 2)!
   if (dmBtn) {
-    dmBtn.style.display = (rel.state === 'accepted' || isCreatorAdmin()) ? 'inline-block' : 'none';
+    dmBtn.style.display = (rel.state === 'accepted' || isCreatorAdmin() || isPeerCreatorProfile(window._viewingGuestUid)) ? 'inline-block' : 'none';
     dmBtn.textContent = '✉ Написать';
     dmBtn.onclick = () => openDirectMessagesModal(window._viewingGuestUid);
   }
@@ -8228,11 +8634,54 @@ function updateFriendBtnUI() {
   }
 }
 
-// Модальное окно списка друзей при клике на счётчик «N друг / друзей» в профиле (п. 2)
+// Единое время сообщения по серверным часам Firestore (serverAt -> миллисекунды, с запасным createdAt), чтобы разсинхрон часов между телефоном и ПК никогда не путал порядок сообщений (Часть 1 п.1)
+function getDmMessageMillis(m) {
+  if (!m) return 0;
+  const sa = m.serverAt;
+  if (sa) {
+    if (typeof sa.toMillis === 'function') return sa.toMillis();
+    if (typeof sa.seconds === 'number') return sa.seconds * 1000 + Math.floor((sa.nanoseconds || 0) / 1e6);
+  }
+  return Number(m.createdAt) || 0;
+}
+
+function isPeerCreatorProfile(peerUid) {
+  if (!peerUid) return false;
+  const p = getEffectiveProfilesList().find(x => x.userId === peerUid) || (window._viewingGuestUid === peerUid ? window._guestProf : null);
+  return Boolean(p && isProfileCreator(p));
+}
+
+// Кэш последнего сообщения по каждому собеседнику для сортировки списка диалогов в окне уведомлений (Часть 1 п.1)
+const lastDmByPeerMap = new Map();
+function recordDmActivityForPeer(peerUid, msgObj) {
+  if (!peerUid || !msgObj) return;
+  const ts = getDmMessageMillis(msgObj);
+  const prev = lastDmByPeerMap.get(peerUid);
+  if (!prev || ts >= prev.ts) {
+    lastDmByPeerMap.set(peerUid, { ts, text: msgObj.text || '', fromUid: msgObj.fromUid });
+  }
+}
+
+async function refreshRecentDmDialogsSummary() {
+  if (!user || user.isLocal || !auth.currentUser) return;
+  try {
+    const [sSent, sRec] = await Promise.all([
+      getDocs(query(collection(db, 'items'), where('kind', '==', 'dm'), where('fromUid', '==', user.uid), limit(80))).catch(() => ({ docs: [] })),
+      getDocs(query(collection(db, 'items'), where('kind', '==', 'dm'), where('toUid', '==', user.uid), limit(80))).catch(() => ({ docs: [] }))
+    ]);
+    [...sSent.docs, ...sRec.docs].forEach(d => {
+      const m = d.data();
+      const peer = m.fromUid === user.uid ? m.toUid : m.fromUid;
+      recordDmActivityForPeer(peer, m);
+    });
+  } catch (e) {}
+}
+
+// Модальное окно списка друзей при клике на счётчик «N друг / друзей» в профиле
 async function openFriendsListModal(forUid = (user && user.uid)) {
   const modal = $('friendsListModal'), body = $('friendsModalBody'), titleEl = $('friendsModalTitle');
   if (!modal || !body) return;
-  if (!allRegisteredProfiles.length) subscribePublicProfilesIfAllowed(true);
+  await ensureProfilesLoaded();
   const friendUids = getAcceptedFriendUids(forUid);
   const profiles = getEffectiveProfilesList();
   const isMyOwnList = Boolean(user && forUid === user.uid);
@@ -8250,7 +8699,7 @@ async function openFriendsListModal(forUid = (user && user.uid)) {
     friendUids.forEach(fUid => {
       const fProf = profiles.find(p => p.userId === fUid) || { userId: fUid, name: 'Участник' };
       const isMe = Boolean(user && fUid === user.uid);
-      const canMessage = !isMe && (isMyOwnList || myFriends.includes(fUid) || amCreator);
+      const canMessage = !isMe && (isMyOwnList || myFriends.includes(fUid) || amCreator || isProfileCreator(fProf));
       const card = el('div', 'comm-user-card');
       const mainRow = el('div', 'comm-user-main');
       const im = el('img'); im.src = safePosterUrl(fProf.avatar); im.onerror = () => { im.onerror = null; im.src = FALL; };
@@ -8289,7 +8738,7 @@ async function openFriendsListModal(forUid = (user && user.uid)) {
   modal.style.display = 'flex';
 }
 
-// Центр уведомлений (🔔: входящие заявки в друзья, непрочитанные ЛС, рекомендации)
+// Центр уведомлений (🔔: входящие заявки в друзья, чаты отсортированные по времени последнего сообщения, рекомендации — Часть 1 п.1)
 function renderNotificationsModalBody() {
   const body = $('notifModalBody');
   if (!body) return;
@@ -8327,33 +8776,45 @@ function renderNotificationsModalBody() {
   }
   body.append(secFr);
 
-  // 2. Личные сообщения и чаты с друзьями
+  // 2. Личные сообщения и чаты (отсортированы по времени последнего сообщения!)
   const secDm = el('div', 'pb');
   const friendUids = getAcceptedFriendUids();
+  unreadDmMessages.forEach(m => recordDmActivityForPeer(m.fromUid, m));
+  const unreadBySender = new Map();
+  unreadDmMessages.forEach(m => {
+    unreadBySender.set(m.fromUid, (unreadBySender.get(m.fromUid) || 0) + 1);
+  });
+  const chatPartners = [...new Set([...unreadBySender.keys(), ...lastDmByPeerMap.keys(), ...friendUids])].filter(uid => uid && (!user || uid !== user.uid));
+  // Сортируем диалоги: сначала по времени последнего сообщения (новые сверху), а при равном времени — непрочитанные выше
+  chatPartners.sort((uidA, uidB) => {
+    const tsA = lastDmByPeerMap.get(uidA)?.ts || 0;
+    const tsB = lastDmByPeerMap.get(uidB)?.ts || 0;
+    if (tsB !== tsA) return tsB - tsA;
+    return (unreadBySender.get(uidB) || 0) - (unreadBySender.get(uidA) || 0);
+  });
+
   secDm.append(el('h4', null, `✉ Личные сообщения (непрочитанных: ${unreadDmMessages.length})`));
-  if (!friendUids.length && !unreadDmMessages.length) {
+  if (!chatPartners.length) {
     secDm.append(el('div', 'meta', 'Добавь участников в друзья, чтобы переписываться в приватном чате.'));
   } else {
-    const unreadBySender = new Map();
-    unreadDmMessages.forEach(m => {
-      unreadBySender.set(m.fromUid, (unreadBySender.get(m.fromUid) || 0) + 1);
-    });
-    const chatPartners = [...new Set([...unreadBySender.keys(), ...friendUids])];
     chatPartners.forEach(fUid => {
-      const fProf = profiles.find(p => p.userId === fUid) || { userId: fUid, name: 'Друг' };
+      const fProf = profiles.find(p => p.userId === fUid) || { userId: fUid, name: 'Участник' };
       const unreadCnt = unreadBySender.get(fUid) || 0;
       const lastUnread = unreadDmMessages.find(m => m.fromUid === fUid);
+      const lastAct = lastDmByPeerMap.get(fUid);
+      const previewMsg = lastUnread ? `«${lastUnread.text.slice(0, 65)}»` : (lastAct?.text ? `${lastAct.fromUid === (user && user.uid) ? 'Вы: ' : ''}«${lastAct.text.slice(0, 60)}»` : 'Нажми, чтобы открыть приватный диалог');
+      const timeHint = lastAct?.ts ? ' · ' + new Date(lastAct.ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
       const row = el('div', 'comm-user-card'); row.style.marginTop = '8px';
       const mainRow = el('div', 'comm-user-main');
       const im = el('img'); im.src = safePosterUrl(fProf.avatar); im.onerror = () => { im.onerror = null; im.src = FALL; };
       const inf = el('div', 'comm-user-info');
       inf.append(
-        el('b', null, `${fProf.name || fProf.displayName || 'Друг'}${unreadCnt ? ` (🔴 +${unreadCnt} новых)` : ''}`),
-        el('div', 'meta', lastUnread ? `«${lastUnread.text.slice(0, 65)}»` : 'Нажми, чтобы открыть приватный диалог')
+        el('b', null, `${fProf.name || fProf.displayName || 'Участник'}${unreadCnt ? ` (🔴 +${unreadCnt} новых)` : ''}`),
+        el('div', 'meta', previewMsg + timeHint)
       );
       mainRow.append(im, inf);
       const acts = el('div', 'comm-user-acts');
-      const chatB = el('button', unreadCnt ? 'btn' : 'btn btn-s', '✉ Написать');
+      const chatB = el('button', unreadCnt ? 'btn' : 'btn btn-s', '✉ Открыть чат');
       chatB.type = 'button';
       chatB.onclick = e => { e.stopPropagation(); closeAll(); openDirectMessagesModal(fUid); };
       acts.append(chatB);
@@ -8385,18 +8846,19 @@ function renderNotificationsModalBody() {
 }
 
 if ($('notifBellBtn')) {
-  $('notifBellBtn').onclick = () => {
+  $('notifBellBtn').onclick = async () => {
     if (!user || user.isLocal) return toast('Уведомления доступны при входе в облачный аккаунт', true);
-    if (!allRegisteredProfiles.length) subscribePublicProfilesIfAllowed(true);
-    renderNotificationsModalBody();
     $('notifModal').style.display = 'flex';
+    renderNotificationsModalBody();
+    await Promise.all([ensureProfilesLoaded(), refreshRecentDmDialogsSummary()]);
+    if ($('notifModal').style.display !== 'none') renderNotificationsModalBody();
   };
 }
 if ($('closeNotifModalBtn')) $('closeNotifModalBtn').onclick = () => { $('notifModal').style.display = 'none'; };
 
 // =========================================================================
-// ПРИВАТНЫЙ ЧАТ / ЛИЧНЫЕ СООБЩЕНИЯ С МГНОВЕННЫМ ОБНОВЛЕНИЕМ ЧЕРЕЗ onSnapshot (п. 2)
-// Создатель может писать любому участнику без дружбы (isMutualFriend || isCreatorAdmin)
+// ПРИВАТНЫЙ ЧАТ / ЛИЧНЫЕ СООБЩЕНИЯ С МГНОВЕННЫМ ОБНОВЛЕНИЕМ И СЕРВЕРНЫМ ВРЕМЕНЕМ (Часть 1 п.1 + Часть 2 Важные баги)
+// Создатель может писать любому участнику, и любой участник может отвечать Создателю без дружбы!
 // =========================================================================
 let activeDmPeerUid = null;
 let activeDmLimit = 50;
@@ -8412,12 +8874,18 @@ function getSortedChatId(uid1, uid2) {
   return [String(uid1 || ''), String(uid2 || '')].sort().join('_');
 }
 
+function canChatWithPeer(peerUid) {
+  if (!user || !peerUid || peerUid === user.uid) return false;
+  if (isMutualFriend(peerUid) || isCreatorAdmin() || isPeerCreatorProfile(peerUid)) return true;
+  if (unreadDmMessages.some(m => m.fromUid === peerUid) || lastDmByPeerMap.has(peerUid)) return true;
+  return false;
+}
+
 async function openDirectMessagesModal(peerUid) {
   if (!user || user.isLocal || !auth.currentUser) return toast('Войди в облачный аккаунт для отправки личных сообщений', true);
   if (!peerUid || peerUid === user.uid) return;
-  // Создатель может писать любому без дружбы; также можно ответить, если уже есть входящее сообщение от этого пользователя (например, от Создателя)
-  const hasIncomingFromPeer = unreadDmMessages.some(m => m.fromUid === peerUid);
-  if (!isMutualFriend(peerUid) && !isCreatorAdmin() && !hasIncomingFromPeer) {
+  await ensureProfilesLoaded();
+  if (!canChatWithPeer(peerUid)) {
     return toast('Личные сообщения доступны только между взаимными друзьями (сначала отправь и прими заявку в друзья)', true);
   }
   activeDmPeerUid = peerUid;
@@ -8428,7 +8896,7 @@ async function openDirectMessagesModal(peerUid) {
     $('dmPeerAvatar').onerror = () => { $('dmPeerAvatar').onerror = null; $('dmPeerAvatar').src = FALL; };
   }
   if ($('dmPeerName')) $('dmPeerName').textContent = peerProf.name || peerProf.displayName || 'Участник';
-  const relLabel = isMutualFriend(peerUid) ? 'Взаимный друг' : (isCreatorAdmin() ? 'Режим Создателя (без заявки)' : 'Диалог');
+  const relLabel = isMutualFriend(peerUid) ? 'Взаимный друг' : (isProfileCreator(peerProf) ? 'Создатель сайта' : (isCreatorAdmin() ? 'Режим Создателя (без заявки)' : 'Диалог'));
   if ($('dmPeerSub')) $('dmPeerSub').textContent = `${relLabel} · ID ${isProfileCreator(peerProf) ? CREATOR_PUBLIC_ID : (peerProf.publicId || deterministicIdFromUid(peerUid))}`;
   $('dmModal').style.display = 'flex';
   subscribeDirectMessagesHistory();
@@ -8444,7 +8912,16 @@ function subscribeDirectMessagesHistory() {
 
   const renderMergedMessages = () => {
     const merged = new Map([...sentMap.entries(), ...recMap.entries()]);
-    const allMsgs = [...merged.values()].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)).slice(-activeDmLimit);
+    // Сортируем строго по серверному времени getDmMessageMillis(m), чтобы разница часов между устройствами не нарушала порядок реплик (Часть 1 п.1)
+    const allMsgs = [...merged.values()].sort((a, b) => {
+      const diff = getDmMessageMillis(a) - getDmMessageMillis(b);
+      if (diff !== 0) return diff;
+      return String(a._docId || '').localeCompare(String(b._docId || ''));
+    }).slice(-activeDmLimit);
+
+    if (allMsgs.length) {
+      recordDmActivityForPeer(activeDmPeerUid, allMsgs[allMsgs.length - 1]);
+    }
 
     if (olderBtn) {
       olderBtn.style.display = (sentMap.size >= activeDmLimit || recMap.size >= activeDmLimit) ? 'inline-block' : 'none';
@@ -8460,7 +8937,8 @@ function subscribeDirectMessagesHistory() {
         const b = el('div', 'dm-bubble ' + (isMine ? 'mine' : 'theirs'));
         const txt = el('div', null, m.text || '');
         const meta = el('div', 'dm-meta');
-        const timeStr = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
+        const tsMs = getDmMessageMillis(m);
+        const timeStr = tsMs ? new Date(tsMs).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
         meta.append(el('span', null, timeStr + (isMine ? (m.read ? ' · ✓✓ прочитано' : ' · ✓ отправлено') : '')));
         if (isMine || isCreatorAdmin()) {
           const delB = el('button', 'fp-act del', '🗑');
@@ -8495,7 +8973,6 @@ function subscribeDirectMessagesHistory() {
       snap.docs.forEach(d => targetMap.set(d.id, { _docId: d.id, ...d.data() }));
       renderMergedMessages();
     }, err => {
-      // Если составной индекс для ЛС ещё не создан в Firebase Console — подписываемся без orderBy и уведомляем
       if ($('dmPeerSub') && err?.code === 'failed-precondition') {
         $('dmPeerSub').textContent = '⚠ Создай 2 индекса для dm в Firebase Console для сортировки 50+ сообщений';
       }
@@ -8522,11 +8999,11 @@ function subscribeDirectMessagesHistory() {
 async function sendDirectMessage() {
   if (!user || user.isLocal || !auth.currentUser || !activeDmPeerUid) return;
   if (prof.banned && !isCreatorAdmin()) return toast('Твой профиль заблокирован — отправка сообщений недоступна', true);
-  if (!isMutualFriend(activeDmPeerUid) && !isCreatorAdmin()) {
-    return toast('Писать сообщения можно только взаимным друзьям', true);
+  if (!canChatWithPeer(activeDmPeerUid)) {
+    return toast('Писать сообщения можно взаимным друзьям или Создателю сайта', true);
   }
   const now = Date.now();
-  if (now - lastDmSendTs < 2500) return toast('Подожди пару секунд перед отправкой следующего сообщения', true);
+  if (now - lastDmSendTs < 1500) return toast('Подожди секунду перед отправкой следующего сообщения', true);
   const inp = $('dmInput');
   const txt = (inp?.value || '').trim();
   if (!txt) return;
@@ -8535,16 +9012,19 @@ async function sendDirectMessage() {
   lastDmSendTs = now;
   const chatId = getSortedChatId(user.uid, activeDmPeerUid);
   const docId = `dm_${now}_${user.uid.slice(0, 6)}`;
+  const msgPayload = {
+    kind: 'dm',
+    chatId,
+    fromUid: user.uid,
+    toUid: activeDmPeerUid,
+    text: txt.slice(0, 500),
+    createdAt: now,
+    serverAt: serverTimestamp(),
+    read: false
+  };
   try {
-    await setDoc(doc(db, 'items', docId), {
-      kind: 'dm',
-      chatId,
-      fromUid: user.uid,
-      toUid: activeDmPeerUid,
-      text: txt.slice(0, 500),
-      createdAt: now,
-      read: false
-    });
+    await setDoc(doc(db, 'items', docId), msgPayload);
+    recordDmActivityForPeer(activeDmPeerUid, { ...msgPayload, serverAt: { seconds: Math.floor(now / 1000) } });
     if (inp) inp.value = '';
   } catch (e) {
     toast('Не удалось отправить сообщение: ' + (e.code || e.message), true);
@@ -8575,11 +9055,12 @@ if ($('shareProfileLinkBtn')) {
   };
 }
 
-function checkInitialHashRoute() {
+async function checkInitialHashRoute() {
   const h = location.hash || '';
   const m = h.match(/^#user=([a-zA-Z0-9_-]+)/);
   if (!m) return;
   const targetId = m[1];
+  await ensureProfilesLoaded();
   const found = getEffectiveProfilesList().find(p => String(isProfileCreator(p) ? CREATOR_PUBLIC_ID : (p.publicId || deterministicIdFromUid(p.userId))) === targetId || p.userId === targetId);
   if (found) openUserPublicProfile(found, false);
 }

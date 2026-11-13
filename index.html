@@ -653,8 +653,11 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
   .tp-hero{grid-template-columns:1fr}
   .tp-poster{max-width:210px;margin:0 auto}
   .tp-hero-art-bg{width:100%;height:300px;top:-16px;right:0;opacity:.28}
-  .cg-hero-card{flex:0 0 288px;height:162px;grid-template-columns:96px 1fr;padding:10px}
-  .cg-hero-poster{width:96px;height:138px}
+  .cg-hero-card{flex:0 0 272px;height:154px;grid-template-columns:92px 1fr;padding:10px}
+  .cg-hero-poster{width:92px;height:132px}
+  .anix-sec-grid{grid-template-columns:1fr!important}
+  .anix-type-stats{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+  .anix-type-card{padding:10px 11px}
 }
 @media(max-width:600px){
   #authScreen{margin:2vh 12px;padding:28px 18px}
@@ -883,16 +886,14 @@ html[data-theme=white] .cg-subkind-pill.on{background:var(--ac);color:#fff}
 
     <!-- Вкладка 1: КАТАЛОГ -->
     <div id="catalogView">
-      <div class="filters" id="cgCats">
+      <div class="filters" id="cgCats" style="display:none">
+        <button class="tb" data-g="Все" type="button">Все</button>
         <button class="tb on" data-g="Аниме" type="button">Аниме</button>
         <button class="tb" data-g="Манга" type="button">Манга</button>
         <button class="tb" data-g="Ранобэ" type="button">Ранобэ</button>
-        <button class="tb" data-g="Кино и сериалы" type="button">🎬 Кино и сериалы</button>
-        <button class="tb" data-g="Фильм" type="button" style="display:none">Фильмы</button>
-        <button class="tb" data-g="Сериал" type="button" style="display:none">Сериалы</button>
+        <button class="tb" data-g="Фильм" type="button">Фильмы</button>
+        <button class="tb" data-g="Сериал" type="button">Сериалы</button>
       </div>
-      <!-- Всегда видимая горизонтальная полоса подкатегорий под основными вкладками (Часть 4 п.7) -->
-      <div id="cgSubKindBar" class="cg-subkind-bar"></div>
       <!-- Строка источника каталога и кнопки живого обновления ленты (Часть 3) -->
       <div class="cg-feed-meta-bar">
         <span id="cgSourceCaption" class="cg-source-badge">🌐 Источник: AniList · Сейчас актуально</span>
@@ -914,6 +915,7 @@ html[data-theme=white] .cg-subkind-pill.on{background:var(--ac);color:#fff}
           <input id="cgSearch" placeholder="Найти в каталоге по названию (Enter — поиск)...">
           <button id="cgClear" title="Очистить поиск" type="button">✕</button>
         </div>
+        <div id="cgSubKindBar" class="cg-subkind-bar" aria-label="Виды"></div>
         <div class="row">
           <button class="tb" id="cgFltBtn" type="button" aria-expanded="false">🔎 Фильтры ▾</button>
           <select id="cgMode" class="cg-collapsible">
@@ -999,13 +1001,11 @@ html[data-theme=white] .cg-subkind-pill.on{background:var(--ac);color:#fff}
             <div class="hyb-avatar-row">
               <div class="av-wrap" id="avWrap">
                 <img id="avatar" referrerpolicy="no-referrer" alt="">
-                <span class="av-lvl-dot" id="avLvlDot" title="Уровень коллекции">1</span>
               </div>
             </div>
 
             <div class="hyb-name-line">
               <b id="profName">Моя коллекция</b>
-              <span class="lvl-pill" id="profLvl">🌱 Новичок</span>
             </div>
 
             <div class="hyb-meta-stack">
@@ -1015,10 +1015,7 @@ html[data-theme=white] .cg-subkind-pill.on{background:var(--ac);color:#fff}
 
             <div class="pbio" id="profBio" style="display:none"></div>
 
-            <div class="xp-wrap">
-              <div class="xp-bar"><div class="xp-fill" id="profXpFill" style="width:0%"></div></div>
-              <div class="xp-txt"><span id="profXpTxt">0 XP</span><span id="profNextTxt"></span></div>
-            </div>
+
           </div>
 
           <!-- Правая колонка -->
@@ -1061,14 +1058,7 @@ html[data-theme=white] .cg-subkind-pill.on{background:var(--ac);color:#fff}
       <!-- Блоки по образцу Anixart: Статистика по типам, Кольцевая диаграмма статусов + Жанры, «🕒 История просмотра» и «⭐ Оценки» -->
       <div id="profAnixartExtrasSec" class="anix-sec-grid">
         <div id="anixTypeStatsGrid" class="anix-type-stats"></div>
-        <div class="anix-sec-card">
-          <div class="anix-sec-hdr"><h4>📊 Статистика по статусам и жанрам</h4><button class="btn btn-s" type="button" style="padding:4px 10px;font-size:11.5px" onclick="document.getElementById('statsBtn')?.click()">Подробнее</button></div>
-          <div id="anixStatusDonutBox" class="anix-donut-wrap"></div>
-        </div>
-        <div class="anix-sec-card">
-          <div class="anix-sec-hdr"><h4>🕒 Недавно добавлено / обновлено</h4></div>
-          <div id="anixRecentHistoryBox" class="anix-h-list"></div>
-        </div>
+
         <div class="anix-sec-card" style="grid-column:1/-1">
           <div class="anix-sec-hdr"><h4>⭐ Оценки</h4><span class="meta" id="anixRatedCountMeta" style="margin:0"></span></div>
           <div id="anixRatedStripBox" class="anix-rated-row"></div>
@@ -3545,18 +3535,43 @@ const TG = {28:'Боевик',12:'Приключения',16:'Мультфиль
 const TAGRU = {"Josei":"Дзёсэй","Kids":"Детское","Seinen":"Сэйнэн","Shoujo":"Сёдзё","Shounen":"Сёнэн","Boys' Love":"Яой / Сёнэн-ай (Boys’ Love)","Girls' Love":"Юри / Сёдзё-ай (Girls’ Love)","Yaoi":"Яой","Yuri":"Юри","Harem":"Гарем","Reverse Harem":"Обратный гарем","Love Triangle":"Любовный треугольник","Unrequited Love":"Безответная любовь","Age Gap":"Разница в возрасте","Polyamorous":"Полиамория","Matchmaking":"Сватовство","Marriage":"Брак","Cohabitation":"Совместная жизнь","Heterosexual":"Гетеро","Bisexual":"Бисексуальность","Transgender":"Трансгендерность","LGBTQ+ Themes":"ЛГБТ-темы","Isekai":"Исэкай","Reincarnation":"Реинкарнация","Magic":"Магия","Super Power":"Суперсилы","Time Travel":"Путешествия во времени","Time Skip":"Скачок во времени","Time Loop":"Временная петля","Post-Apocalyptic":"Постапокалипсис","Dystopian":"Антиутопия","Cyberpunk":"Киберпанк","Steampunk":"Стимпанк","Alchemy":"Алхимия","Witch":"Ведьмы","Vampire":"Вампиры","Werewolf":"Оборотни","Zombie":"Зомби","Demons":"Демоны","Gods":"Боги","Ghost":"Призраки","Dragons":"Драконы","Elf":"Эльфы","Aliens":"Пришельцы","Robots":"Роботы","Ninja":"Ниндзя","Samurai":"Самураи","Pirates":"Пираты","Military":"Военное","War":"Война","Space":"Космос","Mythology":"Мифология","Religion":"Религия","Politics":"Политика","Royal Affairs":"Королевские интриги","Slavery":"Рабство","Survival":"Выживание","Revenge":"Месть","Crime":"Криминал","Detective":"Детектив","Police":"Полиция","Gangs":"Банды","Yakuza":"Якудза","Espionage":"Шпионаж","Assassins":"Убийцы","Terrorism":"Терроризм","Tragedy":"Трагедия","Parody":"Пародия","Satire":"Сатира","Coming of Age":"Взросление","Anti-Hero":"Антигерой","Bullying":"Буллинг","Body Horror":"Боди-хоррор","Gore":"Жестокость (гор)","Suicide":"Суицид","Death Game":"Игра на выживание","Battle Royale":"Королевская битва","Video Games":"Видеоигры","Virtual World":"Виртуальный мир","Game":"Игры","Idol":"Айдолы","Cute Girls Doing Cute Things":"Милые девочки","Iyashikei":"Ийясикэй (умиротворение)","Otaku Culture":"Культура отаку","Gender Bending":"Смена пола","Crossdressing":"Кроссдрессинг","Body Swapping":"Обмен телами","Super Hero":"Супергерои","Superhero":"Супергерои","Food":"Еда","Cosplay":"Косплей","Dancing":"Танцы","Band":"Музыкальная группа","Classic Literature":"Классическая литература","Fairy Tale":"Сказка","Kaiju":"Кайдзю","Cultivation":"Культивация","Wuxia":"Уся","Martial Arts":"Боевые искусства","Swordplay":"Фехтование","Gambling":"Азартные игры","Chuunibyou":"Тюнибё","Tsundere":"Цундере","Yandere":"Яндере","Kuudere":"Кудере","Dissociative Identities":"Раздвоение личности","Amnesia":"Амнезия","Memory Manipulation":"Манипуляции памятью","Mind Control":"Контроль разума","Twins":"Близнецы","Found Family":"Найденная семья","Family Life":"Семейная жизнь","Rural":"Деревня","Urban":"Город","School":"Школа","College":"Колледж","Work":"Работа","Medieval":"Средневековье","Historical":"Историческое","Ancient China":"Древний Китай","Afterlife":"Загробная жизнь","Angels":"Ангелы","Fairy":"Феи","Monster Girl":"Монстро-девочки","Anthropomorphism":"Антропоморфизм","Animals":"Животные","Ensemble Cast":"Большой ансамбль","Male Protagonist":"Мужской протагонист","Female Protagonist":"Женская протагонистка","Primarily Female Cast":"В основном женский каст","Primarily Male Cast":"В основном мужской каст","Primarily Child Cast":"В основном детский каст","Primarily Adult Cast":"В основном взрослый каст","Teacher":"Учитель","Student Council":"Студсовет","Full Color":"Цветная","4-koma":"4-кома","Anthology":"Антология","Episodic":"Эпизодическое","Gag Humor":"Гэг-юмор","Black Comedy":"Чёрная комедия","Slapstick":"Слэпстик","Surreal Comedy":"Сюрреалистичная комедия","Shapeshifting":"Превращения","Illusions":"Иллюзии","Lost Civilization":"Утраченная цивилизация","Rescue":"Спасение","Nudity":"Обнажёнка","Drugs":"Наркотики"};
 const ruTag = n => TAGRU[n] || n;
 
+function findCachedEnForRuQuery(qStr, type) {
+  const ql = (qStr || '').toLowerCase().trim();
+  if (!ql) return '';
+  for (const entry of ALC.values()) {
+    for (const r of (entry.v || [])) {
+      if (!r || !r.title) continue;
+      if (type === 'ANIME' && r.category !== 'Аниме') continue;
+      if (type === 'MANGA' && r.category === 'Аниме') continue;
+      if (r.title.toLowerCase().includes(ql) && (r.en || r.orig)) return r.en || r.orig;
+    }
+  }
+  return '';
+}
+
+async function ruToEnTranslate(qStr) {
+  try {
+    const j = await ruJson('https://translate.googleapis.com/translate_a/single?client=gtx&sl=ru&tl=en&dt=t&q=' + encodeURIComponent(qStr), 5000);
+    const t = (j[0] || []).map(x => x[0]).join('').trim();
+    if (t && !hasRu(t)) return t;
+  } catch (e) {}
+  return '';
+}
+
 async function _anilistRaw(search, type, o = {}) {
   if (hasRu(search)) {
-    let en = '';
-    if (shikiOk()) {
+    let en = findCachedEnForRuQuery(search, type);
+    if (!en && shikiOk()) {
       try {
-        for (const kk of type === 'ANIME' ? ['animes'] : ['mangas', 'ranobe']) {
-          const l = await shiki(`/api/${kk}?search=${encodeURIComponent(search)}&limit=1`);
-          if (l[0]) { en = l[0].name; break; }
+        const shikiKinds = type === 'ANIME' ? ['animes'] : (o.format === 'NOVEL' ? ['ranobe', 'mangas'] : ['mangas', 'ranobe']);
+        for (const kk of shikiKinds) {
+          const l = await shiki(`/api/${kk}?search=${encodeURIComponent(search)}&limit=5`);
+          if (l && l[0]) { en = l[0].name; break; }
         }
       } catch (e) {}
     }
     if (!en) { try { en = await ruToEn(search); } catch (e) {} }
+    if (!en) { try { en = await ruToEnTranslate(search); } catch (e) {} }
     if (en) search = en;
   }
   const gql = 'query($s:String,$id:Int,$idMal:Int,$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int,$g:[String],$gn:[String],$sg:FuzzyDateInt,$sl:FuzzyDateInt,$ag:Int,$pl:Int,$el:Int,$eg:Int,$cl:Int,$cg:Int,$se:MediaSeason,$sy:Int,$tg:[String],$tgn:[String]){Page(page:$p,perPage:$pp){media(search:$s,id:$id,idMal:$idMal,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg,genre_in:$g,genre_not_in:$gn,startDate_greater:$sg,startDate_lesser:$sl,averageScore_greater:$ag,popularity_lesser:$pl,episodes_lesser:$el,episodes_greater:$eg,chapters_lesser:$cl,chapters_greater:$cg,season:$se,seasonYear:$sy,tag_in:$tg,tag_not_in:$tgn){id idMal isAdult format siteUrl countryOfOrigin bannerImage trailer{id site} title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore episodes duration chapters volumes genres tags{name rank isMediaSpoiler} status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
@@ -3740,20 +3755,21 @@ function backfillMissingDurations() { resumeBackgroundCatalogLinkingIfNeeded(); 
 
 // ---------- Статистика и блоки Профиля ----------
 function buildStats(b) {
-  const vis = getVisibleItems();
+  const vis = getVisibleItems().filter(i => !i.archived);
   b.replaceChildren();
-  const avg = a => { a = a.filter(i => num(i.extRating)); return a.length ? (a.reduce((s, i) => s + num(i.extRating), 0) / a.length).toFixed(2) : '—'; };
+  const avgMine = a => { a = a.filter(i => num(i.rating)); return a.length ? (a.reduce((s, i) => s + num(i.rating), 0) / a.length).toFixed(2) : '—'; };
   const block = (title, rows) => {
     if (!rows.length) return;
     b.append(el('h4', null, title)); const max = Math.max(1, ...rows.map(r => r[1]));
     rows.forEach(([n, c, x]) => { const r = el('div', 'sr'), bar = el('div', 'bar'); bar.style.width = (c / max * 100) + '%'; r.append(el('span', null, n), bar, el('span', 'meta', x)); b.append(r); });
   };
-  b.append(el('div', null, `Всего тайтлов: ${vis.length}`), el('div', 'meta', `Средняя внешняя оценка: ${avg(vis)}`));
-  block('По категориям (кол-во, средняя оценка)', CATS.map(c => { const a = vis.filter(i => i.category === c); return [c, a.length, avg(a)]; }).filter(r => r[1]));
-  block('По статусам', STATS.map(s => [s, vis.filter(i => i.status === s).length, '']).filter(r => r[1]));
+  b.append(el('div', null, `Всего активных тайтлов: ${vis.length}`), el('div', 'meta', `Средняя моя оценка: ${avgMine(vis)}`));
+  block('По типам (кол-во, моя ср. оценка)', ['Фильм', 'Сериал', 'Аниме', 'Манга', 'Ранобэ'].map(c => { const a = vis.filter(i => c === 'Фильм' ? (i.category === 'Фильм' || i.category === 'Мультфильм') : i.category === c); return [c, a.length, avgMine(a)]; }).filter(r => r[1]));
+  block('По статусам', STATS.map(s => [getStatusLabelForCategory(s, 'Всё'), vis.filter(i => i.status === s).length, '']).filter(r => r[1]));
   const tc = {}; vis.forEach(i => (i.tags || []).forEach(t => tc[t] = (tc[t] || 0) + 1));
   block('Частые жанры и теги', Object.entries(tc).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([t, c]) => [t, c, '']));
-  block('Топ по внешней оценке', vis.filter(i => num(i.extRating)).sort((a, b) => num(b.extRating) - num(a.extRating)).slice(0, 5).map(i => [i.title, num(i.extRating), i.extRating]));
+  const myTop = vis.filter(i => num(i.rating)).sort((a, b) => num(b.rating) - num(a.rating)).slice(0, 5);
+  if (myTop.length) block('Топ по моей оценке', myTop.map(i => [i.title, num(i.rating), i.rating]));
   const cnt = f => { const c = {}; vis.forEach(i => f(i).forEach(x => c[x] = (c[x] || 0) + 1)); return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([t, n]) => [t, n, '']); };
   block('По десятилетиям', cnt(i => i.year ? [Math.floor(i.year / 10) * 10 + '-е'] : []).sort((a, b) => parseInt(a[0]) - parseInt(b[0])));
   block('Топ студий', cnt(i => spl(i.studio)));
@@ -3956,21 +3972,11 @@ function profStats() {
   STATS.forEach(s => tile(c(s), s.replace('Просмотрено/Прочитано', 'Завершено').replace('Смотрю/Читаю', 'Смотрю'), go(s)));
   tile(vis.filter(i => !i.archived && i.fav).length, '❤ Любимое', go('Любимое'));
   if (vis.some(i => num(i.rating))) tile(avg(i => num(i.rating)), 'Моя ср. оценка');
-  tile(avg(i => num(i.extRating)), 'Ср. внешняя оценка');
 
   const activeCount = vis.filter(i => !i.archived).length;
   const pct = activeCount ? Math.round(vis.filter(isCompletedItem).length / activeCount * 100) : 0;
   if ($('profRing')) $('profRing').style.setProperty('--p', pct);
   if ($('profRingTxt')) $('profRingTxt').textContent = pct + '%';
-
-  const xp = vis.reduce((t, i) => t + 15 + (isCompletedItem(i) ? 25 : 0) + (i.rating ? 10 : 0) + (i.myNote ? 15 : 0), 0);
-  const lvl = Math.floor(Math.sqrt(xp / 25)) + 1, prevXp = 25 * (lvl - 1) ** 2, nextXp = 25 * lvl ** 2;
-  const RANKS = ['🌱 Новичок', '🎬 Зритель', '🧭 Искатель сюжетов', '🎭 Ценитель жанров', '📚 Хранитель тайтлов', '⚡ Магистр экранов', '🏛 Архивариус миров', '👑 Легенда коллекции'];
-  $('profLvl').textContent = `${RANKS[Math.min(RANKS.length - 1, Math.floor((lvl - 1) / 2))]}`;
-  if ($('avLvlDot')) $('avLvlDot').textContent = String(lvl);
-  $('profXpFill').style.width = Math.min(100, Math.round((xp - prevXp) / Math.max(1, nextXp - prevXp) * 100)) + '%';
-  $('profXpTxt').textContent = `Ур. ${lvl} · ${xp} XP`;
-  $('profNextTxt').textContent = `До ур. ${lvl + 1}: ${Math.max(0, nextXp - xp)} XP`;
 
   profDash();
   profStrips();
@@ -4320,56 +4326,34 @@ function aniOptions() {
   ].filter(([, list]) => list.length > 0);
 }
 
-// Всегда видимая горизонтальная полоса подкатегорий под основными вкладками (Часть 1 п.9)
+// Горизонтальная полоса «Виды» под строкой поиска: Все, Аниме, Манга, Ранобэ, Фильмы, Сериалы
 function renderCatalogSubKindBar() {
   const bar = $('cgSubKindBar');
   if (!bar) return;
   bar.replaceChildren();
-  let itemsDef = [];
-  if (cg.g === 'Аниме') {
-    const cur = $('cgAnimeKind')?.value || '';
-    itemsDef = [
-      ['', 'Все аниме'],
-      ['TV', '📺 Аниме-сериалы'],
-      ['MOVIE', '🎬 Аниме-фильмы']
-    ].map(([val, lbl]) => ({
-      lbl,
-      on: cur === val,
-      fn: () => { if ($('cgAnimeKind')) $('cgAnimeKind').value = val; renderCatalogSubKindBar(); updateActiveFiltersCounterUI(); cgLoad(true); }
-    }));
-  } else if (cg.g === 'Манга') {
-    const cur = $('cgKind')?.value || '';
-    itemsDef = [
-      ['', 'Все виды'],
-      ['JP', '🇯🇵 Манга'],
-      ['KR', '🇰🇷 Манхва'],
-      ['CN', '🇨🇳 Маньхуа'],
-      ['COMIC', '🗯 Комиксы']
-    ].map(([val, lbl]) => ({
-      lbl,
-      on: cur === val,
-      fn: () => { if ($('cgKind')) $('cgKind').value = val; renderCatalogSubKindBar(); updateActiveFiltersCounterUI(); cgLoad(true); }
-    }));
-  } else if (cg.g === 'Кино и сериалы') {
-    const cur = $('cgVideoKind')?.value || 'all';
-    itemsDef = [
-      ['all', 'Все (Фильмы и сериалы)'],
-      ['movie', '🎬 Фильмы'],
-      ['tv', '📺 Сериалы']
-    ].map(([val, lbl]) => ({
-      lbl,
-      on: cur === val,
-      fn: () => { if ($('cgVideoKind')) $('cgVideoKind').value = val; renderCatalogSubKindBar(); updateActiveFiltersCounterUI(); cgLoad(true); }
-    }));
-  } else {
-    bar.style.display = 'none';
-    return;
-  }
+  const defs = [
+    ['Все', '🌐 Все'],
+    ['Аниме', '🌸 Аниме'],
+    ['Манга', '📖 Манга'],
+    ['Ранобэ', '📚 Ранобэ'],
+    ['Фильм', '🎬 Фильмы'],
+    ['Сериал', '📺 Сериалы']
+  ];
   bar.style.display = 'flex';
-  itemsDef.forEach(d => {
-    const b = el('button', 'cg-subkind-pill' + (d.on ? ' on' : ''), d.lbl);
+  const lbl = el('span', 'meta', 'Виды:');
+  lbl.style.cssText = 'margin:0 4px 0 0;font-weight:700;white-space:nowrap';
+  bar.append(lbl);
+  defs.forEach(([gVal, gLbl]) => {
+    const b = el('button', 'cg-subkind-pill' + (cg.g === gVal ? ' on' : ''), gLbl);
     b.type = 'button';
-    b.onclick = d.fn;
+    b.onclick = () => {
+      cg.g = gVal;
+      cg.feedSeedPage = 1;
+      document.querySelectorAll('#cgCats .tb').forEach(x => x.classList.toggle('on', x.dataset.g === gVal));
+      $('cgKind').style.display = cg.g === 'Манга' ? '' : 'none';
+      cgGenres();
+      cgLoad(true);
+    };
     bar.append(b);
   });
 }
@@ -4672,9 +4656,44 @@ function interleaveAndDedupCatalogLists(lists) {
   return out;
 }
 
+function getCachedCatalogMatchesForRuQuery(q, gFilter) {
+  const ql = (q || '').toLowerCase().trim();
+  if (!ql) return [];
+  const out = [];
+  const seen = new Set();
+  for (const entry of ALC.values()) {
+    for (const r of (entry.v || [])) {
+      if (!r || !r.title) continue;
+      if (gFilter && gFilter !== 'Все') {
+        if (gFilter === 'Кино и сериалы' && r.category !== 'Фильм' && r.category !== 'Сериал') continue;
+        else if (gFilter !== 'Кино и сериалы' && r.category !== gFilter) continue;
+      }
+      const hay = [r.title, r.en, r.orig, r.alt].filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(ql)) continue;
+      const k = r.aniId ? `ani_${r.aniId}` : r.tmdb ? `tmdb_${r.tmdb}` : r.title;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ ...r });
+    }
+  }
+  return out;
+}
+
 async function cgFetch(page, per, q, mode) {
   const g = cg.g;
   const effPage = (!q && page === 1 && cg.feedSeedPage > 1) ? cg.feedSeedPage : ((page > 1 && cg.feedSeedPage > 1) ? page + cg.feedSeedPage - 1 : page);
+  const cachedHits = (q && page === 1) ? getCachedCatalogMatchesForRuQuery(q, g) : [];
+
+  if (g === 'Все') {
+    const [aRes, mRes, fRes, sRes] = await Promise.all([
+      anilist(q || null, 'ANIME', { page: effPage, per: 8, sort: [q ? 'SEARCH_MATCH' : 'TRENDING_DESC'], ad: false }).catch(() => []),
+      anilist(q || null, 'MANGA', { page: effPage, per: 8, sort: [q ? 'SEARCH_MATCH' : 'TRENDING_DESC'], ad: false }).catch(() => []),
+      cgFetchSingleVideo('movie', effPage, q, mode).catch(() => []),
+      cgFetchSingleVideo('tv', effPage, q, mode).catch(() => [])
+    ]);
+    return interleaveAndDedupCatalogLists([cachedHits, aRes, mRes, fRes.slice(0, 6), sRes.slice(0, 6)]);
+  }
+
   if (g === 'Кино и сериалы' || g === 'Фильм' || g === 'Сериал') {
     const vk = g === 'Фильм' ? 'movie' : g === 'Сериал' ? 'tv' : ($('cgVideoKind')?.value || 'all');
     if (vk === 'movie' || vk === 'tv') {
@@ -4754,6 +4773,9 @@ async function cgFetch(page, per, q, mode) {
   if (!res.length && incT.some(t => t === 'Yuri' || t === 'Yaoi')) {
     o.tag = incT.map(t => t === 'Yuri' ? "Girls' Love" : t === 'Yaoi' ? "Boys' Love" : t);
     res = await anilist(q || null, g === 'Аниме' ? 'ANIME' : 'MANGA', o).catch(() => []);
+  }
+  if (cachedHits.length) {
+    res = interleaveAndDedupCatalogLists([cachedHits, res]);
   }
   return res.filter(verifyCatalogItemMatchesFilters);
 }
@@ -7894,8 +7916,7 @@ class ShareCardGenerator {
     const drawTextAndStats = () => {
       ctx.fillStyle = '#fff'; ctx.font = '800 38px Inter, sans-serif';
       ctx.fillText((activeP.name || $('profName').textContent || 'Коллекционер').slice(0, 24), 195, 98);
-      ctx.fillStyle = a2; ctx.font = '700 20px Inter, sans-serif';
-      ctx.fillText(($('profLvl').textContent || ''), 195, 134);
+
       const done = vis.filter(isCompletedItem), mins = done.reduce((s, i) => s + getItemMinutes(i), 0);
       ctx.fillStyle = '#fff'; ctx.font = '800 44px Inter, sans-serif'; ctx.fillText('⏱ ' + formatWatchTimeRu(mins) + ' за просмотром', 60, 245);
       ctx.font = '700 22px Inter, sans-serif'; ctx.fillText(`Тайтлов в коллекции: ${vis.length} · Завершено: ${done.length} · Любимых: ${vis.filter(i => i.fav).length}`, 60, 292);

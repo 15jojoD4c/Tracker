@@ -85,7 +85,7 @@ textarea{resize:vertical;min-height:80px}
 body.selmode .card.sel .pc{box-shadow:0 0 0 3px var(--ac),0 12px 28px rgba(139,92,246,.45)!important}
 body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:10px;bottom:10px;z-index:5;width:26px;height:26px;border-radius:50%;background:var(--ac);color:#fff;font-weight:900;font-size:14px;display:grid;place-items:center;box-shadow:0 4px 12px rgba(0,0,0,.5)}
 @keyframes fin{from{opacity:0;transform:translateY(8px)}}
-.pc{position:relative;width:100%;padding-top:150%;border-radius:16px;overflow:hidden;background:#1c1f2e;border:1px solid rgba(255,255,255,.07);box-shadow:0 8px 22px rgba(0,0,0,.4);transition:transform .22s cubic-bezier(.22,1,.36,1),box-shadow .25s;will-change:transform}
+.pc{position:relative;width:100%;aspect-ratio:2/3;border-radius:16px;overflow:hidden;background:#1c1f2e;border:1px solid rgba(255,255,255,.07);box-shadow:0 8px 22px rgba(0,0,0,.4);transition:transform .22s cubic-bezier(.22,1,.36,1),box-shadow .25s;will-change:transform}
 .pc img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:opacity .35s ease,transform .35s ease;will-change:transform}
 .pc img:not(.ld){opacity:0}
 .card:hover .pc,.card.qa-hover-lock .pc{transform:translateY(-4px);box-shadow:0 16px 36px rgba(0,0,0,.55)}
@@ -246,7 +246,7 @@ body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:10px;bott
 .grid.list{grid-template-columns:1fr;gap:10px}
 .list .card{display:grid;grid-template-columns:68px 1fr auto;gap:14px;align-items:center;background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:10px 14px;transition:border-color .15s;position:relative}
 .list .card:hover{border-color:var(--ac)}
-.list .pc{border-radius:10px;padding-top:142%}
+.list .pc{border-radius:10px;aspect-ratio:2/3;width:68px}
 .list .pc .status,.list .pc .ong,.list .pc .anon-badge,.list .ov,.list .fav-heart-badge,.list .pc .qa{display:none!important}
 .list .card:hover .pc{box-shadow:none;transform:none}
 .list .card:hover .pc img{transform:none}
@@ -504,7 +504,7 @@ html[data-theme=white] .cg-hero-wrap{background:#fff;border-color:rgba(0,0,0,.12
 html[data-theme=white] .cg-hero-hdr h3{background:linear-gradient(90deg,#14161f,#9333ea,#db2777);-webkit-background-clip:text;background-clip:text;color:transparent}
 .cg-hero-track{display:flex;gap:14px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory}
 .cg-hero-track::-webkit-scrollbar{display:none}
-.cg-hero-card{flex:0 0 340px;height:178px;border-radius:16px;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.12);background:#161826;cursor:pointer;display:grid;grid-template-columns:112px 1fr;gap:14px;padding:12px;align-items:end;scroll-snap-align:start;transition:transform .2s,border-color .2s}
+.cg-hero-card{flex:0 0 340px;min-height:178px;height:auto;border-radius:16px;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.12);background:#161826;cursor:pointer;display:grid;grid-template-columns:112px 1fr;gap:14px;padding:12px;align-items:stretch;scroll-snap-align:start;transition:transform .2s,border-color .2s}
 .cg-hero-card:hover{transform:translateY(-3px);border-color:var(--ac)}
 .cg-hero-card-bg{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.32;filter:blur(2px) saturate(1.2);transition:transform .35s}
 .cg-hero-card:hover .cg-hero-card-bg{transform:scale(1.06)}
@@ -588,6 +588,8 @@ body[data-pview="collection"] .hyb-profile-shell,body[data-pview="collection"] #
 .card.sel{outline:3px solid var(--ac);outline-offset:3px;border-radius:16px}
 body.selmode .card{cursor:pointer}
 #selbar{display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:45;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;padding:10px 14px;border-radius:16px;background:rgba(26,28,44,.97);border:1px solid var(--bd);box-shadow:0 14px 40px rgba(0,0,0,.5)}
+.sel-sec-group{display:contents}
+#selMoreMobBtn{display:none}
 #botnav{display:none}
 #cgFltBtn{display:none}
 #modalX{display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:2100;padding:10px 24px;border-radius:999px;border:1px solid var(--bd);background:#1f2235;color:#fff;font-size:15px;cursor:pointer}
@@ -647,6 +649,7 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
   .hyb-list-cards-row{grid-template-columns:repeat(auto-fill,minmax(135px,1fr))}
 }
 @media(max-width:768px){
+  input,select,textarea{font-size:16px!important}
   .app-container{padding:0 12px 84px}
   .hdr-inner{padding:10px 12px}
   .pb,.tile,.menu,.toast,.mc,header{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
@@ -656,7 +659,7 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
   .tp-hero{grid-template-columns:1fr}
   .tp-poster{max-width:210px;margin:0 auto}
   .tp-hero-art-bg{width:100%;height:300px;top:-16px;right:0;opacity:.28}
-  .cg-hero-card{flex:0 0 272px;height:154px;grid-template-columns:92px 1fr;padding:10px}
+  .cg-hero-card{flex:0 0 272px;min-height:154px;height:auto;grid-template-columns:92px 1fr;padding:10px}
   .cg-hero-poster{width:92px;height:132px}
   .anix-sec-grid{grid-template-columns:1fr!important}
   .anix-type-stats{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
@@ -691,7 +694,10 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
   .app-container{overflow-x:hidden}
   .tp-wrap{padding:14px}
   .tp-specs-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-  #selbar{bottom:76px;left:8px;right:8px;transform:none;width:auto;max-width:calc(100vw - 16px)}
+  #selbar{bottom:74px;left:8px;right:8px;transform:none;width:auto;max-width:calc(100vw - 16px);padding:8px 10px;gap:6px}
+  #selMoreMobBtn{display:inline-flex}
+  .sel-sec-group{display:none;width:100%;flex-wrap:wrap;gap:6px;justify-content:center;padding-top:6px;border-top:1px solid var(--bd)}
+  .sel-sec-group.open{display:flex}
   .char-pop-layout{grid-template-columns:115px 1fr;gap:14px}
   .battle-arena{grid-template-columns:1fr}
   .criteria-grid{grid-template-columns:1fr}
@@ -1346,7 +1352,6 @@ html[data-theme=white] .cg-subkind-pill.on{background:var(--ac);color:#fff}
   </div>
   <div class="row2">
     <div class="fld"><label>Свой цвет акцента</label><div class="row" style="flex-wrap:nowrap"><input type="color" id="pfCustomColor" value="#8b5cf6" style="height:40px;padding:4px;cursor:pointer;flex:1"><button class="btn btn-s" id="pfColReset" type="button">Сбросить</button></div></div>
-    <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;padding-top:18px"><input type="checkbox" id="pfTilt" checked> 3D-наклон карточек при наведении</label>
   </div>
 
   <div class="fs" style="color:#fda4af">⚠ Управление аккаунтом</div>
@@ -1367,16 +1372,19 @@ html[data-theme=white] .cg-subkind-pill.on{background:var(--ac);color:#fff}
 <div id="selbar">
   <span id="selN" style="font-weight:800;color:var(--ach)">Выбрано: 0</span>
   <button class="btn btn-s" id="selAllBtn" type="button" style="padding:6px 10px;font-size:12px">Выбрать все (0)</button>
-  <button class="btn btn-s" id="selClearBtn" type="button" style="padding:6px 10px;font-size:12px">Снять выделение</button>
-  <button class="btn btn-s" id="selInvBtn" type="button" style="padding:6px 10px;font-size:12px">Инвертировать</button>
-  <select id="selByStatus" style="padding:6px 8px;font-size:12px"><option value="">Выбрать всё в статусе…</option></select>
   <select id="selSt" style="padding:6px 8px;font-size:12px"></select>
   <button class="btn btn-s" id="selList" type="button" style="padding:6px 10px;font-size:12px">📁 В подборку</button>
-  <button class="btn btn-s" id="selUnlist" type="button" style="padding:6px 10px;font-size:12px">📁− Убрать из подборки</button>
-  <button class="btn btn-s" id="selFavBtn" type="button" style="padding:6px 10px;font-size:12px">❤ Избранное</button>
-  <button class="btn btn-s" id="selLinkCatBtn" type="button" style="padding:6px 10px;font-size:12px">🔗 Связать с каталогом</button>
   <button class="btn btn-d" id="selDel" type="button" style="padding:6px 10px;font-size:12px">🗑 Удалить</button>
+  <button class="btn btn-s" id="selMoreMobBtn" type="button" style="padding:6px 10px;font-size:12px">⋯ Ещё</button>
   <button class="btn btn-s" id="selOff" type="button" style="padding:6px 10px;font-size:12px">Готово</button>
+  <div class="sel-sec-group" id="selSecGroup">
+    <button class="btn btn-s" id="selClearBtn" type="button" style="padding:6px 10px;font-size:12px">Снять выделение</button>
+    <button class="btn btn-s" id="selInvBtn" type="button" style="padding:6px 10px;font-size:12px">Инвертировать</button>
+    <select id="selByStatus" style="padding:6px 8px;font-size:12px"><option value="">Выбрать всё в статусе…</option></select>
+    <button class="btn btn-s" id="selUnlist" type="button" style="padding:6px 10px;font-size:12px">📁− Убрать из подборки</button>
+    <button class="btn btn-s" id="selFavBtn" type="button" style="padding:6px 10px;font-size:12px">❤ Любимое</button>
+    <button class="btn btn-s" id="selLinkCatBtn" type="button" style="padding:6px 10px;font-size:12px">🔗 Связать с каталогом</button>
+  </div>
 </div>
 
 <div id="dataModal" class="modal"><div class="mc" style="max-width:580px">
@@ -1637,13 +1645,34 @@ const resetProfObjectToDefault = () => {
 const getUidStorageKey = prefix => prefix + '_' + (user && user.uid ? user.uid : 'local_user');
 
 let storageWarned = false;
+const isBase64DataUrl = v => typeof v === 'string' && v.startsWith('data:');
+const stripItemBase64ForLocal = it => {
+  if (!it || typeof it !== 'object') return it;
+  if (!isBase64DataUrl(it.poster) && !isBase64DataUrl(it.badgeCharImg)) return it;
+  const copy = { ...it };
+  if (isBase64DataUrl(copy.poster)) copy.poster = '';
+  if (isBase64DataUrl(copy.badgeCharImg)) copy.badgeCharImg = '';
+  return copy;
+};
+const stripProfBase64ForLocal = pObj => {
+  const copy = { ...(pObj || {}) };
+  if (isBase64DataUrl(copy.avatar)) copy.avatar = '';
+  if (isBase64DataUrl(copy.cover)) copy.cover = '';
+  if (Array.isArray(copy.favChars)) {
+    copy.favChars = copy.favChars.map(fc => isBase64DataUrl(fc?.img) ? { ...fc, img: '' } : fc);
+  }
+  return copy;
+};
+
 const saveLocalItems = () => {
   if (!loaded) return;
   try {
-    localStorage.setItem(getUidStorageKey('items'), JSON.stringify(items));
-    if (user && user.isLocal) localStorage.setItem('localItems', JSON.stringify(items));
+    const slimItems = items.map(stripItemBase64ForLocal);
+    const json = JSON.stringify(slimItems);
+    localStorage.setItem(getUidStorageKey('items'), json);
+    if (user && user.isLocal) localStorage.setItem('localItems', json);
   } catch (e) {
-    if (!storageWarned) { storageWarned = true; toast('Локальный кэш браузера переполнен (слишком много загруженных картинок), но в облаке данные сохраняются.', true); }
+    if (!storageWarned) { storageWarned = true; toast('Локальный кэш браузера переполнен, но в облаке данные сохраняются.', true); }
   }
 };
 const isTitleDoc = x => x && (x.kind === 'title' || (!x.kind && !x.isProfile && !x.isWallComment && !x.isRecInbox && !x.isReport && !x.secretCredKey));
@@ -1660,8 +1689,9 @@ const loadLocalItems = (forUid) => {
 const profSaveLocal = () => {
   try {
     const uid = (user && user.uid) || 'local_user';
-    localStorage.setItem('prof_' + uid, JSON.stringify(prof));
-    if (uid === 'local_user') localStorage.setItem('prof', JSON.stringify(prof));
+    const json = JSON.stringify(stripProfBase64ForLocal(prof));
+    localStorage.setItem('prof_' + uid, json);
+    if (uid === 'local_user') localStorage.setItem('prof', json);
   } catch (e) {}
 };
 
@@ -1778,8 +1808,7 @@ const profCloud = (onlyHeartbeat = false) => {
     delete safeProf.ownerEmail;
     delete safeProf.statsSummary;
     delete safeProf.friends;
-    if (safeProf.cover && String(safeProf.cover).startsWith('data:') && String(safeProf.cover).length > 35000) {
-      try { localStorage.setItem('localCover_' + user.uid, safeProf.cover); } catch (e) {}
+    if (safeProf.cover && String(safeProf.cover).startsWith('data:') && String(safeProf.cover).length > 350000) {
       safeProf.cover = '';
     }
     track(setDoc(doc(db, 'items', 'prof_' + user.uid), {
@@ -1793,13 +1822,43 @@ const profCloud = (onlyHeartbeat = false) => {
   }
 };
 
+// Очередь и дебаунс сохранения документов в Firestore (устраняет гонки запросов при быстрых кликах подряд)
+const _cloudSaveTimers = new Map();
+const _cloudSaveChains = new Map();
+const _localPendingWrites = new Map();
+
 const cloudSave = it => {
+  if (!it) return Promise.resolve();
   it.updatedAt = Date.now();
   fix(it);
   saveLocalItems();
   if (!user || user.isLocal || !auth.currentUser) { setSync(); return Promise.resolve(); }
-  const { docId, payload } = prepareTitleForCloud(it, user.uid);
-  return track(setDoc(doc(db, 'items', docId), payload)).catch(e => toast('Не удалось сохранить в облако: ' + e.message, true));
+  const docId = getCloudDocId(it);
+  _localPendingWrites.set(docId, it.updatedAt);
+
+  if (_cloudSaveTimers.has(docId)) {
+    clearTimeout(_cloudSaveTimers.get(docId).timer);
+    _cloudSaveTimers.get(docId).resolve();
+  }
+
+  return new Promise(resolve => {
+    const timer = setTimeout(() => {
+      _cloudSaveTimers.delete(docId);
+      const latestItem = items.find(x => x.id === it.id) || it;
+      const { payload } = prepareTitleForCloud(latestItem, user.uid);
+      const prevChain = _cloudSaveChains.get(docId) || Promise.resolve();
+      const nextChain = prevChain
+        .catch(() => {})
+        .then(() => track(setDoc(doc(db, 'items', docId), payload)))
+        .catch(e => toast('Не удалось сохранить в облако: ' + e.message, true))
+        .finally(() => {
+          if (_cloudSaveChains.get(docId) === nextChain) _cloudSaveChains.delete(docId);
+          resolve();
+        });
+      _cloudSaveChains.set(docId, nextChain);
+    }, 220);
+    _cloudSaveTimers.set(docId, { timer, resolve });
+  });
 };
 
 function startLocalMode(msg) {
@@ -2031,14 +2090,14 @@ async function activateCloudUserSession(uObj) {
     if (pSnap.exists()) {
       const pd = pSnap.data();
       const {isProfile, kind: _k, userId: _u, _docId, statsSummary, friends: _fr, ...rest} = pd;
-      const localSavedCover = localStorage.getItem('localCover_' + effUid) || '';
       Object.assign(prof, rest);
-      if (!prof.cover && localSavedCover) prof.cover = localSavedCover;
       profSaveLocal();
       profPaint();
       refresh();
     }
   }).catch(() => {});
+
+  loadRuCacheFromCloud(effUid);
 
   if (!localStorage.getItem('schemaMigratedV3_' + effUid)) {
     setTimeout(() => migrateOldDocsToKindSchema(false), 900);
@@ -2049,6 +2108,37 @@ async function activateCloudUserSession(uObj) {
       cloudAccessError = '';
       syncBad = false;
       setSync();
+
+      const changes = snap.docChanges();
+      // Оптимизация: если первичная загрузка уже прошла и изменились 1–3 конкретных тайтла, обновляем точечно без пересборки всей сетки
+      if (profTried && loaded && changes.length > 0 && changes.length <= 3 && changes.every(c => c.type === 'modified')) {
+        let anyExternalDiff = false;
+        const changedIds = [];
+        changes.forEach(c => {
+          const incoming = fix({ ...c.doc.data(), _docId: c.doc.id });
+          const pendingTs = _localPendingWrites.get(c.doc.id) || 0;
+          if (pendingTs && incoming.updatedAt && incoming.updatedAt < pendingTs) return;
+          const idx = items.findIndex(x => String(x.id) === String(incoming.id));
+          if (idx > -1) {
+            const cur = items[idx];
+            if ((cur.updatedAt || 0) <= (incoming.updatedAt || 0)) {
+              if (cur.status !== incoming.status || cur.fav !== incoming.fav || cur.rating !== incoming.rating || cur.title !== incoming.title || cur.archived !== incoming.archived || cur.pin !== incoming.pin) {
+                anyExternalDiff = true;
+              }
+              items[idx] = incoming;
+              changedIds.push(incoming.id);
+            }
+          }
+        });
+        saveLocalItems();
+        if (anyExternalDiff && changedIds.length === 1) {
+          refresh({ itemId: changedIds[0] });
+        } else if (anyExternalDiff) {
+          refresh({ onlyList: true });
+        }
+        return;
+      }
+
       const ownList = deduplicateListByIdAndCleanupCloud(snap.docs.map(d => fix({ ...d.data(), _docId: d.id })), true);
       if (ownList.length > 0) {
         try { localStorage.setItem('cloudHadSynced_' + effUid, '1'); } catch (e) {}
@@ -2072,8 +2162,8 @@ async function activateCloudUserSession(uObj) {
         profCloud();
         setTimeout(() => checkMigrateLocalItemsToCloud(false), 900);
         setTimeout(resumeBackgroundCatalogLinkingIfNeeded, 1800);
+        profPaint();
       }
-      profPaint();
       refresh();
       homeTab();
     },
@@ -2459,9 +2549,52 @@ function createCollectionCardNode(i) {
     openDetail(i.id);
   };
   card.onkeydown = e => { if (e.key === 'Enter') openDetail(i.id); };
-  card.onmousemove = e => { if (view === 'list' || prof.tilt === false || window.innerWidth < 768) return; const r = pc.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5; pc.style.transform = `perspective(700px) rotateY(${x * 8}deg) rotateX(${-y * 8}deg) translateY(-4px)`; };
-  card.onmouseleave = () => { pc.style.transform = ''; };
   return card;
+}
+
+function itemMatchesCurrentCollectionFilter(i) {
+  if (!i) return false;
+  const q = $('searchInput').value.toLowerCase().trim(), st = $('statusFilter').value, tg = $('tagFilter').value, lf = $('listFilter').value;
+  const catMatch = cat === 'Всё' ? true : cat === 'Кино и сериалы' ? (KINO.includes(i.category) && (videoSubKind === 'Все' || i.category === videoSubKind)) : i.category === cat;
+  const kindMatch = (cat !== 'Манга' || kind === 'Все' || getMangaSubKind(i) === kind) && (cat !== 'Аниме' || animeSubKind === 'Все' || getAnimeSubKind(i) === animeSubKind);
+  const stMatch = st === 'Архив' ? !!i.archived
+    : !i.archived && (
+      st === 'Все' ? true
+      : st === 'Любимое' ? !!i.fav
+      : st === 'Смотрю/Читаю' ? (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю')
+      : i.status === st
+    );
+  return (!q || names(i).includes(q)) && catMatch && kindMatch && (!ongOnly || i.ongoing) && (!xf || xmatch(i)) &&
+    stMatch &&
+    (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) &&
+    (lf === 'Все' || (i.lists || []).some(t => t.toLowerCase() === lf));
+}
+
+function updateSingleItemCardInDOM(itemId) {
+  const it = getVisibleItems().find(x => String(x.id) === String(itemId));
+  const existingNode = grid.querySelector(`.card[data-id="${CSS.escape(String(itemId))}"]`);
+  const matches = it ? itemMatchesCurrentCollectionFilter(it) : false;
+  if (existingNode && matches) {
+    const newNode = createCollectionCardNode(it);
+    if (selMode && selSet.has(it.id)) newNode.classList.add('sel');
+    existingNode.replaceWith(newNode);
+    const lIdx = lastList.findIndex(x => String(x.id) === String(itemId));
+    if (lIdx > -1) lastList[lIdx] = it;
+    return true;
+  }
+  if (existingNode && !matches) {
+    existingNode.remove();
+    lastList = lastList.filter(x => String(x.id) !== String(itemId));
+    const visLen = getVisibleItems().length;
+    $('countInfo').textContent = `Показано: ${Math.min(currentRenderLimit, lastList.length)} из ${lastList.length} (всего: ${visLen})`;
+    if (!lastList.length) render(false);
+    return true;
+  }
+  if (!existingNode && matches) {
+    render(false);
+    return true;
+  }
+  return false;
 }
 
 function render(appendMore = false) {
@@ -2640,8 +2773,37 @@ const closeAll = () => {
   });
 };
 ['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'rndClose'].forEach(id => $(id).onclick = closeAll);
-window.onclick = e => { if (e.target.id === 'dlgModal') { if (dlgDone) dlgDone(null); return; } if (e.target.classList.contains('modal')) closeAll(); };
-window.onkeydown = e => { if (e.key === 'Escape') { if (dlgDone) dlgDone(null); else closeAll(); } };
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (!t || typeof t.closest !== 'function') return;
+  if (!t.closest('#hybMoreWrap')) $('hybMorePop')?.classList.remove('open');
+  if (!t.closest('#colMoreWrap')) $('colMorePop')?.classList.remove('open');
+  if (!t.closest('#cgPickMenuWrap')) $('cgPickMenuPop')?.classList.remove('open');
+  if (!t.closest('.acc')) $('accMenu')?.classList.remove('open');
+  if ($('qaFloatMenu')?.classList.contains('open') && !t.closest('#qaFloatMenu') && !t.closest('.qa') && !t.closest('.card-dots-btn') && !t.closest('.qa-trigger')) {
+    closeQuickAddStatusMenu();
+  }
+  if (t.id === 'dlgModal') {
+    if (dlgDone) dlgDone(null);
+    return;
+  }
+  if (t.classList.contains('modal')) closeAll();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    $('accMenu')?.classList.remove('open');
+    $('hybMorePop')?.classList.remove('open');
+    $('colMorePop')?.classList.remove('open');
+    $('cgPickMenuPop')?.classList.remove('open');
+    if ($('qaFloatMenu')?.classList.contains('open')) {
+      closeQuickAddStatusMenu();
+      return;
+    }
+    if (dlgDone) dlgDone(null);
+    else closeAll();
+  }
+});
 
 function setPoster(v) {
   posterValue = v || ''; const data = posterValue.startsWith('data:');
@@ -2686,6 +2848,45 @@ async function shiki(path) {
   catch (e) { shDown = Date.now(); throw e; }
 }
 const RUC = (() => { try { return JSON.parse(localStorage.getItem('ruCache') || '{}'); } catch (e) { return {}; } })();
+let _ruCloudSaveTimer = 0;
+function saveRuCacheLocal() {
+  try {
+    const entries = Object.entries(RUC).filter(([, v]) => v);
+    const trimmed = Object.fromEntries(entries.slice(-1500));
+    localStorage.setItem('ruCache', JSON.stringify(trimmed));
+  } catch (e) {}
+}
+function scheduleSaveRuCacheToCloud() {
+  saveRuCacheLocal();
+  if (!user || user.isLocal || !auth.currentUser) return;
+  clearTimeout(_ruCloudSaveTimer);
+  _ruCloudSaveTimer = setTimeout(() => {
+    if (!user || user.isLocal || !auth.currentUser) return;
+    const entries = Object.entries(RUC).filter(([, v]) => v);
+    const titlesPayload = Object.fromEntries(entries.slice(-1200));
+    setDoc(doc(db, 'items', 'prof_rucache_' + user.uid), {
+      kind: 'profile',
+      isProfile: true,
+      userId: user.uid,
+      updatedAt: Date.now(),
+      titles: titlesPayload
+    }, { merge: true }).catch(() => {});
+  }, 1800);
+}
+async function loadRuCacheFromCloud(uid) {
+  if (!uid || !auth.currentUser) return;
+  try {
+    const snap = await getDoc(doc(db, 'items', 'prof_rucache_' + uid));
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data && data.titles && typeof data.titles === 'object') {
+        Object.assign(RUC, data.titles);
+        saveRuCacheLocal();
+        if ($('catalogView')?.style.display !== 'none') ruCards();
+      }
+    }
+  } catch (e) {}
+}
 let ruWarned = false, ruBusy = false;
 const ruWarn = () => { if (!ruWarned) { ruWarned = true; toast('Не удалось получить русский текст — оставил как есть.', true); } };
 async function ruChunk(p) {
@@ -2751,8 +2952,15 @@ async function ruCards() {
     const grp = cards.filter(c => !c._r.ruTitle && SHK[c._r.category] === kind); if (!grp.length) continue;
     try {
       const t = await ruTitles(kind, [...new Set(grp.map(c => c._r.mal))]);
-      grp.forEach(c => { const ru = t[c._r.mal]; RUC[kind + c._r.mal] = ru || ''; ruSet(c, ru); });
-      try { localStorage.setItem('ruCache', JSON.stringify(RUC)); } catch (e) {}
+      let addedNew = false;
+      grp.forEach(c => {
+        const ru = t[c._r.mal];
+        if (ru && RUC[kind + c._r.mal] !== ru) addedNew = true;
+        RUC[kind + c._r.mal] = ru || '';
+        ruSet(c, ru);
+      });
+      if (addedNew) scheduleSaveRuCacheToCloud();
+      else saveRuCacheLocal();
     } catch (e) {}
   }
 }
@@ -2845,7 +3053,7 @@ function profPaint() {
   const u = user || {};
   const fallbackName = u.displayName || (u.email ? u.email.split('@')[0] : 'Пользователь');
   const av = safePosterUrl(activeP.avatar || (!window._viewingGuestUid && u.photoURL) || '') || FALL;
-  const rawCover = activeP.cover || (!window._viewingGuestUid && u.uid ? (localStorage.getItem('localCover_' + u.uid) || '') : '');
+  const rawCover = activeP.cover || '';
   const bg = rawCover ? safeCssBgUrl(rawCover) : activeP.coverColor ? GRAD[activeP.coverColor - 1] : '';
   $('avatar').src = av;
   if (!window._viewingGuestUid) $('hdrAvatar').src = av;
@@ -2900,7 +3108,6 @@ function pfOpen() {
   $('pfFrame').value = pf.frame || 'none';
   $('pfCardStyle').value = pf.cardStyle || '';
   $('pfCustomColor').value = pf.customColor || (ACC[accIdx()] || ACC[0])[0];
-  $('pfTilt').checked = pf.tilt !== false;
   pfDraw();
   $('profModal').style.display = 'flex';
 }
@@ -2939,8 +3146,7 @@ $('pfSave').onclick = () => {
     bgAll: $('pfBgAll').checked,
     frame: $('pfFrame').value,
     cardStyle: $('pfCardStyle').value,
-    customColor: pf.customColor || '',
-    tilt: $('pfTilt').checked
+    customColor: pf.customColor || ''
   });
   profCloud();
   profPaint();
@@ -3206,7 +3412,7 @@ function draftSave() {
   if ($('editId').value) return;
   const d = {};
   DF.forEach(k => { if ($(k)) { const v = $(k).value; if (v && v.length < 3000) d[k] = v; } });
-  if (posterValue && posterValue.length < 150000) d._posterValue = posterValue;
+  if (posterValue && !posterValue.startsWith('data:') && posterValue.length < 4000) d._posterValue = posterValue;
   if (!d.inputTitle) return;
   try { localStorage.setItem('draft', JSON.stringify(d)); } catch (e) {}
 }
@@ -3371,7 +3577,7 @@ function detailExtra(id) {
   const btn = (t, fn) => { const b = el('button', 'btn btn-s', t); b.type = 'button'; b.onclick = fn; box.append(b); };
 
   if (!isGuest) {
-    btn(i.pin ? '📌 Открепить' : '📌 Закрепить', () => { i.pin = !i.pin; cloudSave(i); refresh(); detailExtra(id); });
+    btn(i.pin ? '📌 Открепить' : '📌 Закрепить', () => { i.pin = !i.pin; cloudSave(i); refresh({ onlyList: true }); detailExtra(id); });
     btn(i.archived ? '📤 Вернуть из архива' : '📦 В архив', () => {
       i.archived = !i.archived; cloudSave(i); refresh(); closeAll();
       toast(i.archived ? 'Убрано в архив (кнопка «📦 Архив» в фильтрах)' : 'Возвращено из архива');
@@ -3482,7 +3688,7 @@ function openDetail(id) {
     const lbl = getStatusLabelForCategory(i.status, i.category);
     $('detailStatus').textContent = lbl + (i.fav ? ' · ❤ Любимое' : '');
     $('detailStatus').dataset.s = i.status;
-    cloudSave(i); profCloud(true); refresh(); toast('Статус изменён: ' + lbl);
+    cloudSave(i); profCloud(true); refresh({ itemId: i.id }); toast('Статус изменён: ' + lbl);
   };
 
   // Отдельная кнопка-сердечко «Любимое» (при добавлении в Любимое тайтл автоматически становится просмотренным/прочитанным)
@@ -3497,7 +3703,7 @@ function openDetail(id) {
         i.status = 'Просмотрено/Прочитано';
         if (!i.completedAt) i.completedAt = Date.now();
       }
-      cloudSave(i); refresh(); openDetail(id);
+      cloudSave(i); refresh({ itemId: i.id }); openDetail(id);
       toast(i.fav ? `Добавлено в «❤ Любимое» и «${getStatusLabelForCategory(i.status, i.category)}»!` : 'Убрано из «❤ Любимое»');
     };
   }
@@ -3510,7 +3716,7 @@ function openDetail(id) {
     rewB.onclick = () => {
       if (window._viewingGuestUid) return;
       i.rewatchCount = num(i.rewatchCount) + 1;
-      cloudSave(i); refresh(); openDetail(id);
+      cloudSave(i); refresh({ itemId: i.id }); openDetail(id);
       toast(`Счётчик пересмотров увеличен: ${i.rewatchCount} раз!`);
     };
   }
@@ -3825,85 +4031,7 @@ function profDash() {
   box.append(dGrid);
 }
 
-/* Достижения удалены по запросу пользователя */
-function _unused_getAchievementsListForItems(vis = getVisibleItems()) {
-  const n = c => vis.filter(i => i.category === c).length;
-  const dn = vis.filter(isCompletedItem).length;
-  const gn = new Set(vis.flatMap(i => i.tags || [])).size;
-  const cn = new Set(vis.map(i => i.category)).size;
-  const fv = vis.filter(i => i.fav).length;
-  const rated = vis.filter(i => num(i.rating) > 0).length;
-  const noted = vis.filter(i => i.myNote && i.myNote.trim().length > 0).length;
-  return [
-    { id: 'first', ic: '🌱', nm: 'Первый шаг', val: vis.length, need: 1, ds: 'Добавь в коллекцию свой первый тайтл.' },
-    { id: 'col50', ic: '📚', nm: 'Коллекционер', val: vis.length, need: 50, ds: 'Собери коллекцию из 50 тайтлов.' },
-    { id: 'col200', ic: '🏛', nm: 'Архивариус', val: vis.length, need: 200, ds: 'Собери коллекцию из 200 тайтлов.' },
-    { id: 'col500', ic: '🏆', nm: 'Легенда', val: vis.length, need: 500, ds: 'Собери коллекцию из 500 тайтлов.' },
-    { id: 'ani50', ic: '🌸', nm: 'Аниме-фанат', val: n('Аниме'), need: 50, ds: 'Добавь 50 аниме в коллекцию.' },
-    { id: 'ani100', ic: '⭐', nm: 'Аниме-эксперт', val: n('Аниме'), need: 100, ds: 'Добавь 100 аниме в коллекцию.' },
-    { id: 'book50', ic: '📖', nm: 'Книжный червь', val: n('Манга') + n('Ранобэ'), need: 50, ds: 'Добавь 50 тайтлов манги и ранобэ.' },
-    { id: 'mov50', ic: '🎬', nm: 'Киноман', val: n('Фильм') + n('Мультфильм'), need: 50, ds: 'Добавь 50 фильмов и мультфильмов.' },
-    { id: 'ser25', ic: '📺', nm: 'Сериальный марафон', val: n('Сериал'), need: 25, ds: 'Добавь 25 сериалов.' },
-    { id: 'done50', ic: '✅', nm: 'Завершатель', val: dn, need: 50, ds: 'Поставь 50 тайтлам статус «Просмотрено / Прочитано».' },
-    { id: 'fav10', ic: '❤', nm: 'Любимчики', val: fv, need: 10, ds: 'Отметь 10 тайтлов сердечком «Любимое».' },
-    { id: 'cat5', ic: '🧭', nm: 'Разносторонний', val: cn, need: 5, ds: 'Держи в коллекции произведения минимум из 5 категорий.' },
-    { id: 'gen15', ic: '🎭', nm: 'Ценитель жанров', val: gn, need: 15, ds: 'Собери в коллекции произведения минимум из 15 разных жанров.' },
-    { id: 'rate25', ic: '🎯', nm: 'Строгий критик', val: rated, need: 25, ds: 'Поставь личную оценку минимум 25 произведениям.' },
-    { id: 'note10', ic: '✍', nm: 'Летописец', val: noted, need: 10, ds: 'Напиши личные заметки или отзывы к 10 тайтлам.' }
-  ];
-}
 
-function openAchievementsModal() {
-  $('hybMorePop')?.classList.remove('open');
-  const m = $('achModal'), gridEl = $('achModalGrid'), sumEl = $('achModalSummary');
-  if (!m || !gridEl) return;
-  const vis = getVisibleItems().filter(i => !i.archived);
-  const list = getAchievementsListForItems(vis);
-  const unlockedCount = list.filter(a => a.val >= a.need).length;
-  if (sumEl) sumEl.textContent = `Получено достижений: ${unlockedCount} из ${list.length}. Нажми на полученную награду, чтобы закрепить или открепить её в витрине профиля (до 5 шт.).`;
-  gridEl.replaceChildren();
-  const pinned = Array.isArray(prof.pinnedAch) ? prof.pinnedAch : [];
-
-  list.forEach(a => {
-    const isOk = a.val >= a.need;
-    const isPinned = pinned.includes(a.nm);
-    const pct = Math.min(100, Math.round((a.val / Math.max(1, a.need)) * 100));
-    const card = el('div', 'ach-card' + (isOk ? ' unlocked' : ''));
-    const top = el('div', 'row'); top.style.justifyContent = 'space-between';
-    top.append(
-      el('b', null, `${a.ic} ${a.nm}`),
-      el('span', 'chip', isOk ? (isPinned ? '📌 В витрине' : '✓ Получено') : `${a.val} / ${a.need}`)
-    );
-    const desc = el('div', 'meta', a.ds); desc.style.margin = '0';
-    const trackBox = el('div', 'xp-bar');
-    const fillBox = el('div', 'xp-fill'); fillBox.style.width = pct + '%';
-    trackBox.append(fillBox);
-    const progTxt = el('div', 'meta', isOk ? `Выполнено на 100% (${a.val} из ${a.need})` : `Прогресс: ${a.val} из ${a.need} (${pct}%) — осталось ${Math.max(0, a.need - a.val)}`);
-    progTxt.style.margin = '0';
-    card.append(top, desc, trackBox, progTxt);
-
-    if (isOk && !window._viewingGuestUid) {
-      const pinB = el('button', 'btn btn-s', isPinned ? '📌 Убрать из витрины' : '📌 Закрепить в профиле');
-      pinB.type = 'button'; pinB.style.fontSize = '11.5px'; pinB.style.padding = '5px 10px';
-      pinB.onclick = () => {
-        prof.pinnedAch = Array.isArray(prof.pinnedAch) ? prof.pinnedAch : [];
-        if (prof.pinnedAch.includes(a.nm)) {
-          prof.pinnedAch = prof.pinnedAch.filter(x => x !== a.nm);
-        } else {
-          if (prof.pinnedAch.length >= 5) prof.pinnedAch.shift();
-          prof.pinnedAch.push(a.nm);
-        }
-        profCloud();
-        renderPinnedAchievementsShowcase();
-        openAchievementsModal();
-      };
-      card.append(pinB);
-    }
-    gridEl.append(card);
-  });
-
-  m.style.display = 'flex';
-}
 
 
 function profStrips() {
@@ -3992,14 +4120,7 @@ if ($('colMoreBtn')) {
     $('colMorePop')?.classList.toggle('open');
   };
 }
-addEventListener('click', e => {
-  if (!e.target.closest('#hybMoreWrap')) $('hybMorePop')?.classList.remove('open');
-  if (!e.target.closest('#colMoreWrap')) $('colMorePop')?.classList.remove('open');
-});
-
 $('accBtn').onclick = e => { e.stopPropagation(); $('accMenu').classList.toggle('open'); };
-addEventListener('click', () => $('accMenu').classList.remove('open'));
-addEventListener('keydown', e => { if (e.key === 'Escape') $('accMenu').classList.remove('open'); });
 $('accProfile').onclick = () => { document.querySelector('.tab[data-v="profile"]')?.click(); };
 
 $('rndBtn').onclick = () => {
@@ -4033,11 +4154,23 @@ function selPaint() {
 function selToggle(on) {
   if (window._viewingGuestUid) return;
   selMode = on;
-  if (!on) selSet.clear();
+  if (!on) {
+    selSet.clear();
+    $('selSecGroup')?.classList.remove('open');
+  }
   $('selbar').style.display = on ? 'flex' : 'none';
   $('selBtn').classList.toggle('on', on);
   document.body.classList.toggle('selmode', on);
   selPaint();
+}
+if ($('selMoreMobBtn')) {
+  $('selMoreMobBtn').onclick = e => {
+    e.stopPropagation();
+    const grp = $('selSecGroup');
+    if (!grp) return;
+    const isOpen = grp.classList.toggle('open');
+    $('selMoreMobBtn').textContent = isOpen ? '▴ Скрыть' : '⋯ Ещё';
+  };
 }
 
 grid.addEventListener('click', e => {
@@ -4867,11 +5000,12 @@ async function quickAdd(r, targetStatus = 'В планах') {
     }
     cloudSave(existing);
     profCloud(true);
-    refresh();
+    refresh({ itemId: existing.id });
+    const stLbl = getStatusLabelForCategory(existing.status, existing.category);
     toast(
       isFavPick
-        ? (existing.fav ? `«${existing.title}» отмечено как ❤ Любимое (${existing.status})` : `«${existing.title}» убрано из Любимого`)
-        : `Статус «${existing.title}» изменён: ${existing.status}`,
+        ? (existing.fav ? `«${existing.title}» отмечено как ❤ Любимое (${stLbl})` : `«${existing.title}» убрано из Любимого`)
+        : `Статус «${existing.title}» изменён: ${stLbl}`,
       false,
       {
         label: 'Отменить',
@@ -4880,7 +5014,7 @@ async function quickAdd(r, targetStatus = 'В планах') {
           existing.fav = prevFav;
           existing.completedAt = prevComp;
           cloudSave(existing);
-          refresh();
+          refresh({ itemId: existing.id });
         }
       }
     );
@@ -5287,9 +5421,7 @@ if ($('cgPickMenuBtn')) {
     $('cgPickMenuPop')?.classList.toggle('open');
   };
 }
-addEventListener('click', e => {
-  if (!e.target.closest('#cgPickMenuWrap')) $('cgPickMenuPop')?.classList.remove('open');
-});
+
 
 // «✨ Для тебя» использует выбранные кликабельные жанры или любимые жанры из оценок коллекции
 if ($('cgRec')) {
@@ -7042,15 +7174,15 @@ class KanbanManager {
         it.status = 'Просмотрено/Прочитано';
         if (!it.completedAt) it.completedAt = Date.now();
       }
-      cloudSave(it); refresh();
+      cloudSave(it); refresh({ itemId: it.id });
       toast(it.fav ? `«${it.title}» отмечено как ❤ Любимое` : `«${it.title}» убрано из Любимого`);
       return;
     }
     const oldSt = it.status; if (oldSt === newSt) return;
     it.status = newSt;
     if (newSt === 'Просмотрено/Прочитано' && !it.completedAt) it.completedAt = Date.now();
-    cloudSave(it); refresh();
-    toast(`«${it.title}» → ${newSt}`, false, { label: 'Отменить', fn: () => { it.status = oldSt; cloudSave(it); refresh(); } });
+    cloudSave(it); refresh({ itemId: it.id });
+    toast(`«${it.title}» → ${getStatusLabelForCategory(newSt, it.category)}`, false, { label: 'Отменить', fn: () => { it.status = oldSt; cloudSave(it); refresh({ itemId: it.id }); } });
   }
 }
 
@@ -7445,66 +7577,7 @@ if ($('profPrivacyBtn')) {
   };
 }
 
-if (false && $('nickHistBtn')) {
-  $('nickHistBtn').onclick = () => {
-    $('hybMorePop')?.classList.remove('open');
-    const isGuest = !!window._viewingGuestUid;
-    const activeProf = isGuest ? (window._guestProf || {}) : prof;
-    dlgOpen(() => {
-      $('dlgTitle').textContent = '🕒 История никнеймов';
-      $('dlgText').textContent = `Текущий никнейм: ${activeProf.name || activeProf.displayName || 'Пользователь'}`;
-      const body = $('dlgBody');
-      const draw = () => {
-        body.replaceChildren();
-        const hist = activeProf.nickHistory || [];
-        if (!hist.length) return body.append(el('div', 'meta', 'История изменения имён пуста.'));
-        hist.forEach((h, idx) => {
-          const r = el('div', 'row'); r.style.justifyContent = 'space-between'; r.style.padding = '7px 10px'; r.style.background = 'rgba(255,255,255,.04)'; r.style.borderRadius = '8px';
-          const inf = el('div'); inf.append(el('b', null, h.name), el('div', 'meta', new Date(h.date).toLocaleString('ru-RU')));
-          r.append(inf);
-          if (!isGuest) {
-            const del = el('button', 'btn btn-s', '🗑'); del.type = 'button'; del.onclick = () => { prof.nickHistory.splice(idx, 1); profCloud(); draw(); };
-            r.append(del);
-          }
-          body.append(r);
-        });
-        if (!isGuest) {
-          const clr = el('button', 'btn btn-d', 'Очистить всю историю'); clr.type = 'button';
-          clr.onclick = () => { prof.nickHistory = []; profCloud(); draw(); toast('История никнеймов удалена'); };
-          body.append(clr);
-        }
-      };
-      draw();
-    }, 'Закрыть', false, () => true);
-  };
-}
 
-function renderPinnedAchievementsShowcase() { return; }
-function _unused_renderPinnedAchievementsShowcase() {
-  const vis = getVisibleItems();
-  const isGuest = !!window._viewingGuestUid;
-  const activeProf = isGuest ? (window._guestProf || {}) : prof;
-  const showcase = $('profAchShowcase'); if (!showcase) return; showcase.replaceChildren();
-  if (activeProf.specialBadge) {
-    const sb = el('span', 'creator-badge', activeProf.specialBadge);
-    sb.style.cursor = 'default';
-    showcase.append(sb);
-  }
-  const n = c => vis.filter(i => i.category === c).length, dn = vis.filter(isCompletedItem).length, gn = new Set(vis.flatMap(i => i.tags || [])).size, cn = new Set(vis.map(i => i.category)).size, fv = vis.filter(i => i.fav).length;
-  const A = [
-    ['🌱', 'Первый шаг', vis.length, 1], ['📚', 'Коллекционер', vis.length, 50],
-    ['🏛', 'Архивариус', vis.length, 200], ['🏆', 'Легенда', vis.length, 500],
-    ['🌸', 'Аниме-фанат', n('Аниме'), 50], ['⭐', 'Аниме-эксперт', n('Аниме'), 100],
-    ['📖', 'Книжный червь', n('Манга') + n('Ранобэ'), 50], ['🎬', 'Киноман', n('Фильм') + n('Мультфильм'), 50],
-    ['📺', 'Сериальный марафон', n('Сериал'), 25], ['✅', 'Завершатель', dn, 50],
-    ['❤', 'Любимчики', fv, 10], ['🧭', 'Разносторонний', cn, 5], ['🎭', 'Ценитель жанров', gn, 15]
-  ];
-  const unlocked = A.filter(([, , v, need]) => v >= need);
-  const pinned = activeProf.pinnedAch || [];
-  (pinned.length ? A.filter(([, nm, v, need]) => pinned.includes(nm) && v >= need) : unlocked.slice(-3)).forEach(([ic, nm]) => {
-    const p = el('span', 'lvl-pill'); p.textContent = `${ic} ${nm}`; showcase.append(p);
-  });
-}
 
 // ---------- Персонажи и сэйю + Галерея любимых персонажей (Б6) ----------
 function enableDragToScroll(trackEl) {
@@ -8259,96 +8332,7 @@ if ($('manualLocalMigrateBtn')) $('manualLocalMigrateBtn').onclick = () => check
 if ($('runSchemaMigrationBtn')) $('runSchemaMigrationBtn').onclick = () => migrateOldDocsToKindSchema(true);
 
 // ---------- В1. Индивидуальные значки за аниме (до 3 надетых одновременно + неоновая рамка для оценки 10!), В2. Битва тайтлов с сохранением Топа, В3. Капсула времени по дате просмотра, В4. Импорт Shikimori/AniList/MAL (аниме + манга + 1000+ записей + русские названия) ----------
-function getEquippedMedalsList(pObj) {
-  if (Array.isArray(pObj.equippedMedals) && pObj.equippedMedals.length) return pObj.equippedMedals;
-  if (pObj.equippedMedal && pObj.equippedMedal.title) return [pObj.equippedMedal];
-  return [];
-}
 
-// Безопасная отрисовка надетых медальонов без innerHTML (Защита от XSS Баг №2)
-function renderEquippedAnimeMedalUI() { return; }
-function _unused_renderEquippedAnimeMedalUI() {
-  const isGuest = !!window._viewingGuestUid;
-  const activeP = isGuest ? (window._guestProf || {}) : prof;
-  const wrap = $('profEquippedMedalsWrap');
-  if (!wrap) return;
-  wrap.replaceChildren();
-  const medals = getEquippedMedalsList(activeP);
-  medals.forEach(eq => {
-    const pill = el('span', 'equipped-anime-medal');
-    if (eq.tier) pill.dataset.tier = eq.tier;
-    const im = el('img'); im.src = safePosterUrl(eq.img); im.alt = '';
-    const sp = el('span', null, eq.charName || eq.title);
-    pill.append(im, sp);
-    pill.title = `Медальон за просмотр аниме: «${eq.title}»`;
-    wrap.append(pill);
-  });
-}
-
-if (false && $('animeMedalsBtn')) {
-  $('animeMedalsBtn').onclick = () => {
-    $('hybMorePop')?.classList.remove('open');
-    const vis = getVisibleItems();
-    const completedAnime = vis.filter(i => isCompletedItem(i) && i.category === 'Аниме');
-    dlgOpen(() => {
-      $('dlgTitle').textContent = `🎖 Индивидуальные медальоны за аниме (${completedAnime.length})`;
-      $('dlgText').textContent = 'Надеть в профиль можно до 3 значков одновременно! Рамка зависит от твоей оценки: 10 — Неоновая, 9+ — Золотая, 7.5+ — Серебряная, иначе Бронзовая.';
-      const body = $('dlgBody');
-      const drawMedals = () => {
-        body.replaceChildren();
-        if (!completedAnime.length) {
-          body.append(el('div', 'meta', 'Пока нет завершённых аниме. Как только переведёшь любое аниме в «Просмотрено», его медальон с главным героем появится здесь!'));
-          return;
-        }
-        const curMedals = getEquippedMedalsList(prof);
-        if (curMedals.length && !window._viewingGuestUid) {
-          const unequipB = el('button', 'btn btn-s', `✕ Снять все надетые значки (${curMedals.length}/3)`);
-          unequipB.type = 'button';
-          unequipB.onclick = () => { prof.equippedMedals = []; prof.equippedMedal = null; profCloud(); renderEquippedAnimeMedalUI(); drawMedals(); toast('Все значки сняты'); };
-          body.append(unequipB);
-        }
-        const mGrid = el('div', 'anime-medals-grid');
-        completedAnime.forEach(it => {
-          const score = num(it.rating) || num(it.extRating);
-          const tier = score >= 10 ? 'neon' : score >= 9 ? 'gold' : score >= 7.5 ? 'silver' : 'bronze';
-          const isEq = curMedals.some(m => m.id === it.id);
-          const card = el('div', 'medal-card' + (isEq ? ' equipped' : ''));
-          card.dataset.tier = tier;
-          const im = el('img', 'medal-av'); im.src = safePosterUrl(it.badgeCharImg || it.poster); im.onerror = () => { im.onerror = null; im.src = FALL; };
-          const titleB = el('b', null, it.title.slice(0, 26)); titleB.style.fontSize = '12px';
-          const sub = el('span', 'meta', isEq ? '★ Надет в профиле' : (it.badgeCharName || `Рамка: ${tier.toUpperCase()} · ★ ${score || '—'}`));
-          card.append(im, titleB, sub);
-          card.onclick = async () => {
-            if (window._viewingGuestUid) return;
-            let list = [...getEquippedMedalsList(prof)];
-            if (list.some(m => m.id === it.id)) {
-              list = list.filter(m => m.id !== it.id);
-              prof.equippedMedals = list; prof.equippedMedal = list[0] || null;
-              profCloud(); renderEquippedAnimeMedalUI(); drawMedals();
-              return;
-            }
-            if (!it.badgeCharImg) {
-              try {
-                const chData = await CharacterSeiyuuManager.fetchChars(it);
-                const mainCh = (chData.items || [])[0];
-                if (mainCh) { it.badgeCharImg = mainCh.img; it.badgeCharName = mainCh.name; cloudSave(it); }
-              } catch (e) {}
-            }
-            const medalEntry = { id: it.id, title: it.title, charName: it.badgeCharName || it.title.slice(0, 18), img: it.badgeCharImg || it.poster || FALL, tier };
-            if (list.length >= 3) list.shift();
-            list.push(medalEntry);
-            prof.equippedMedals = list; prof.equippedMedal = list[0] || null;
-            profCloud(); renderEquippedAnimeMedalUI(); drawMedals();
-            toast(`Медальон «${it.title}» надет (${list.length}/3)!`);
-          };
-          mGrid.append(card);
-        });
-        body.append(mGrid);
-      };
-      drawMedals();
-    }, 'Закрыть', false, () => true);
-  };
-}
 
 // В2. Битва тайтлов с формированием полного объективного Топа и сохранением в подборку
 if ($('battleBtn')) {
@@ -8421,42 +8405,7 @@ if ($('battleBtn')) {
   };
 }
 
-// В3. Капсула времени (считает по дате завершения completedAt или добавления, без склеивания импорта в один день)
-if (false && $('timeCapsuleBtn')) {
-  $('timeCapsuleBtn').onclick = () => {
-    $('hybMorePop')?.classList.remove('open');
-    const vis = getVisibleItems();
-    dlgOpen(() => {
-      $('dlgTitle').textContent = '⏳ Капсула времени (Дневник истории по месяцам)';
-      $('dlgText').textContent = 'Хронологическая лента твоих просмотров и чтения по месяцам:';
-      const body = $('dlgBody'); body.replaceChildren();
-      const wrap = el('div', 'timeline-list'), groups = new Map();
-      vis.filter(i => !i.archived).sort((a, b) => itemActionDate(b) - itemActionDate(a)).forEach(it => {
-        const ts = itemActionDate(it), d = new Date(ts);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        const label = d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-        if (!groups.has(key)) groups.set(key, { label, list: [] });
-        groups.get(key).list.push(it);
-      });
-      if (!groups.size) { body.append(el('div', 'meta', 'Коллекция пока пуста.')); return; }
-      groups.forEach(({ label, list }) => {
-        const block = el('div', 'tl-month-block'), hdr = el('div', 'tl-month-hdr');
-        const mins = list.reduce((s, i) => s + getItemMinutes(i), 0);
-        const chs = list.filter(i => i.category === 'Манга' || i.category === 'Ранобэ').reduce((s, i) => s + num(i.eps), 0);
-        const bLbl = el('b', null, '📅 ' + label); bLbl.style.cssText = 'text-transform:capitalize;font-size:15px';
-        hdr.append(bLbl, el('span', 'chip', `Тайтлов: ${list.length} · ${formatWatchTimeRu(mins)}${chs ? ' · ' + chs + ' гл.' : ''}`));
-        const chips = el('div', 'chips');
-        list.slice(0, 15).forEach(it => {
-          const c = el('button', 'chip', `${it.title} (${it.status === 'Просмотрено/Прочитано' ? '✓' : it.status})`);
-          c.type = 'button'; c.onclick = () => { closeAll(); openDetail(it.id); };
-          chips.append(c);
-        });
-        block.append(hdr, chips); wrap.append(block);
-      });
-      body.append(wrap);
-    }, 'Закрыть', false, () => true);
-  };
-}
+
 
 // В4. Онлайн-импорт Аниме и Манги с AniList / Shikimori через единую воронку предпросмотра (с поддержкой «Отменить этот импорт» и разбора!)
 if ($('shikiImportBtn')) {
@@ -8610,6 +8559,17 @@ function homeTab() {
 }
 
 function refresh(opts = {}) {
+  if (opts && opts.itemId != null) {
+    updateSingleItemCardInDOM(opts.itemId);
+    syncHybridStatusTabsUI();
+    catCounts();
+    cgMarks();
+    renderAnixartHeroAndCategoryCards();
+    renderAnixartProfileExtras();
+    renderStatusAndCategoryBanner();
+    if (KanbanManager.isKanbanActive) KanbanManager.renderBoard();
+    return;
+  }
   if (opts && opts.onlyList) {
     render(false);
     cgMarks();
@@ -8618,7 +8578,6 @@ function refresh(opts = {}) {
     renderAnixartProfileExtras();
     return;
   }
-  renderEquippedAnimeMedalUI();
   refreshTags();
   refreshLists();
   render(false);
@@ -8629,7 +8588,6 @@ function refresh(opts = {}) {
   renderAnixartProfileExtras();
   renderSmartInsights();
   updateProfileMetaAndPrivacyUI();
-  renderPinnedAchievementsShowcase();
   renderStatusAndCategoryBanner();
   renderMyListsFolderBlock();
   updateLastImportBatchBarUI();

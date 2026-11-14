@@ -17,6 +17,7 @@
 html{scrollbar-color:rgba(255,255,255,.22) transparent}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:10px}
+html,body{max-width:100%;overflow-x:hidden}
 body{background:var(--bg);color:#fff;font-family:'Inter','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;letter-spacing:-.01em;margin:0;padding:0;min-height:100vh}
 body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(900px 520px at 10% -8%,rgba(139,108,255,.22),transparent 62%),radial-gradient(800px 520px at 100% 6%,rgba(56,189,248,.11),transparent 60%),radial-gradient(800px 560px at 55% 112%,rgba(236,72,153,.10),transparent 60%)}
 h1,h2,h3,.logo,.pinfo b,.tile b{font-family:'Plus Jakarta Sans','Inter',sans-serif;letter-spacing:-.02em}
@@ -80,7 +81,9 @@ textarea{resize:vertical;min-height:80px}
 /* Сетка карточек */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cw,190px),1fr));gap:28px 20px;margin-top:18px}
 .msg{color:var(--mu);grid-column:1/-1;text-align:center;padding:44px 12px;font-size:15px}
-.card{cursor:pointer;animation:fin .25s ease both;content-visibility:auto;contain-intrinsic-size:190px 320px}
+.card{cursor:pointer;animation:fin .25s ease both}
+body.selmode .card.sel .pc{box-shadow:0 0 0 3px var(--ac),0 12px 28px rgba(139,92,246,.45)!important}
+body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:10px;bottom:10px;z-index:5;width:26px;height:26px;border-radius:50%;background:var(--ac);color:#fff;font-weight:900;font-size:14px;display:grid;place-items:center;box-shadow:0 4px 12px rgba(0,0,0,.5)}
 @keyframes fin{from{opacity:0;transform:translateY(8px)}}
 .pc{position:relative;width:100%;padding-top:150%;border-radius:16px;overflow:hidden;background:#1c1f2e;border:1px solid rgba(255,255,255,.07);box-shadow:0 8px 22px rgba(0,0,0,.4);transition:transform .22s cubic-bezier(.22,1,.36,1),box-shadow .25s;will-change:transform}
 .pc img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:opacity .35s ease,transform .35s ease;will-change:transform}
@@ -684,7 +687,11 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
   #botnav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;position:fixed;left:0;right:0;bottom:0;z-index:55;background:rgba(14,15,26,.96);border-top:1px solid var(--bd);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
   #botnav button{width:100%;min-width:0;background:none;border:0;color:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:18px;padding:4px 2px;cursor:pointer}
   #botnav span{font-size:10.5px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-  #selbar{bottom:76px;width:calc(100% - 20px)}
+  input,select,textarea{font-size:16px!important}
+  .app-container{overflow-x:hidden}
+  .tp-wrap{padding:14px}
+  .tp-specs-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  #selbar{bottom:76px;left:8px;right:8px;transform:none;width:auto;max-width:calc(100vw - 16px)}
   .char-pop-layout{grid-template-columns:115px 1fr;gap:14px}
   .battle-arena{grid-template-columns:1fr}
   .criteria-grid{grid-template-columns:1fr}
@@ -1111,11 +1118,9 @@ html[data-theme=white] .cg-subkind-pill.on{background:var(--ac);color:#fff}
       <!-- Панель «📥 Разобрать» -->
       <div id="reviewItemsBox" class="pb" style="display:none;margin-bottom:16px"></div>
 
-      <!-- Сворачиваемый блок Обзора, Любимых персонажей и Графиков -->
+      <!-- Сворачиваемый блок Аналитики и полок (круговая диаграмма, итоги года, инсайты и любимые полки) -->
       <div id="profOverviewWrap" style="display:none;margin-bottom:18px">
         <div id="anixHeroStats" style="display:none"></div>
-        <div class="media-time-grid" id="profMediaTimeGrid"></div>
-        <div class="tiles" id="profStats"></div>
         <div class="insights-wrap" id="smartInsightsWrap">
           <div class="row" style="justify-content:space-between"><h4 style="margin:0;font-size:14px">🧠 Умные инсайты (анализ коллекции)</h4></div>
           <div class="insights-grid" id="smartInsightsGrid"></div>
@@ -3799,26 +3804,7 @@ function profDash() {
     kv(h, 'Время завершённых тайтлов', formatWatchTimeRu(vis.filter(isCompletedItem).reduce((a, i) => a + getItemMinutes(i), 0)));
     p.append(h);
   }
-  {
-    const p = mk('lists', 'Мои подборки'), l = topBy(i => i.lists || []);
-    const activeListProf = window._viewingGuestUid ? (window._guestProf || {}) : prof;
-    if (!l.length) p.append(el('div', 'meta', 'Подборок пока нет. Нажми «＋ Подборка» в блоке «Мои подборки».'));
-    l.forEach(([n, c]) => {
-      const r = el('div', 'sr go'), b = el('div', 'bar'), nm = el('span', null, '📁 ' + n);
-      b.style.width = (c / l[0][1] * 100) + '%';
-      const lm = (activeListProf.listMeta || {})[n] || {};
-      if (lm.cn && LCOL[lm.cn]) nm.style.color = LCOL[lm.cn];
-      if (lm.desc) nm.title = lm.desc;
-      if (!window._viewingGuestUid) {
-        const ed = el('button', 'chip', '✏'); ed.title = 'Изменить подборку';
-        ed.onclick = e => { e.stopPropagation(); listEdit(n); };
-        const dl = el('button', 'chip', '🗑'); dl.title = 'Удалить подборку (тайтлы останутся)';
-        dl.onclick = e => { e.stopPropagation(); deleteCollectionFolder(n); };
-        nm.append(' ', ed, ' ', dl);
-      }
-      r.append(nm, b, el('span', 'meta', c)); r.onclick = () => goList(n); p.append(r);
-    });
-  }
+
 
   {
     const yr = new Date().getFullYear(), p = mk('year', 'Итоги ' + yr + ' года (по дате просмотра)'), cur = vis.filter(i => itemActionDate(i) && new Date(itemActionDate(i)).getFullYear() === yr);
@@ -3963,15 +3949,18 @@ function profStrips() {
 
 function profStats() {
   const vis = getVisibleItems();
-  const c = st => vis.filter(i => !i.archived && i.status === st).length, box = $('profStats');
-  box.replaceChildren();
-  const avg = f => { const a = vis.map(f).filter(Boolean); return a.length ? (a.reduce((s, x) => s + x, 0) / a.length).toFixed(1) : '—'; };
-  const tile = (n, l, fn) => { const t = el(fn ? 'button' : 'div', 'tile'); t.append(el('b', null, n), el('span', null, l)); if (fn) t.onclick = fn; else t.style.cursor = 'default'; box.append(t); };
-  const go = st => () => { $('statusFilter').value = st; render(); toList(); };
-  tile(vis.filter(i => !i.archived).length, 'Всего', go('Все'));
-  STATS.forEach(s => tile(c(s), s.replace('Просмотрено/Прочитано', 'Завершено').replace('Смотрю/Читаю', 'Смотрю'), go(s)));
-  tile(vis.filter(i => !i.archived && i.fav).length, '❤ Любимое', go('Любимое'));
-  if (vis.some(i => num(i.rating))) tile(avg(i => num(i.rating)), 'Моя ср. оценка');
+  const box = $('profStats');
+  if (box) {
+    box.replaceChildren();
+    const c = st => vis.filter(i => !i.archived && i.status === st).length;
+    const avg = f => { const a = vis.map(f).filter(Boolean); return a.length ? (a.reduce((s, x) => s + x, 0) / a.length).toFixed(1) : '—'; };
+    const tile = (n, l, fn) => { const t = el(fn ? 'button' : 'div', 'tile'); t.append(el('b', null, n), el('span', null, l)); if (fn) t.onclick = fn; else t.style.cursor = 'default'; box.append(t); };
+    const go = st => () => { $('statusFilter').value = st; render(); toList(); };
+    tile(vis.filter(i => !i.archived).length, 'Всего', go('Все'));
+    STATS.forEach(s => tile(c(s), s.replace('Просмотрено/Прочитано', 'Завершено').replace('Смотрю/Читаю', 'Смотрю'), go(s)));
+    tile(vis.filter(i => !i.archived && i.fav).length, '❤ Любимое', go('Любимое'));
+    if (vis.some(i => num(i.rating))) tile(avg(i => num(i.rating)), 'Моя ср. оценка');
+  }
 
   const activeCount = vis.filter(i => !i.archived).length;
   const pct = activeCount ? Math.round(vis.filter(isCompletedItem).length / activeCount * 100) : 0;
@@ -4091,16 +4080,14 @@ if ($('selInvBtn')) {
 if ($('selByStatus')) {
   $('selByStatus').replaceChildren(
     new Option('Выбрать всё в статусе…', ''),
-    ...STATS.map(x => new Option(x, x)),
-    new Option('❤ В избранном', '__fav__'),
-    new Option('📥 На разборе', '__rev__')
+    ...STATS.map(x => new Option(getStatusLabelForCategory(x, cat), x)),
+    new Option('❤ В любимом', '__fav__')
   );
   $('selByStatus').onchange = () => {
     const v = $('selByStatus').value;
     $('selByStatus').value = '';
     if (!v) return;
-    // Этап 1 п.10: Берём тайтлы строго из текущего отфильтрованного списка lastList, чтобы не выделять скрытое
-    const pool = (lastList || []).filter(i => v === '__fav__' ? !!i.fav : v === '__rev__' ? !!i.needsReview : i.status === v);
+    const pool = (lastList || []).filter(i => v === '__fav__' ? !!i.fav : i.status === v);
     pool.forEach(i => selSet.add(i.id));
     selPaint();
     toast(`Выделено в текущем списке: ${pool.length} шт.`);
@@ -4125,14 +4112,40 @@ $('selSt').onchange = async () => {
 
 $('selList').onclick = async () => {
   if (!selSet.size) return toast('Сначала выбери тайтлы');
-  const nm = ((await uiPrompt('Добавить выбранные в подборку', '', 'Название подборки...')) || '').trim();
+  const existingFolders = [...new Set([...(prof.customLists || []), ...items.flatMap(i => i.lists || [])])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ru'));
+  let pickedName = '', newInput = null;
+  const ok = await dlgOpen(() => {
+    $('dlgTitle').textContent = `📁 Добавить в подборку (${selSet.size} шт.)`;
+    $('dlgText').textContent = existingFolders.length ? 'Нажми на созданную подборку или введи новую ниже:' : 'Создай новую подборку для выбранных тайтлов:';
+    const body = $('dlgBody'); body.replaceChildren();
+    if (existingFolders.length) {
+      const chipsWrap = el('div', 'chips');
+      existingFolders.forEach(fn => {
+        const b = el('button', 'btn btn-s', '📁 ' + fn);
+        b.type = 'button';
+        b.style.cssText = 'padding:7px 12px;font-size:13px';
+        b.onclick = () => {
+          pickedName = fn;
+          $('dlgOk').click();
+        };
+        chipsWrap.append(b);
+      });
+      body.append(chipsWrap);
+    }
+    newInput = el('input');
+    newInput.placeholder = 'Или название новой подборки…';
+    newInput.onkeydown = e => { if (e.key === 'Enter') $('dlgOk').click(); };
+    body.append(newInput);
+  }, 'Добавить', false, () => (pickedName || (newInput?.value || '').trim()));
+
+  const nm = (ok || '').trim();
   if (!nm) return;
   const hit = items.filter(i => selSet.has(i.id));
   prof.customLists = prof.customLists || [];
   if (!prof.customLists.some(x => x.toLowerCase() === nm.toLowerCase())) prof.customLists.push(nm);
   hit.forEach(i => {
     i.lists = i.lists || [];
-    if (!i.lists.includes(nm)) i.lists.push(nm);
+    if (!i.lists.some(x => x.toLowerCase() === nm.toLowerCase())) i.lists.push(nm);
   });
   profCloud();
   await batchSaveItems(hit);
@@ -4144,15 +4157,36 @@ if ($('selUnlist')) {
   $('selUnlist').onclick = async () => {
     if (!selSet.size) return toast('Сначала выбери тайтлы');
     const hit = items.filter(i => selSet.has(i.id));
-    const curL = $('listFilter').value;
-    const nm = curL !== 'Все' ? curL : ((await uiPrompt('Из какой подборки убрать выбранные тайтлы?', '', 'Оставь пустым, чтобы очистить все подборки у выбранных')) || '').trim().toLowerCase();
+    const foldersInSel = [...new Set(hit.flatMap(i => i.lists || []))].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ru'));
+    if (!foldersInSel.length) return toast('У выбранных тайтлов нет подборок');
+    let pickedFolder = null;
+    const ok = await dlgOpen(() => {
+      $('dlgTitle').textContent = `📁− Убрать из подборки (${hit.length} шт.)`;
+      $('dlgText').textContent = 'Нажми на подборку, из которой хочешь убрать выбранные тайтлы:';
+      const body = $('dlgBody'); body.replaceChildren();
+      const chipsWrap = el('div', 'chips');
+      foldersInSel.forEach(fn => {
+        const b = el('button', 'btn btn-s', '✕ ' + fn);
+        b.type = 'button';
+        b.style.cssText = 'padding:7px 12px;font-size:13px';
+        b.onclick = () => { pickedFolder = fn.toLowerCase(); $('dlgOk').click(); };
+        chipsWrap.append(b);
+      });
+      const allB = el('button', 'btn btn-d', '🗑 Убрать из всех подборок');
+      allB.type = 'button';
+      allB.style.cssText = 'padding:7px 12px;font-size:13px';
+      allB.onclick = () => { pickedFolder = '__ALL__'; $('dlgOk').click(); };
+      body.append(chipsWrap, allB);
+    }, 'Готово', false, () => pickedFolder);
+
+    if (!ok) return;
     hit.forEach(i => {
-      if (!nm) i.lists = [];
-      else i.lists = (i.lists || []).filter(x => x.toLowerCase() !== nm);
+      if (ok === '__ALL__') i.lists = [];
+      else i.lists = (i.lists || []).filter(x => x.toLowerCase() !== ok);
     });
     await batchSaveItems(hit);
     refresh();
-    toast(`Обновлены подборки у ${hit.length} тайтлов`);
+    toast(ok === '__ALL__' ? `Убрано из всех подборок (${hit.length} шт.)` : `Убрано из подборки (${hit.length} шт.)`);
   };
 }
 
@@ -7112,15 +7146,26 @@ function renderAnixartHeroAndCategoryCards() {
   const qcBox = $('hybQuickCounters');
   if (qcBox) {
     qcBox.replaceChildren();
-    const addQc = (val, lbl) => {
-      const d = el('div', 'hyb-qc-item');
+    const addQc = (val, lbl, onClickFn = null) => {
+      const d = el('div', 'hyb-qc-item' + (onClickFn ? ' clickable' : ''));
       d.append(el('b', null, String(val)), el('span', null, lbl));
+      if (onClickFn) {
+        d.title = 'Нажми, чтобы открыть «Любимое»';
+        d.onclick = onClickFn;
+      }
       qcBox.append(d);
     };
     addQc(totalEpisodes.toLocaleString('ru-RU'), `${pluralRu(totalEpisodes, 'серия', 'серии', 'серий')} просмотрено`);
     if (totalChapters > 0) addQc(totalChapters.toLocaleString('ru-RU'), `${pluralRu(totalChapters, 'глава', 'главы', 'глав')} прочитано (манга и ранобэ)`);
     if (totalVolumes > 0) addQc(totalVolumes.toLocaleString('ru-RU'), `${pluralRu(totalVolumes, 'том', 'тома', 'томов')} прочитано`);
-    addQc(favCount, 'в любимом');
+    addQc(favCount, 'в любимом', () => {
+      applyMainTabView('collection');
+      if ($('reviewItemsBox')) $('reviewItemsBox').style.display = 'none';
+      $('profColWrap').style.display = '';
+      $('statusFilter').value = 'Любимое';
+      render(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
     addQc(ratedCount, pluralRu(ratedCount, 'оценка', 'оценки', 'оценок'));
   }
 
@@ -7700,8 +7745,24 @@ async function openFullTitlePage(itemObj) {
   addSpec('Год выпуска', activeItem.year || 'Не указан');
   addSpec('Тип произведения', FORMAT_RU[activeItem.format] || catLabel(activeItem));
   addSpec('Первоисточник', activeItem.source || 'Оригинал / Не указан');
-  addSpec('Автор / Режиссёр', activeItem.author || 'Не указан');
-  addSpec('Студия / Издатель', activeItem.studio || 'Не указана');
+  const addClickableSpec = (lbl, rawVal, kindType) => {
+    const list = spl(rawVal);
+    if (!list.length) return addSpec(lbl, 'Не указан');
+    const b = el('div', 'tp-spec-box');
+    const chips = el('div', 'chips');
+    chips.style.margin = '2px 0 0';
+    list.forEach(nameStr => {
+      const ch = el('button', 'chip', nameStr + ' ↗');
+      ch.type = 'button';
+      ch.title = `Показать все работы: ${nameStr}`;
+      ch.onclick = () => openCatalogByCreator(kindType, nameStr, activeItem.category);
+      chips.append(ch);
+    });
+    b.append(el('span', null, lbl), chips);
+    specsGrid.append(b);
+  };
+  addClickableSpec('Автор / Режиссёр', activeItem.author, 'author');
+  addClickableSpec('Студия / Издатель', activeItem.studio, 'studio');
   if (activeItem.category === 'Манга' || activeItem.category === 'Ранобэ') {
     addSpec('Объём (Главы и Тома)', `${num(activeItem.eps) || '?'} гл. · ${num(activeItem.vols) || '?'} т.`);
   } else {
@@ -7890,6 +7951,85 @@ async function openFullTitlePage(itemObj) {
   }
 }
 
+async function openCatalogByCreator(kindType, nameStr, itemCat) {
+  if (!nameStr) return;
+  applyMainTabView('catalog');
+  cgGrid.replaceChildren(...Array.from({ length: 8 }, () => el('div', 'sk')));
+  $('cgMore').style.display = 'none';
+  if ($('cgHeroWrap')) $('cgHeroWrap').style.display = 'none';
+  toast(`Ищу все работы: ${nameStr}…`);
+  try {
+    let found = [];
+    const isAni = ['Аниме', 'Манга', 'Ранобэ'].includes(itemCat);
+    if (isAni) {
+      if (kindType === 'studio') {
+        const q = 'query($s:String){Studio(search:$s){name media(sort:POPULARITY_DESC,perPage:24){nodes{id idMal isAdult format siteUrl countryOfOrigin bannerImage trailer{id site} title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore episodes duration chapters volumes genres status source}}}}';
+        const j = await (await fetch('https://graphql.anilist.co', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, variables: { s: nameStr } }) })).json();
+        const nodes = j?.data?.Studio?.media?.nodes || [];
+        found = nodes.map(m => ({
+          aniId: m.id, mal: m.idMal || 0, isAdult: !!m.isAdult, format: m.format || '',
+          banner: m.bannerImage || '', trailerId: (m.trailer?.site === 'youtube') ? m.trailer.id : '',
+          vols: m.volumes || 0, eps: m.episodes || m.chapters || 0, dur: m.duration || 0,
+          title: m.title.english || m.title.romaji || m.title.native, en: m.title.english || '', orig: m.title.native || '', alt: '',
+          studio: nameStr, author: '', ongoing: m.status === 'RELEASING', src: 'AniList', url: m.siteUrl,
+          poster: m.coverImage?.large || '', year: m.startDate?.year || '',
+          ext: m.averageScore ? (m.averageScore / 10).toFixed(1) : '',
+          tags: (m.genres || []).map(g => RU[g] || g),
+          desc: m.description ? decode(m.description.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim() : '',
+          category: m.format === 'NOVEL' ? 'Ранобэ' : ['MANGA', 'ONE_SHOT'].includes(m.format) ? 'Манга' : 'Аниме'
+        }));
+      } else {
+        const q = 'query($s:String){Staff(search:$s){name{full} staffMedia(sort:POPULARITY_DESC,perPage:24){nodes{id idMal isAdult format siteUrl countryOfOrigin bannerImage trailer{id site} title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore episodes duration chapters volumes genres status source}}}}';
+        const j = await (await fetch('https://graphql.anilist.co', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, variables: { s: nameStr } }) })).json();
+        const nodes = j?.data?.Staff?.staffMedia?.nodes || [];
+        found = nodes.map(m => ({
+          aniId: m.id, mal: m.idMal || 0, isAdult: !!m.isAdult, format: m.format || '',
+          banner: m.bannerImage || '', trailerId: (m.trailer?.site === 'youtube') ? m.trailer.id : '',
+          vols: m.volumes || 0, eps: m.episodes || m.chapters || 0, dur: m.duration || 0,
+          title: m.title.english || m.title.romaji || m.title.native, en: m.title.english || '', orig: m.title.native || '', alt: '',
+          author: nameStr, studio: '', ongoing: m.status === 'RELEASING', src: 'AniList', url: m.siteUrl,
+          poster: m.coverImage?.large || '', year: m.startDate?.year || '',
+          ext: m.averageScore ? (m.averageScore / 10).toFixed(1) : '',
+          tags: (m.genres || []).map(g => RU[g] || g),
+          desc: m.description ? decode(m.description.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim() : '',
+          category: m.format === 'NOVEL' ? 'Ранобэ' : ['MANGA', 'ONE_SHOT'].includes(m.format) ? 'Манга' : 'Аниме'
+        }));
+      }
+    } else {
+      const k = getActiveTmdbKey();
+      if (kindType === 'studio') {
+        const cj = await ruJson(`https://api.themoviedb.org/3/search/company?api_key=${encodeURIComponent(k)}&query=${encodeURIComponent(nameStr)}`, 6000);
+        const cid = cj?.results?.[0]?.id;
+        if (cid) found = await tmdb(null, `/discover/movie?with_companies=${cid}&sort_by=popularity.desc`, 'movie', 1);
+      } else {
+        const pj = await ruJson(`https://api.themoviedb.org/3/search/person?api_key=${encodeURIComponent(k)}&language=ru-RU&query=${encodeURIComponent(nameStr)}`, 6000);
+        const pid = pj?.results?.[0]?.id;
+        if (pid) {
+          const cr = await ruJson(`https://api.themoviedb.org/3/person/${pid}/combined_credits?api_key=${encodeURIComponent(k)}&language=ru-RU`, 6000);
+          found = [...(cr.crew || []), ...(cr.cast || [])].filter(x => x.media_type === 'movie' || x.media_type === 'tv').slice(0, 24).map(x => ({
+            title: x.title || x.name, en: x.original_title || x.original_name || '', orig: x.original_title || x.original_name || '', alt: '',
+            poster: x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '',
+            year: (x.release_date || x.first_air_date || '').slice(0, 4),
+            ext: x.vote_count ? x.vote_average.toFixed(1) : '', tags: (x.genre_ids || []).map(g => TG[g]).filter(Boolean),
+            tmdb: x.media_type + '/' + x.id, src: 'TMDB', url: 'https://www.themoviedb.org/' + x.media_type + '/' + x.id,
+            desc: x.overview || '', category: x.media_type === 'tv' ? 'Сериал' : 'Фильм'
+          }));
+        }
+      }
+    }
+    cgGrid.replaceChildren();
+    if (!found.length) {
+      cgGrid.append(el('div', 'msg', `Работы для «${nameStr}» не найдены.`));
+      return;
+    }
+    if ($('cgSourceCaption')) $('cgSourceCaption').textContent = `🔎 Работы ${kindType === 'studio' ? 'студии' : 'автора/режиссёра'}: ${nameStr} (${found.length})`;
+    found.forEach(cgCard);
+    ruCards();
+  } catch (e) {
+    cgGrid.replaceChildren(el('div', 'msg', 'Не удалось загрузить работы: ' + e.message));
+  }
+}
+
 if ($('openFullPageFromDetailBtn')) $('openFullPageFromDetailBtn').onclick = () => { const it = items.find(x => x.id === curId); if (it) openFullTitlePage(it); };
 if ($('openFullPageFromRndBtn')) $('openFullPageFromRndBtn').onclick = () => { if (rndR) openFullTitlePage(rndR); };
 
@@ -7917,27 +8057,35 @@ class ShareCardGenerator {
       ctx.fillStyle = '#fff'; ctx.font = '800 38px Inter, sans-serif';
       ctx.fillText((activeP.name || $('profName').textContent || 'Коллекционер').slice(0, 24), 195, 98);
 
-      const done = vis.filter(isCompletedItem), mins = done.reduce((s, i) => s + getItemMinutes(i), 0);
-      ctx.fillStyle = '#fff'; ctx.font = '800 44px Inter, sans-serif'; ctx.fillText('⏱ ' + formatWatchTimeRu(mins) + ' за просмотром', 60, 245);
-      ctx.font = '700 22px Inter, sans-serif'; ctx.fillText(`Тайтлов в коллекции: ${vis.length} · Завершено: ${done.length} · Любимых: ${vis.filter(i => i.fav).length}`, 60, 292);
+      const activeVis = vis.filter(i => !i.archived);
+      const done = activeVis.filter(isCompletedItem), mins = done.reduce((s, i) => s + getItemMinutes(i), 0);
+      ctx.fillStyle = '#fff'; ctx.font = '800 38px Inter, sans-serif'; ctx.fillText('⏱ ' + formatWatchTimeRu(mins) + ' за просмотром', 60, 232);
+      ctx.font = '700 20px Inter, sans-serif'; ctx.fillStyle = '#cbd5e1';
+      ctx.fillText(`Всего в коллекции: ${activeVis.length} · Завершено: ${done.length} · Любимых: ${activeVis.filter(i => i.fav).length}`, 60, 272);
+
+      const dMov = done.filter(i => i.category === 'Фильм' || i.category === 'Мультфильм');
+      const dSer = done.filter(i => i.category === 'Сериал');
+      const dAni = done.filter(i => i.category === 'Аниме');
+      const dMan = done.filter(i => i.category === 'Манга');
+      const dRan = done.filter(i => i.category === 'Ранобэ');
+      const hrs = list => Math.round(list.reduce((s, i) => s + getItemMinutes(i), 0) / 60);
+      const typeLines = [
+        `🎬 Фильмы: ${dMov.length} просмотрено · ${hrs(dMov)} ч.`,
+        `📺 Сериалы: ${dSer.length} просмотрено · ${hrs(dSer)} ч.`,
+        `🌸 Аниме: ${dAni.length} просмотрено · ${hrs(dAni)} ч.`,
+        `📖 Манга: ${dMan.length} прочитано · ${dMan.reduce((s, i) => s + num(i.eps), 0)} гл. · ${dMan.reduce((s, i) => s + num(i.vols), 0)} т.`,
+        `📚 Ранобэ: ${dRan.length} прочитано · ${dRan.reduce((s, i) => s + num(i.eps), 0)} гл. · ${dRan.reduce((s, i) => s + num(i.vols), 0)} т.`
+      ];
+      ctx.fillStyle = a1; ctx.font = '700 20px Inter, sans-serif';
+      ctx.fillText('📊 Статистика по типам:', 60, 322);
+      typeLines.forEach((tl, idx) => {
+        ctx.fillStyle = '#fff'; ctx.font = '600 18px Inter, sans-serif';
+        ctx.fillText(tl, 60, 356 + idx * 32);
+      });
+
       if (activeP.bio) {
-        ctx.fillStyle = a1; ctx.font = '700 20px Inter, sans-serif';
-        ctx.fillText('О себе:', 60, 355);
-        ctx.fillStyle = '#e2e6f3'; ctx.font = '500 19px Inter, sans-serif';
-        const words = activeP.bio.replace(/\n+/g, ' ').split(' ');
-        let line = '', y = 392;
-        for (const w of words) {
-          const test = line ? line + ' ' + w : w;
-          if (ctx.measureText(test).width > W - 120 && line) {
-            ctx.fillText(line, 60, y);
-            line = w;
-            y += 30;
-            if (y > H - 70) break;
-          } else {
-            line = test;
-          }
-        }
-        if (line && y <= H - 70) ctx.fillText(line, 60, y);
+        ctx.fillStyle = a2; ctx.font = '700 17px Inter, sans-serif';
+        ctx.fillText('О себе: ' + activeP.bio.replace(/\n+/g, ' ').slice(0, 70), 60, H - 68);
       }
       ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.font = '600 15px Inter, sans-serif'; ctx.fillText('▶ Мой Медиа Трекер', 60, H - 36);
     };

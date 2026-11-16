@@ -791,3 +791,32 @@ html[data-theme=white] :is(.sr-val, .stats-kpi-box b) {
   border-radius: 999px;
   cursor: default;
 }
+
+
+/* === Фикс мобильного backdrop-filter и белой темы для нижней панели и системных блоков === */
+@media(max-width:768px){
+  .menu, .cat-dd-menu, .pick-menu-pop, .hyb-more-pop, .toolbar-more-pop {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+html[data-theme=white] #botnav {
+  background: #ffffff !important;
+  border-top-color: rgba(0, 0, 0, 0.12) !important;
+}
+html[data-theme=white] #botnav button { color: #5d6478 !important; }
+html[data-theme=white] #botnav button.on {
+  color: #14161f !important;
+  background: rgba(0, 0, 0, 0.06) !important;
+}
+html[data-theme=white] :is(#selbar, #modalX, .toast, .k-card, .pb, .pc) {
+  background-color: #ffffff !important;
+  color: #14161f !important;
+  border-color: rgba(0, 0, 0, 0.14) !important;
+}
+html[data-theme=white] .toast.bad {
+  background-color: #fee2e2 !important;
+  color: #991b1b !important;
+  border-color: #ef4444 !important;
+}

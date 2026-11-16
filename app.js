@@ -1,5 +1,5 @@
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import {getAuth,signInWithPopup,signInWithRedirect,GoogleAuthProvider,EmailAuthProvider,linkWithPopup,linkWithCredential,reauthenticateWithPopup,reauthenticateWithCredential,updatePassword,signOut,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,deleteUser} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import {getAuth,signInWithPopup,signInWithRedirect,getRedirectResult,GoogleAuthProvider,EmailAuthProvider,linkWithPopup,linkWithCredential,reauthenticateWithPopup,reauthenticateWithCredential,updatePassword,signOut,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,deleteUser} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import {getFirestore,collection,doc,setDoc,deleteDoc,getDoc,query,where,onSnapshot,writeBatch,getDocs,limit} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // Ключ TMDB по умолчанию
@@ -257,18 +257,34 @@ const prepareProfForLocal = pObj => {
   return copy;
 };
 
-const saveLocalItems = () => {
+const saveLocalItems = (forceEmpty = false) => {
   if (!loaded) return;
   const uidKey = getUidStorageKey('items');
   const slimItems = items.map(stripItemBase64ForLocal);
+  const safetyKey = getUidStorageKey('safetyBackup');
+
+  if (!forceEmpty && slimItems.length === 0) {
+    const existingLocal = loadLocalItems();
+    if (existingLocal.length > 0) return;
+  }
+
   idbVault.set(uidKey, slimItems);
   if (user && user.isLocal) idbVault.set('localItems', slimItems);
+
+  if (slimItems.length > 0) {
+    idbVault.get(safetyKey).then(prevSafety => {
+      if (!Array.isArray(prevSafety) || slimItems.length >= prevSafety.length) {
+        idbVault.set(safetyKey, slimItems);
+        try { localStorage.setItem(safetyKey, JSON.stringify(slimItems)); } catch (e) {}
+      }
+    });
+  }
+
   try {
     const json = JSON.stringify(slimItems);
     localStorage.setItem(uidKey, json);
     if (user && user.isLocal) localStorage.setItem('localItems', json);
   } catch (e) {
-    // Если localStorage переполнен из-за кэша переводов ruCache — очищаем ruCache и сохраняем коллекцию без длинных синопсисов
     try {
       localStorage.removeItem('ruCache');
       const compactItems = slimItems.map(x => ({ ...x, description: (x.description || '').slice(0, 180) }));
@@ -278,7 +294,11 @@ const saveLocalItems = () => {
     } catch (e2) {}
   }
 };
-const isTitleDoc = x => x && (x.kind === 'title' || (!x.kind && !x.isProfile && !x.isWallComment && !x.isRecInbox && !x.isReport && !x.secretCredKey));
+const isTitleDoc = x => x && (
+  x.kind === 'title' ||
+  MANGA_SUBKINDS.includes(x.kind) ||
+  (!x.kind && !x.isProfile && !x.isWallComment && !x.isRecInbox && !x.isReport && !x.secretCredKey)
+);
 
 const loadLocalItems = (forUid) => {
   try {
@@ -307,7 +327,16 @@ const profSaveLocal = () => {
 };
 
 let pend = 0, syncBad = false, cloudAccessError = '';
+const updateAccountBadge = () => {
+  const b = $('accountBadge');
+  if (!b) return;
+  if (!user) { b.textContent = ''; return; }
+  b.textContent = user.isLocal
+    ? '💻 Локальный режим'
+    : `👤 ${user.email || prof.name || user.uid.slice(0, 8)}`;
+};
 const setSync = () => {
+  updateAccountBadge();
   const e = $('syncState');
   if (!e) return;
   if (user && user.isLocal) { e.className = 'sync'; e.textContent = '💾 Локальный режим'; return; }
@@ -369,6 +398,7 @@ function deduplicateListByIdAndCleanupCloud(rawList, cleanCloud = false) {
   const preferredPrefix = (user && user.uid) ? (user.uid + '_') : '';
   (rawList || []).forEach(it => {
     if (!it) return;
+    if (!it.id) it.id = newId();
     const key = String(it.id);
     if (!byId.has(key)) {
       byId.set(key, it);
@@ -791,6 +821,15 @@ async function activateCloudUserSession(uObj) {
       // ЖЕЛЕЗОБЕТОННАЯ ЗАЩИТА КОЛЛЕКЦИИ (~500 аниме):
       // Никогда не затираем существующую локальную коллекцию пустым или неполным кэш-ответом облака!
       const prevCount = items.length;
+      if (!window._explicitEmptyAllowed && prevCount === 0 && ownList.length === 0) {
+        idbVault.get(getUidStorageKey('safetyBackup')).then(sb => {
+          if (Array.isArray(sb) && sb.length > 0 && items.length === 0) {
+            items = deduplicateListByIdAndCleanupCloud(sb.filter(isTitleDoc).map(fix), false);
+            refresh();
+            toast(`Восстановлено из локальной страховочной копии: ${items.length} тайтлов`);
+          }
+        });
+      }
       if (!window._explicitEmptyAllowed && prevCount > 0 && ownList.length === 0) {
         loaded = true;
         if (!window._migrationRetriedOnEmpty) {
@@ -834,25 +873,28 @@ async function activateCloudUserSession(uObj) {
 // ---------- ОБРАБОТЧИКИ АВТОРИЗАЦИИ ----------
 $('localModeBtn').onclick = () => startLocalMode('Включён локальный режим');
 
+getRedirectResult(auth).catch(e => {
+  if (e && e.code === 'auth/unauthorized-domain') {
+    startLocalMode('Домен ' + location.hostname + ' не добавлен в Firebase Authorized Domains. Включён локальный режим.');
+  } else if (e && !['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(e.code)) {
+    toast('Ошибка входа Google: ' + (e.message || e.code), true);
+  }
+});
+
 $('loginBtn').onclick = async () => {
   try { localStorage.removeItem('useLocalMode'); } catch (e) {}
+  if (location.protocol === 'file:') {
+    return toast('На file:// вход через Google блокируется браузером. Используй вход по Почте и Паролю или открой сайт по HTTPS.', true);
+  }
   const freshProvider = new GoogleAuthProvider();
   freshProvider.setCustomParameters({ prompt: 'select_account' });
-  if (location.protocol === 'file:') {
-    return toast('При открытии файла напрямую (file://) браузер блокирует всплывающее окно Google. Используй вход по Почте и Паролю ниже или открой сайт на хостинге.', true);
-  }
   try {
-    await signInWithPopup(auth, freshProvider);
+    await signInWithRedirect(auth, freshProvider);
   } catch (e) {
-    if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment'].includes(e.code)) {
-      return signInWithRedirect(auth, freshProvider);
-    }
     if (e.code === 'auth/unauthorized-domain') {
       return startLocalMode('Домен не добавлен в список разрешённых в Firebase Console (' + location.hostname + '). Включён локальный режим.');
     }
-    if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(e.code)) {
-      toast('Ошибка входа Google: ' + e.message, true);
-    }
+    toast('Ошибка входа Google: ' + e.message, true);
   }
 };
 
@@ -926,6 +968,7 @@ $('logoutBtn').onclick = async () => {
 };
 
 onAuthStateChanged(auth, u => {
+  document.body.classList.remove('auth-checking');
   if (u) {
     try { localStorage.removeItem('useLocalMode'); } catch (e) {}
     return activateCloudUserSession(u);
@@ -1011,16 +1054,18 @@ const same = (a, b) => {
   if (a.mal && b.mal && Number(a.mal) !== Number(b.mal)) return false;
   if (a.tmdb && b.tmdb && String(a.tmdb) !== String(b.tmdb)) return false;
 
-  const na = nset(a), nb = nset(b);
-  if (!na.length || !nb.length) return false;
-  const titleMatch = na.some(n => nb.includes(n));
-  if (!titleMatch) return false;
+  const primaryA = [a.title, a.titleEn || a.en, a.titleOrig || a.orig].map(normTitleStr).filter(x => x && x.length >= 2);
+  const primaryB = [b.title, b.titleEn || b.en, b.titleOrig || b.orig].map(normTitleStr).filter(x => x && x.length >= 2);
+  if (!primaryA.length || !primaryB.length) return false;
+  if (!primaryA.some(n => primaryB.includes(n))) return false;
 
+  if (a.format && b.format && a.format !== b.format) return false;
   const ma = getItemMarkers(a), mb = getItemMarkers(b);
   if (ma !== mb) return false;
 
   const ya = parseInt(a.year) || 0, yb = parseInt(b.year) || 0;
   if (ya && yb && Math.abs(ya - yb) > 1) return false;
+  if ((!ya || !yb) && !a.aniId && !b.aniId && !a.mal && !b.mal && !a.tmdb && !b.tmdb) return false;
 
   return true;
 };
@@ -1946,8 +1991,7 @@ function openImageCropperModal(file, targetW, targetH, quality = 0.78, titleText
 
         canvas.onmousedown = e => onDown(e.clientX, e.clientY);
         canvas.onmousemove = e => onMove(e.clientX, e.clientY);
-        canvas.onmouseup = onUp;
-        canvas.onmouseleave = onUp;
+        window.addEventListener('mouseup', onUp);
         canvas.ontouchstart = e => { if (e.touches[0]) onDown(e.touches[0].clientX, e.touches[0].clientY); };
         canvas.ontouchmove = e => { if (e.touches[0]) { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); } };
         canvas.ontouchend = onUp;
@@ -1965,6 +2009,7 @@ function openImageCropperModal(file, targetW, targetH, quality = 0.78, titleText
         const finish = resultDataUrl => {
           if (cropDone !== finish) return;
           cropDone = null;
+          window.removeEventListener('mouseup', onUp);
           modal.style.display = 'none';
           resolve(resultDataUrl);
         };
@@ -2752,15 +2797,40 @@ function openDetail(id) {
     };
   }
 
-  // Счётчик повторных просмотров (Б4)
+  // Счётчик повторных просмотров (+1, -1, откат и возврат прежнего статуса)
   const rewB = $('detailRewatchPlusBtn');
+  const rewMinB = $('detailRewatchMinusBtn');
   if (rewB) {
     rewB.style.display = '';
     rewB.textContent = `🔁 Пересмотрено: ${num(i.rewatchCount)} раз (+1)`;
     rewB.onclick = () => {
-        i.rewatchCount = num(i.rewatchCount) + 1;
+      const prevCount = num(i.rewatchCount);
+      const prevSt = i.status;
+      i.rewatchCount = prevCount + 1;
+      if (i.status !== 'Просмотрено/Прочитано' && i.status !== 'Пересматриваю') {
+        i.prevStBeforeRewatch = prevSt;
+        i.status = 'Просмотрено/Прочитано';
+        if (!i.completedAt) i.completedAt = Date.now();
+      }
       cloudSave(i); refresh({ itemId: i.id }); openDetail(id);
-      toast(`Счётчик пересмотров увеличен: ${i.rewatchCount} раз!`);
+      toast(`Пересмотров: ${i.rewatchCount}`, false, {
+        label: '↩ Отменить',
+        fn: () => {
+          i.rewatchCount = prevCount;
+          if (i.prevStBeforeRewatch) { i.status = i.prevStBeforeRewatch; delete i.prevStBeforeRewatch; }
+          cloudSave(i); refresh({ itemId: i.id }); openDetail(id);
+        }
+      });
+    };
+  }
+  if (rewMinB) {
+    rewMinB.style.display = num(i.rewatchCount) > 0 ? '' : 'none';
+    rewMinB.onclick = () => {
+      const prevCount = num(i.rewatchCount);
+      if (prevCount <= 0) return;
+      i.rewatchCount = prevCount - 1;
+      cloudSave(i); refresh({ itemId: i.id }); openDetail(id);
+      toast(`Пересмотров уменьшено: ${i.rewatchCount}`);
     };
   }
 
@@ -3033,11 +3103,13 @@ function buildStats(b) {
     kpiRow.append(box);
   };
   const doneCount = vis.filter(isCompletedItem).length;
+  const totalRewatches = vis.reduce((s, i) => s + num(i.rewatchCount), 0);
   const totalWatchTime = formatWatchTimeRu(vis.filter(isCompletedItem).reduce((s, i) => s + getItemMinutes(i), 0));
   addKpi(`${total} шт.`, 'Всего в коллекции');
   addKpi(`${doneCount} шт. (${pctStr(doneCount)})`, 'Завершено');
   addKpi(avgMine(vis), 'Средняя оценка');
   addKpi(totalWatchTime, 'Время просмотра');
+  if (totalRewatches > 0) addKpi(`${totalRewatches} раз`, 'Всего пересмотров');
   b.append(kpiRow);
 
   // Круговые диаграммы (donut-графики) по статусам и по категориям с легендой
@@ -3121,10 +3193,12 @@ function buildStats(b) {
 
   // 2. По статусам (В планах, Смотрю, Просмотрено, Брошено, Любимое): точное количество штук и доля в %
   const favCount = vis.filter(i => i.fav).length;
+  const rewatchingCount = vis.filter(i => i.status === 'Пересматриваю').length;
   const statusRows = [
     ['В планах', statusEntries[0].count],
-    ['Смотрю', statusEntries[1].count],
-    ['Просмотрено', statusEntries[2].count],
+    ['Смотрю / Читаю', vis.filter(i => i.status === 'Смотрю/Читаю').length],
+    ['Просмотрено / Прочитано', statusEntries[2].count],
+    ['Пересматриваю', rewatchingCount],
     ['Брошено', statusEntries[3].count],
     ['❤ Любимое', favCount]
   ].map(([lbl, cnt]) => [lbl, `${cnt} шт. (${pctStr(cnt)})`]);
@@ -3473,7 +3547,8 @@ $('selDel').onclick = async () => {
   const visibleIds = new Set((lastList || []).map(x => x.id));
   const hiddenSelectedCount = toDelete.filter(i => !visibleIds.has(i.id)).length;
   const hiddenNote = hiddenSelectedCount > 0 ? `\n⚠ Внимание: из выбранных сейчас НЕ видно на экране (скрыто фильтрами): ${hiddenSelectedCount} шт.` : '\n(Все выбранные тайтлы видны в текущем списке)';
-  if (!(await uiConfirm(`Удалить выбранные тайтлы (${toDelete.length} шт.) одним пакетом?${hiddenNote}`, 'Удалить выбранные', true))) return;
+  const typedCount = await uiPrompt(`Удаление ${toDelete.length} тайтлов${hiddenNote}\n\nЧтобы подтвердить удаление, введи число ${toDelete.length}:`, '', String(toDelete.length));
+  if (String(typedCount || '').trim() !== String(toDelete.length)) return toast('Массовое удаление отменено (число не совпало)');
   selToggle(false);
   await batchDeleteItemsWithUndo(toDelete, `Удалено тайтлов: ${toDelete.length}`);
 };
@@ -5072,7 +5147,7 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
   // 2. Сразу обновляем локальный список, кэш и DOM ДО сетевого ожидания, чтобы onSnapshot не вернул старый кэш
   window._explicitEmptyAllowed = true;
   items = items.filter(i => !delIdStrs.has(String(i.id)));
-  saveLocalItems();
+  saveLocalItems(items.length === 0);
   profCloud(true);
   refresh();
 
@@ -6121,7 +6196,7 @@ async function findAndMergeDuplicatesModal() {
     for (let j = i + 1; j < items.length; j++) {
       const b = items[j];
       if (visited.has(b.id)) continue;
-      if (grp.some(m => same(m, b))) {
+      if (same(a, b)) {
         grp.push(b);
         visited.add(b.id);
       }
@@ -8852,3 +8927,30 @@ document.addEventListener('error', e => {
 }, true);
 
 KanbanManager.init();
+
+window.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && _cloudSaveTimers.size && user && !user.isLocal && auth.currentUser) {
+    _cloudSaveTimers.forEach((entry, docId) => {
+      clearTimeout(entry.timer);
+      const it = items.find(x => getCloudDocId(x) === docId);
+      if (it) {
+        const { payload } = prepareTitleForCloud(it, user.uid);
+        setDoc(doc(db, 'items', docId), payload).catch(() => {});
+      }
+      entry.resolve();
+    });
+    _cloudSaveTimers.clear();
+  }
+});
+
+if ($('restoreSafetyBackupBtn')) {
+  $('restoreSafetyBackupBtn').onclick = async () => {
+    const safetyKey = getUidStorageKey('safetyBackup');
+    const localKey = getUidStorageKey('items');
+    const pool = (await idbVault.get(safetyKey)) || (await idbVault.get(localKey)) || loadLocalItems();
+    if (!Array.isArray(pool) || !pool.length) {
+      return toast('В локальном кэше этого браузера резервных записей не найдено', true);
+    }
+    await previewAndExecuteImport(pool.map(fix), 'Страховочная копия браузера', '', false, null);
+  };
+}

@@ -12,8 +12,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Мой Медиа Трекер</title>
 <link rel="stylesheet" href="style.css">
+<style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
 </head>
-<body>
+<body class="auth-checking">
 
 <div id="authScreen">
   <div class="auth-logo">▶</div>
@@ -43,7 +44,7 @@
 <div id="appScreen">
   <header>
     <div class="hdr-inner">
-      <div class="row"><span class="brand" aria-hidden="true">▶</span><span class="logo">Медиа Трекер</span><span id="syncState" class="sync">☁ Синхронизировано</span></div>
+      <div class="row"><span class="brand" aria-hidden="true">▶</span><span class="logo">Медиа Трекер</span><span id="syncState" class="sync">☁ Синхронизировано</span><span id="accountBadge" class="sync" style="opacity:.85"></span></div>
       <div class="row hdr-actions">
         <input type="file" id="universalImportFile" accept=".csv,.tsv,.txt,.json,.xml,.html,.htm,.xls" style="display:none" onchange="handleUniversalFileImport(event)">
         <input type="file" id="importFile" accept=".json" onchange="importData(event)">
@@ -453,7 +454,7 @@
   <div class="row" style="gap:8px;align-items:center">
     <select id="detailStatusSel" style="max-width:220px"></select>
     <button class="btn btn-s" id="detailFavToggleBtn" type="button">🤍 В любимое</button>
-    <button class="btn btn-s" id="detailRewatchPlusBtn" type="button" title="Добавить +1 к счётчику пересмотров">🔁 Пересмотрено: 0</button>
+    <div class="row" style="gap:4px"><button class="btn btn-s" id="detailRewatchMinusBtn" type="button" title="Убрать 1 пересмотр" style="padding:9px 10px">−1</button><button class="btn btn-s" id="detailRewatchPlusBtn" type="button" title="Добавить +1 к счётчику пересмотров">🔁 Пересмотрено: 0</button></div>
   </div>
   <div id="detailMyNote" class="my-note" style="display:none"></div>
   <div id="detailDescription"></div>
@@ -576,6 +577,7 @@
     <button class="btn btn-s" onclick="exportData()" type="button">⬇ Скачать бэкап (.json)</button>
     <button class="btn btn-s" id="dedupMergeBtn" type="button">🧹 Объединить дубликаты</button>
   </div>
+  <button class="btn btn-s" id="restoreSafetyBackupBtn" type="button" style="width:100%">🛟 Восстановить из локального кэша / страховочной копии</button>
   <button class="btn btn-s" id="linkCollectionCatalogBtn" type="button" style="width:100%">🔗 Подгрузить постеры и описания из каталога</button>
 
   <div class="fs">Локальная копия и диагностика облака</div>

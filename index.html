@@ -679,6 +679,7 @@ try {
     initializeApp: () => ({}),
     getAuth: () => ({ currentUser: null }),
     getFirestore: () => ({}),
+    initializeFirestore: () => ({}),
     GoogleAuthProvider: class { setCustomParameters() {} },
     EmailAuthProvider: { credential: () => ({}) },
     signInWithPopup: noop, signInWithRedirect: noop, getRedirectResult: () => Promise.resolve(null),
@@ -696,31 +697,22 @@ try {
   });
 }
 
-const loadScriptWithFallback = (primarySrc, fallbackSrc) => new Promise((resolve, reject) => {
+const loadScript = src => new Promise((resolve, reject) => {
   const s = document.createElement("script");
-  s.src = primarySrc;
+  s.src = src;
   s.onload = resolve;
   s.onerror = () => {
-    if (!fallbackSrc) {
-      document.body.classList.remove("auth-checking");
-      return reject(new Error("Не удалось загрузить " + primarySrc));
-    }
-    const s2 = document.createElement("script");
-    s2.src = fallbackSrc;
-    s2.onload = resolve;
-    s2.onerror = () => {
-      document.body.classList.remove("auth-checking");
-      reject(new Error("Не удалось загрузить " + fallbackSrc));
-    };
-    document.body.appendChild(s2);
+    document.body.classList.remove("auth-checking");
+    reject(new Error("Не удалось загрузить " + src));
   };
   document.body.appendChild(s);
 });
 
 try {
-  await loadScriptWithFallback("app_core.js", "app-core.js");
-  await loadScriptWithFallback("app_catalog.js", "app-catalog.js");
-  await loadScriptWithFallback("app.js", null);
+  await loadScript("app_core.js");
+  await loadScript("app_catalog.js");
+  await loadScript("app.js");
+  if (typeof window.startApp === "function") window.startApp();
 } catch (err) {
   console.error(err);
   document.body.classList.remove("auth-checking");

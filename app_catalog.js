@@ -1,4 +1,4 @@
-// === ЧАСТЬ 2: API AniList/TMDB, статистика, массовый выбор и Каталог (app-catalog.js) ===
+// === ЧАСТЬ 2: API AniList/TMDB, статистика, массовый выбор и Каталог (app_catalog.js) ===
 // ---------- Автозаполнение и каталоги (AniList и TMDB с встроенным общим ключом) ----------
 const decode = s => { const t = document.createElement('textarea'); t.innerHTML = s; return t.value; };
 const SRC = {ORIGINAL: 'Оригинал', MANGA: 'Манга', LIGHT_NOVEL: 'Ранобэ', VISUAL_NOVEL: 'Визуальная новелла', VIDEO_GAME: 'Игра', GAME: 'Игра', NOVEL: 'Книга', WEB_NOVEL: 'Книга', COMIC: 'Комикс'};
@@ -79,6 +79,7 @@ async function _tmdbRaw(search, path, media, page = 1) {
   if (r.status === 401) { localStorage.removeItem('tmdbKey'); throw new Error('ключ TMDB не подошёл'); }
   const j = await r.json();
   const nowMs = Date.now();
+  const isReturningFilter = Boolean(path && path.includes('with_status=0'));
   return (j.results || []).map(x => ({...x, media_type: x.media_type || media})).filter(x => x.media_type === 'movie' || x.media_type === 'tv').slice(0, path ? 20 : 10).map(x => {
     const orig = x.original_title || x.original_name || '', ids = x.genre_ids || [];
     const relDateStr = x.release_date || x.first_air_date || '';
@@ -87,7 +88,7 @@ async function _tmdbRaw(search, path, media, page = 1) {
       title: x.title || x.name, en: x.original_language === 'en' ? orig : '', orig, alt: '',
       poster: x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '',
       banner: x.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + x.backdrop_path : '',
-      ongoing: Boolean(x.media_type === 'tv' && !isUpc && (!relDateStr || Number(relDateStr.slice(0, 4)) >= new Date().getFullYear() - 2)),
+      ongoing: Boolean(x.status === 'Returning Series' || x.status === 'In Production' || (x.media_type === 'tv' && isReturningFilter && !isUpc)),
       upcoming: isUpc,
       year: relDateStr.slice(0, 4), ext: x.vote_count ? x.vote_average.toFixed(1) : '',
       tags: ids.map(g => TG[g]).filter(Boolean), tmdb: x.media_type + '/' + x.id, src: 'TMDB', url: 'https://www.themoviedb.org/' + x.media_type + '/' + x.id, desc: x.overview || '',
@@ -696,8 +697,15 @@ $('selDel').onclick = async () => {
   if (!toDelete.length) return;
   const visibleIds = new Set((lastList || []).map(x => x.id));
   const hiddenSelectedCount = toDelete.filter(i => !visibleIds.has(i.id)).length;
-  const hiddenNote = hiddenSelectedCount > 0 ? `\n⚠ Внимание: из выбранных сейчас НЕ видно на экране (скрыто фильтрами): ${hiddenSelectedCount} шт.` : '\n(Все выбранные тайтлы видны в текущем списке)';
-  const typedCount = await uiPrompt(`Удаление ${toDelete.length} тайтлов${hiddenNote}\n\nЧтобы подтвердить удаление, введи число ${toDelete.length}:`, '', String(toDelete.length));
+  const hiddenNote = hiddenSelectedCount > 0
+    ? `⚠ Внимание: из выбранных сейчас НЕ видно на экране (скрыто фильтрами): ${hiddenSelectedCount} шт.\n\nЧтобы подтвердить удаление, введи число ${toDelete.length}:`
+    : `Все выбранные тайтлы видны в текущем списке.\nЧтобы подтвердить удаление, введи число ${toDelete.length}:`;
+  const typedCount = await uiPrompt(
+    `Удаление ${toDelete.length} тайтлов`,
+    '',
+    String(toDelete.length),
+    hiddenNote
+  );
   if (String(typedCount || '').trim() !== String(toDelete.length)) return toast('Массовое удаление отменено (число не совпало)');
   selToggle(false);
   await batchDeleteItemsWithUndo(toDelete, `Удалено тайтлов: ${toDelete.length}`);
@@ -1137,9 +1145,11 @@ async function cgFetchSingleVideo(m, page, q, mode) {
   else if (yrFrom) yearFilterParams = `&${dk}.gte=${yrFrom}-01-01`;
   else if (yrTo) yearFilterParams = `&${dk}.lte=${yrTo}-12-31`;
 
-  const hasNarrowVideoFilters = Boolean(gens || withoutGens || yrFrom || yrTo || cty || rt);
+  if (cg.ongOnly && mv) return [];
+  const ongStatusParam = (cg.ongOnly && !mv) ? '&with_status=0' : '';
+  const hasNarrowVideoFilters = Boolean(gens || withoutGens || yrFrom || yrTo || cty || rt || cg.ongOnly);
   let path = '';
-  if (q) {
+  if (q && !cg.ongOnly) {
     path = `/search/${m}?query=${encodeURIComponent(q)}${(yrFrom && yrTo && yrFrom === yrTo) ? '&' + (mv ? 'year' : yk) + '=' + yrFrom : ''}`;
     return tmdb(null, path, m, page);
   }
@@ -1159,7 +1169,7 @@ async function cgFetchSingleVideo(m, page, q, mode) {
       + (withoutGens ? '&without_genres=' + withoutGens : '')
       + yearFilterParams
       + (mode === 'soon' ? `&${dk}.gte=${today}` : '')
-      + (cty ? '&with_origin_country=' + cty : '') + rt;
+      + (cty ? '&with_origin_country=' + cty : '') + rt + ongStatusParam;
   } else {
     path = mode === 'top' ? `/${m}/top_rated` : mode === 'new' ? (mv ? '/movie/now_playing' : '/tv/on_the_air') : `/${m}/popular`;
   }
@@ -1925,11 +1935,14 @@ function cgCard(r) {
   cgGrid.append(card);
 }
 
+const cgSeenKeys = new Set();
+
 async function cgLoad(reset) {
   updateActiveFiltersCounterUI();
   const t = ++cg.t; let cleared = false, shown = 0, more = true;
   if (reset) {
     cg.page = 1;
+    cgSeenKeys.clear();
     cgGrid.replaceChildren(...Array.from({length: 12}, () => el('div', 'sk')));
     $('cgMore').style.display = 'none';
   }
@@ -1939,7 +1952,13 @@ async function cgLoad(reset) {
       const res = await cgFetch(cg.page, 24, cg.q, $('cgMode').value);
       if (t !== cg.t) return;
       if (reset && !cleared) { cgGrid.replaceChildren(); cleared = true; }
-      const vis = res.filter(cgPass);
+      const vis = res.filter(r => {
+        if (!cgPass(r)) return false;
+        const k = r.aniId ? `ani_${r.aniId}` : r.tmdb ? `tmdb_${r.tmdb}` : r.mal ? `mal_${r.mal}` : cgKey(r);
+        if (cgSeenKeys.has(k)) return false;
+        cgSeenKeys.add(k);
+        return true;
+      });
       if (!firstBatchVis.length && vis.length) firstBatchVis = vis;
       vis.forEach(cgCard); shown += vis.length; cg.page++; more = res.length > 0;
       if (!more || shown >= 8 || !(cg.hide || cg.min)) break;
@@ -1967,7 +1986,7 @@ document.querySelectorAll('#cgCats .tb').forEach(b => b.onclick = () => {
   $('cgKind').style.display = cg.g === 'Манга' ? '' : 'none';
   cgGenres(); cgLoad(true);
 });
-['cgMode', 'cgKind', 'cgYear2', 'cgLen', 'cgCountry'].forEach(id => {
+['cgMode', 'cgKind', 'cgLen', 'cgCountry'].forEach(id => {
   if ($(id)) $(id).onchange = () => { cg.feedSeedPage = 1; updateActiveFiltersCounterUI(); cgLoad(true); };
 });
 $('cgAge').onchange = () => {
@@ -1993,7 +2012,13 @@ if ($('cgOngBtn')) {
   };
 }
 $('cgHide').onclick = e => { cg.hide = !cg.hide; e.currentTarget.classList.toggle('on', cg.hide); updateActiveFiltersCounterUI(); cgLoad(true); };
-let cgY; $('cgYear').oninput = () => { clearTimeout(cgY); cgY = setTimeout(() => { cg.feedSeedPage = 1; updateActiveFiltersCounterUI(); cgLoad(true); }, 600); };
+let cgY;
+['cgYear', 'cgYear2'].forEach(id => {
+  if ($(id)) $(id).oninput = () => {
+    clearTimeout(cgY);
+    cgY = setTimeout(() => { cg.feedSeedPage = 1; updateActiveFiltersCounterUI(); cgLoad(true); }, 600);
+  };
+});
 $('cgReset').onclick = () => {
   cgTagState.clear(); saveCgTagState();
   ['cgYear2', 'cgLen', 'cgCountry', 'cgAge'].forEach(i => { if ($(i)) $(i).value = ''; });

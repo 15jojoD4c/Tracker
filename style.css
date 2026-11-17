@@ -184,6 +184,8 @@ body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:8px;botto
 .afr{display:flex;gap:10px;align-items:center;padding:6px;border-radius:var(--rad-sm);cursor:pointer}
 .afr:hover{background:rgba(255,255,255,.06)}
 .afr img{width:38px;height:54px;object-fit:cover;border-radius:var(--rad-sm);background:#222633}
+.u-res-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:var(--rad-sm);background:var(--inp)}
+.u-res-row img{width:44px;height:62px;object-fit:cover;border-radius:6px;background:#1c2029;flex-shrink:0;display:block}
 #posterPreview{height:70px;border-radius:var(--rad-sm);background:#222633}
 .sr{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--rad-sm);background:var(--inp);border:1px solid var(--bd);font-size:13px;margin:4px 0}
 .sr-val{font-weight:700;color:#fff;white-space:nowrap;font-size:12.5px}
@@ -333,6 +335,7 @@ body.rt-none .mine,body.rt-none .star{display:none}
 #cgFilters:not(.fopen) .cg-collapsible{display:none!important}
 .cg-extra-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--bd)}
 #cgFilters:not(.fopen) .cg-extra-row{display:none!important}
+#cgFilters:not(.fopen) .cg-tags-panel{display:none!important}
 
 /* Панель жанров и тегов */
 .cg-tags-panel{width:100%;background:var(--inp);border:1px solid var(--bd);border-radius:var(--rad);padding:10px;margin-top:8px;display:flex;flex-direction:column;gap:8px;max-height:250px;overflow-y:auto}
@@ -693,7 +696,7 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
 .cat-dd-btn:hover, .btn-s:hover, .fb:hover, .kb:hover, .tb:hover {
   background: rgba(42, 48, 64, 0.84) !important;
 }
-.btn:not(.btn-s):not(.btn-d), .fb.on, .kb.on, .tb.on, .tab.on, .cat-dd-menu button.on {
+.btn:not(.btn-s):not(.btn-d):not(.btn-g), .fb.on, .kb.on, .tb.on, .tab.on, .cat-dd-menu button.on {
   background: color-mix(in srgb, var(--ac) 88%, transparent) !important;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);

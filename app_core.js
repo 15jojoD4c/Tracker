@@ -1,4 +1,4 @@
-// === ЧАСТЬ 1: Ядро, облако Firebase, авторизация, темы, профиль и карточки коллекции (app-core.js) ===
+// === ЧАСТЬ 1: Ядро, облако Firebase, авторизация, темы, профиль и карточки коллекции (app_core.js) ===
 // Ключ TMDB по умолчанию
 const DEFAULT_TMDB_KEY = "ff768a3ef9a051ab90138e3a560e43e8";
 
@@ -33,7 +33,7 @@ function safePosterUrl(u) {
   if (!s) return FALL;
   if (s.startsWith('data:image/')) return s;
   if (!/^https?:\/\//i.test(s)) return FALL;
-  if (!_wsrvDown && /^https?:\/\/(shikimori\.(one|org|me|io)|desu\.shikimori\.one)/i.test(s)) {
+  if (!_wsrvDown && /^https?:\/\/((?:desu\.)?shikimori\.(?:one|io|me|org))\//i.test(s)) {
     return 'https://wsrv.nl/?url=' + encodeURIComponent(s);
   }
   return s;
@@ -53,7 +53,11 @@ const app = initializeApp({
   appId: "1:642718397694:web:7a4e175ed593cc364961af",
   measurementId: "G-NKNYFSP981"
 });
-const auth = getAuth(app), db = getFirestore(app), provider = new GoogleAuthProvider();
+const auth = getAuth(app);
+const db = (typeof initializeFirestore === 'function')
+  ? initializeFirestore(app, { ignoreUndefinedProperties: true })
+  : getFirestore(app);
+const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
 
 const $ = id => document.getElementById(id);
@@ -72,8 +76,8 @@ function dlgOpen(build, okLabel, danger, getVal) {
   });
 }
 const uiConfirm = (msg, okLabel = 'Продолжить', danger = false) => dlgOpen(() => { $('dlgTitle').textContent = 'Подтверждение'; $('dlgText').textContent = msg; $('dlgBody').replaceChildren(); }, okLabel, danger, () => true).then(v => v === true);
-function uiPrompt(title, def = '', ph = '') {
-  let inp; return dlgOpen(() => { inp = el('input'); inp.value = def; inp.placeholder = ph; $('dlgTitle').textContent = title; $('dlgText').textContent = ''; $('dlgBody').replaceChildren(inp); inp.onkeydown = e => { if (e.key === 'Enter') $('dlgOk').click(); }; setTimeout(() => inp.focus(), 40); }, 'Сохранить', false, () => inp.value);
+function uiPrompt(title, def = '', ph = '', subText = '') {
+  let inp; return dlgOpen(() => { inp = el('input'); inp.value = def; inp.placeholder = ph; $('dlgTitle').textContent = title; $('dlgText').textContent = subText || ''; $('dlgBody').replaceChildren(inp); inp.onkeydown = e => { if (e.key === 'Enter') $('dlgOk').click(); }; setTimeout(() => inp.focus(), 40); }, 'Сохранить', false, () => inp.value);
 }
 function uiListDialog(name, desc, cn, cols) {
   let iName, iDesc, cur = cn || '';
@@ -245,8 +249,20 @@ const stripItemBase64ForLocal = it => {
   return copy;
 };
 
-// НЕ удаляем prof.avatar и prof.cover при сохранении профиля, чтобы аватарка и фон никогда не сбрасывались при перезагрузке!
-const prepareProfForLocal = pObj => {
+function stripUndefinedDeep(val) {
+  if (Array.isArray(val)) return val.map(stripUndefinedDeep).filter(v => v !== undefined);
+  if (val && typeof val === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(val)) {
+      if (v !== undefined) out[k] = stripUndefinedDeep(v);
+    }
+    return out;
+  }
+  return val;
+}
+
+// В IndexedDB сохраняем полный профиль с base64-аватаром и обложкой, а для localStorage вырезаем base64 (экономия лимита 5 МБ)
+const prepareProfForIDB = pObj => {
   const copy = { ...(pObj || {}) };
   if (Array.isArray(copy.favChars)) {
     copy.favChars = copy.favChars.map(fc => isBase64DataUrl(fc?.img) ? { ...fc, img: '' } : fc);
@@ -254,7 +270,17 @@ const prepareProfForLocal = pObj => {
   return copy;
 };
 
-const saveLocalItems = (forceEmpty = false) => {
+const prepareProfForLocal = pObj => {
+  const copy = prepareProfForIDB(pObj);
+  if (isBase64DataUrl(copy.avatar)) copy.avatar = '';
+  if (isBase64DataUrl(copy.cover)) copy.cover = '';
+  return copy;
+};
+
+let _saveLocalItemsTimer = 0;
+const flushLocalItemsNow = (forceEmpty = false) => {
+  clearTimeout(_saveLocalItemsTimer);
+  _saveLocalItemsTimer = 0;
   if (!loaded) return;
   const uidKey = getUidStorageKey('items');
   const slimItems = items.map(stripItemBase64ForLocal);
@@ -291,6 +317,17 @@ const saveLocalItems = (forceEmpty = false) => {
     } catch (e2) {}
   }
 };
+
+const saveLocalItems = (forceEmpty = false) => {
+  if (!loaded) return;
+  if (forceEmpty) {
+    flushLocalItemsNow(true);
+    return;
+  }
+  clearTimeout(_saveLocalItemsTimer);
+  _saveLocalItemsTimer = setTimeout(() => flushLocalItemsNow(false), 350);
+};
+
 const isTitleDoc = x => x && (
   x.kind === 'title' ||
   MANGA_SUBKINDS.includes(x.kind) ||
@@ -306,20 +343,30 @@ const loadLocalItems = (forUid) => {
   } catch (e) { return []; }
 };
 
-const profSaveLocal = () => {
-  const uid = (user && user.uid) || 'local_user';
-  const prepared = prepareProfForLocal(prof);
-  idbVault.set('prof_' + uid, prepared);
-  if (uid === 'local_user') idbVault.set('prof', prepared);
-  try {
-    const json = JSON.stringify(prepared);
-    localStorage.setItem('prof_' + uid, json);
-    if (uid === 'local_user') localStorage.setItem('prof', json);
-  } catch (e) {
+let _profLocalTimer = 0;
+let _lastSavedProfJson = '';
+const profSaveLocal = (immediate = false) => {
+  const run = () => {
+    _profLocalTimer = 0;
+    const uid = (user && user.uid) || 'local_user';
+    const idbData = prepareProfForIDB(prof);
+    idbVault.set('prof_' + uid, idbData);
+    if (uid === 'local_user') idbVault.set('prof', idbData);
     try {
-      localStorage.removeItem('ruCache');
-      localStorage.setItem('prof_' + uid, JSON.stringify(prepared));
-    } catch (e2) {}
+      const lsData = prepareProfForLocal(prof);
+      const json = JSON.stringify(lsData);
+      localStorage.setItem('prof_' + uid, json);
+      if (uid === 'local_user') localStorage.setItem('prof', json);
+    } catch (e) {
+      try { localStorage.removeItem('ruCache'); } catch (e2) {}
+    }
+  };
+  if (immediate) {
+    clearTimeout(_profLocalTimer);
+    run();
+  } else {
+    clearTimeout(_profLocalTimer);
+    _profLocalTimer = setTimeout(run, 350);
   }
 };
 
@@ -370,21 +417,22 @@ const getCloudDocId = item => {
   return raw;
 };
 
-// Очищаем служебные поля (_knownStatusFromImport, lastLinkAttempt) перед сохранением документа в Firestore (Этап 1 п.11)
+// Очищаем служебные поля и undefined перед сохранением документа в Firestore
 const prepareTitleForCloud = (it, uid) => {
   fix(it);
   const docId = getCloudDocId(it);
   const cleanCopy = { ...it };
   delete cleanCopy._knownStatusFromImport;
   delete cleanCopy.lastLinkAttempt;
+  delete cleanCopy._normCache;
   return {
     docId,
-    payload: {
+    payload: stripUndefinedDeep({
       ...cleanCopy,
       _docId: docId,
       kind: 'title',
       userId: uid
-    }
+    })
   };
 };
 
@@ -421,7 +469,7 @@ function deduplicateListByIdAndCleanupCloud(rawList, cleanCloud = false) {
   return [...byId.values()];
 }
 
-const profCloud = (onlyHeartbeat = false) => {
+const profCloud = (onlyWatchingCheck = false) => {
   if (!user) return;
   if (!prof.createdAt) {
     const fbTime = !user.isLocal && user.metadata?.creationTime ? new Date(user.metadata.creationTime).getTime() : 0;
@@ -429,22 +477,27 @@ const profCloud = (onlyHeartbeat = false) => {
   }
   prof.displayName = prof.name || user.displayName || (user.email ? user.email.split('@')[0] : 'Моя коллекция');
   if (!prof.name) prof.name = prof.displayName;
-  prof.lastVisit = Date.now();
 
   const watchingNow = items
     .filter(i => !i.archived && i.status === 'Смотрю/Читаю')
     .sort((a, b) => (b.updatedAt || b.id) - (a.updatedAt || a.id))[0];
   const safeNwPoster = watchingNow && watchingNow.poster && !String(watchingNow.poster).startsWith('data:') ? watchingNow.poster : '';
-  prof.nowWatching = watchingNow ? { id: watchingNow.id, title: watchingNow.title, poster: safeNwPoster, category: watchingNow.category } : null;
+  const nextWatching = watchingNow ? { id: watchingNow.id, title: watchingNow.title, poster: safeNwPoster, category: watchingNow.category } : null;
 
+  if (onlyWatchingCheck) {
+    if (JSON.stringify(prof.nowWatching || null) === JSON.stringify(nextWatching)) return;
+  }
+
+  prof.nowWatching = nextWatching;
+  prof.lastVisit = Date.now();
   profSaveLocal();
-  if (!user.isLocal && auth.currentUser && !onlyHeartbeat) {
+
+  if (!user.isLocal && auth.currentUser && !onlyWatchingCheck) {
     const safeProf = {...prof};
     delete safeProf.email;
     delete safeProf.ownerEmail;
     delete safeProf.statsSummary;
     delete safeProf.friends;
-    // Если облачный профиль ещё в процессе первичной загрузки, не затираем аватар и обложку пустыми полями
     if (!_cloudProfLoaded) {
       if (!safeProf.avatar) delete safeProf.avatar;
       if (!safeProf.cover) delete safeProf.cover;
@@ -452,14 +505,18 @@ const profCloud = (onlyHeartbeat = false) => {
     }
     if (safeProf.cover && String(safeProf.cover).startsWith('data:') && String(safeProf.cover).length > 750000) {
       delete safeProf.cover;
-      toast('Обложка слишком большая для облака (>750 КБ) и сохранена только локально. Выбери изображение меньшего размера.', true);
+      toast('Обложка слишком большая для облака (>750 КБ) и сохранена локально в IndexedDB. Выбери изображение меньшего размера.', true);
     }
-    track(setDoc(doc(db, 'items', 'prof_' + user.uid), {
+    const cleanProfPayload = stripUndefinedDeep({
       ...safeProf,
       kind: 'profile',
       isProfile: true,
       userId: user.uid
-    }, { merge: true })).catch(e => {
+    });
+    const profFingerprint = JSON.stringify({ ...cleanProfPayload, lastVisit: 0 });
+    if (profFingerprint === _lastSavedProfJson) return;
+    _lastSavedProfJson = profFingerprint;
+    track(setDoc(doc(db, 'items', 'prof_' + user.uid), cleanProfPayload, { merge: true })).catch(e => {
       toast('Ошибка сохранения профиля: ' + e.message, true);
     });
   }
@@ -632,7 +689,7 @@ async function checkMigrateLocalItemsToCloud(manual = false) {
   }
 }
 
-// Одноразовая миграция старых документов в Firestore (Этап 1 п.6 + Этап 4 п.1)
+// Одноразовая миграция старых документов в Firestore (включая перенос ID на префикс uid_ и добавление kind/userId)
 async function migrateOldDocsToKindSchema(manual = false) {
   if (!user || user.isLocal || !auth.currentUser) {
     if (manual) toast('Миграция доступна только при входе в облачный аккаунт', true);
@@ -640,16 +697,13 @@ async function migrateOldDocsToKindSchema(manual = false) {
   }
   try {
     const ops = [];
-    let legacyFriendsToConvert = [];
-    const ownSnap = await getDocs(query(collection(db, 'items'), where('userId', '==', user.uid)));
+    const uid = user.uid;
+    const ownSnap = await getDocs(query(collection(db, 'items'), where('userId', '==', uid)));
     ownSnap.docs.forEach(d => {
       const raw = d.data();
-      if (raw.isProfile || d.id === 'prof_' + user.uid) {
-        if (Array.isArray(raw.friends) && raw.friends.length) {
-          legacyFriendsToConvert = raw.friends.filter(Boolean);
-        }
+      if (raw.isProfile || d.id === 'prof_' + uid || d.id === 'prof_rucache_' + uid) {
         if (raw.kind !== 'profile' || 'statsSummary' in raw || 'friends' in raw) {
-          const clean = { ...raw, kind: 'profile', isProfile: true, userId: user.uid };
+          const clean = stripUndefinedDeep({ ...raw, kind: 'profile', isProfile: true, userId: uid });
           delete clean.statsSummary;
           delete clean.email;
           delete clean.ownerEmail;
@@ -659,29 +713,36 @@ async function migrateOldDocsToKindSchema(manual = false) {
       } else if (raw.isReport || raw.kind === 'report') {
         ops.push(['del', d.id, null]);
       } else if (!raw.isWallComment && !raw.isRecInbox && !raw.secretCredKey && raw.kind !== 'friendReq' && raw.kind !== 'dm') {
+        const itemId = raw.id || d.id.replace(new RegExp('^' + uid + '_'), '') || newId();
+        const targetDocId = d.id.startsWith(uid + '_') ? d.id : `${uid}_${itemId}`;
         const subK = raw.category === 'Манхва' ? 'Манхва' : (raw.subKind || (MANGA_SUBKINDS.includes(raw.kind) ? raw.kind : (raw.category === 'Манга' ? 'Манга' : '')));
-        if (raw.kind !== 'title' || (subK && raw.subKind !== subK) || '_knownStatusFromImport' in raw) {
-          const updated = {
+        const needsMove = d.id !== targetDocId;
+        if (needsMove || raw.kind !== 'title' || (subK && raw.subKind !== subK) || '_knownStatusFromImport' in raw) {
+          const updated = stripUndefinedDeep({
             ...raw,
+            id: Number(itemId) || itemId,
+            _docId: targetDocId,
             category: raw.category === 'Манхва' ? 'Манга' : raw.category,
             subKind: subK,
             kind: 'title',
-            userId: user.uid
-          };
+            userId: uid
+          });
           delete updated._knownStatusFromImport;
           delete updated.lastLinkAttempt;
-          ops.push(['set', d.id, updated]);
+          delete updated._normCache;
+          ops.push(['set', targetDocId, updated]);
+          if (needsMove) ops.push(['del', d.id, null]);
         }
       }
     });
 
     if (!ops.length) {
-      try { localStorage.setItem('schemaMigratedV3_' + user.uid, '1'); } catch (e) {}
+      try { localStorage.setItem('schemaMigratedV4_' + uid, '1'); } catch (e) {}
       if (manual) toast('Все твои записи уже соответствуют актуальной схеме облака ✓');
       return;
     }
 
-    if (manual) toast(`Обновляю записи под новую схему: ${ops.length} шт.…`);
+    if (manual) toast(`Обновляю записи под новую схему: ${ops.length} операций…`);
     for (let i = 0; i < ops.length; i += 350) {
       const b = writeBatch(db);
       ops.slice(i, i + 350).forEach(([type, id, data]) => {
@@ -690,8 +751,8 @@ async function migrateOldDocsToKindSchema(manual = false) {
       });
       await track(b.commit());
     }
-    try { localStorage.setItem('schemaMigratedV3_' + user.uid, '1'); } catch (e) {}
-    toast(`Миграция завершена: обновлено ${ops.length} документов ✓`);
+    try { localStorage.setItem('schemaMigratedV4_' + uid, '1'); } catch (e) {}
+    toast(`Миграция завершена: выполнено ${ops.length} операций ✓`);
   } catch (e) {
     cloudAccessError = e?.code || e?.message || 'migration-error';
     syncBad = true;
@@ -766,7 +827,7 @@ async function activateCloudUserSession(uObj) {
 
   loadRuCacheFromCloud(effUid);
 
-  if (!localStorage.getItem('schemaMigratedV3_' + effUid)) {
+  if (!localStorage.getItem('schemaMigratedV4_' + effUid)) {
     setTimeout(() => migrateOldDocsToKindSchema(false), 1500);
   }
 
@@ -870,13 +931,7 @@ async function activateCloudUserSession(uObj) {
 // ---------- ОБРАБОТЧИКИ АВТОРИЗАЦИИ ----------
 $('localModeBtn').onclick = () => startLocalMode('Включён локальный режим');
 
-getRedirectResult(auth).catch(e => {
-  if (e && e.code === 'auth/unauthorized-domain') {
-    startLocalMode('Домен ' + location.hostname + ' не добавлен в Firebase Authorized Domains. Включён локальный режим.');
-  } else if (e && !['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(e.code)) {
-    toast('Ошибка входа Google: ' + (e.message || e.code), true);
-  }
-});
+// getRedirectResult вызывается внутри window.startApp() после загрузки всех скриптов
 
 $('loginBtn').onclick = async () => {
   try { localStorage.removeItem('useLocalMode'); } catch (e) {}
@@ -969,18 +1024,32 @@ $('logoutBtn').onclick = async () => {
   $('appScreen').style.display = 'none'; $('authScreen').style.display = 'flex';
 };
 
-onAuthStateChanged(auth, u => {
-  document.body.classList.remove('auth-checking');
-  if (u) {
-    try { localStorage.removeItem('useLocalMode'); } catch (e) {}
-    return activateCloudUserSession(u);
-  }
-  if (localStorage.getItem('useLocalMode') === '1') return startLocalMode();
-  if (unsub) { unsub(); unsub = null; }
-  resetSessionMemoryState();
-  items = []; loaded = false;
-  $('appScreen').style.display = 'none'; $('authScreen').style.display = 'flex';
-});
+let _appStarted = false;
+window.startApp = function startApp() {
+  if (_appStarted) return;
+  _appStarted = true;
+
+  getRedirectResult(auth).catch(e => {
+    if (e && e.code === 'auth/unauthorized-domain') {
+      startLocalMode('Домен ' + location.hostname + ' не добавлен в Firebase Authorized Domains. Включён локальный режим.');
+    } else if (e && !['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(e.code)) {
+      toast('Ошибка входа Google: ' + (e.message || e.code), true);
+    }
+  });
+
+  onAuthStateChanged(auth, u => {
+    document.body.classList.remove('auth-checking');
+    if (u) {
+      try { localStorage.removeItem('useLocalMode'); } catch (e) {}
+      return activateCloudUserSession(u);
+    }
+    if (localStorage.getItem('useLocalMode') === '1') return startLocalMode();
+    if (unsub) { unsub(); unsub = null; }
+    resetSessionMemoryState();
+    items = []; loaded = false;
+    $('appScreen').style.display = 'none'; $('authScreen').style.display = 'flex';
+  });
+};
 
 // ---------- Отрисовка и утилиты ----------
 const names = i => [i.title, i.titleEn, i.titleOrig, i.alt, i.author, i.studio, i.source, i.year, (i.tags || []).join(' ')].join(' ').toLowerCase();
@@ -1025,23 +1094,30 @@ function extractSeasonPartMarker(s) {
 
 const splitAltNames = altStr => String(altStr || '').split(/[,;/|]+/).map(s => s.trim()).filter(Boolean);
 
-const getItemMarkers = o => {
-  const all = [o.title, o.titleEn || o.en, o.titleOrig || o.orig, ...splitAltNames(o.alt)].filter(Boolean);
-  for (const t of all) {
-    const m = extractSeasonPartMarker(t);
-    if (m) return m;
-  }
-  return '';
-};
+// Кэширование нормализованных названий и маркеров в WeakMap для исключения повторных вызовов normTitleStr
+const _itemNormMetaCache = new WeakMap();
+function getCachedItemNormMeta(o) {
+  if (!o || typeof o !== 'object') return { primary: [], all: [], marker: '' };
+  const sig = `${o.title || ''}\x00${o.titleEn || o.en || ''}\x00${o.titleOrig || o.orig || ''}\x00${o.alt || ''}`;
+  let cached = _itemNormMetaCache.get(o);
+  if (cached && cached.sig === sig) return cached;
 
-const nset = o => {
-  if (!o) return [];
-  return [...new Set(
-    [o.title, o.titleEn || o.en, o.titleOrig || o.orig, ...splitAltNames(o.alt)]
-      .map(normTitleStr)
-      .filter(x => x && x.length >= 2)
-  )];
-};
+  const rawPrimary = [o.title, o.titleEn || o.en, o.titleOrig || o.orig].filter(Boolean);
+  const rawAll = [...rawPrimary, ...splitAltNames(o.alt)].filter(Boolean);
+  const primary = [...new Set(rawPrimary.map(normTitleStr).filter(x => x && x.length >= 2))];
+  const all = [...new Set(rawAll.map(normTitleStr).filter(x => x && x.length >= 2))];
+  let marker = '';
+  for (const t of rawAll) {
+    const m = extractSeasonPartMarker(t);
+    if (m) { marker = m; break; }
+  }
+  cached = { sig, primary, all, marker };
+  _itemNormMetaCache.set(o, cached);
+  return cached;
+}
+
+const getItemMarkers = o => getCachedItemNormMeta(o).marker;
+const nset = o => getCachedItemNormMeta(o).all;
 
 // Единая функция поиска повторов для ВСЕХ мест
 const same = (a, b) => {
@@ -1056,14 +1132,13 @@ const same = (a, b) => {
   if (a.mal && b.mal && Number(a.mal) !== Number(b.mal)) return false;
   if (a.tmdb && b.tmdb && String(a.tmdb) !== String(b.tmdb)) return false;
 
-  const primaryA = [a.title, a.titleEn || a.en, a.titleOrig || a.orig].map(normTitleStr).filter(x => x && x.length >= 2);
-  const primaryB = [b.title, b.titleEn || b.en, b.titleOrig || b.orig].map(normTitleStr).filter(x => x && x.length >= 2);
-  if (!primaryA.length || !primaryB.length) return false;
-  if (!primaryA.some(n => primaryB.includes(n))) return false;
+  const metaA = getCachedItemNormMeta(a);
+  const metaB = getCachedItemNormMeta(b);
+  if (!metaA.primary.length || !metaB.primary.length) return false;
+  if (!metaA.primary.some(n => metaB.primary.includes(n))) return false;
 
   if (a.format && b.format && a.format !== b.format) return false;
-  const ma = getItemMarkers(a), mb = getItemMarkers(b);
-  if (ma !== mb) return false;
+  if (metaA.marker !== metaB.marker) return false;
 
   const ya = parseInt(a.year) || 0, yb = parseInt(b.year) || 0;
   if (ya && yb && Math.abs(ya - yb) > 1) return false;
@@ -1072,8 +1147,53 @@ const same = (a, b) => {
   return true;
 };
 
-const findDuplicateMatch = (candidate, pool = items) => {
+function createFastDuplicateIndex(pool = []) {
+  const byTmdb = new Map(), byImdb = new Map(), byAni = new Map(), byMal = new Map(), byTitle = new Map();
+  const add = it => {
+    if (!it) return;
+    if (it.tmdb) byTmdb.set(String(it.tmdb), it);
+    if (it.imdbId) byImdb.set(String(it.imdbId), it);
+    if (Number(it.aniId) > 0) byAni.set(Number(it.aniId), it);
+    if (Number(it.mal) > 0) byMal.set(Number(it.mal), it);
+    for (const nt of getCachedItemNormMeta(it).primary) {
+      let arr = byTitle.get(nt);
+      if (!arr) { arr = []; byTitle.set(nt, arr); }
+      arr.push(it);
+    }
+  };
+  pool.forEach(add);
+  return {
+    add,
+    find(cand) {
+      if (!cand) return null;
+      if (cand.tmdb && byTmdb.has(String(cand.tmdb))) return byTmdb.get(String(cand.tmdb));
+      if (cand.imdbId && byImdb.has(String(cand.imdbId))) return byImdb.get(String(cand.imdbId));
+      if (Number(cand.aniId) > 0 && byAni.has(Number(cand.aniId))) {
+        const h = byAni.get(Number(cand.aniId));
+        if (sameCat(h.category, cand.category)) return h;
+      }
+      if (Number(cand.mal) > 0 && byMal.has(Number(cand.mal))) {
+        const h = byMal.get(Number(cand.mal));
+        if (sameCat(h.category, cand.category)) return h;
+      }
+      const checked = new Set();
+      for (const nt of getCachedItemNormMeta(cand).primary) {
+        const bucket = byTitle.get(nt);
+        if (!bucket) continue;
+        for (const ex of bucket) {
+          if (ex === cand || checked.has(ex)) continue;
+          checked.add(ex);
+          if (same(ex, cand)) return ex;
+        }
+      }
+      return null;
+    }
+  };
+}
+
+const findDuplicateMatch = (candidate, pool = items, prebuiltIndex = null) => {
   if (!candidate) return null;
+  if (prebuiltIndex) return prebuiltIndex.find(candidate);
   return (pool || []).find(existing => {
     if (!existing || existing === candidate) return false;
     if (existing.id && candidate.id && existing.id === candidate.id && pool === items) return false;
@@ -1096,7 +1216,7 @@ function toast(msg, bad, act) {
   clearTimeout(activeToastTimer); box.replaceChildren();
   const t = el('div', 'toast' + ((bad ?? /не удалось|ошибк|обязательно|должен|нужен|неверн/i.test(msg)) ? ' bad' : ''), msg);
   if (act) { const b = el('button', null, act.label); b.onclick = () => { clearTimeout(activeToastTimer); act.fn(); t.remove(); }; t.append(b); }
-  box.append(t); activeToastTimer = setTimeout(() => t.remove(), act ? 3500 : 2500);
+  box.append(t); activeToastTimer = setTimeout(() => t.remove(), act ? 8000 : 2800);
 }
 
 function catCounts() {
@@ -1490,16 +1610,27 @@ function confirmExitBattleIfActive() {
   return ok;
 }
 
-const closeAll = () => {
+const closeAll = (fromPopState = false) => {
   if (battleActiveInProgress && !confirmExitBattleIfActive()) return;
   if (dlgDone) dlgDone(null);
   if (cropDone) cropDone(null);
   if (typeof closeQuickAddStatusMenu === 'function') closeQuickAddStatusMenu();
-  ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'cropModal', 'charPopupModal', 'dataModal', 'themeModal'].forEach(id => {
+  const modalIds = ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'cropModal', 'charPopupModal', 'dataModal', 'themeModal'];
+  const hadOpenModal = modalIds.some(id => $(id) && $(id).style.display && $(id).style.display !== 'none');
+  modalIds.forEach(id => {
     if ($(id)) $(id).style.display = 'none';
   });
+  if (!fromPopState && hadOpenModal && history.state && history.state.modal) {
+    try { history.back(); } catch (e) {}
+  }
 };
-['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'closeStatsTopBtn', 'rndClose'].forEach(id => { if ($(id)) $(id).onclick = closeAll; });
+['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'closeStatsTopBtn', 'rndClose'].forEach(id => { if ($(id)) $(id).onclick = () => closeAll(false); });
+
+let _lastMouseDownTarget = null;
+document.addEventListener('mousedown', e => {
+  _lastMouseDownTarget = e.target;
+}, true);
+
 document.addEventListener('click', e => {
   const t = e.target;
   if (!t || typeof t.closest !== 'function') return;
@@ -1518,12 +1649,14 @@ document.addEventListener('click', e => {
   if ($('qaFloatMenu')?.classList.contains('open') && !t.closest('#qaFloatMenu') && !t.closest('.qa') && !t.closest('.card-dots-btn') && !t.closest('.qa-trigger')) {
     closeQuickAddStatusMenu();
   }
+  const clickedDirectlyOnBackdrop = (_lastMouseDownTarget === t);
   if (t.id === 'dlgModal') {
+    if (!clickedDirectlyOnBackdrop) return;
     if (battleActiveInProgress && !confirmExitBattleIfActive()) return;
     if (dlgDone) dlgDone(null);
     return;
   }
-  if (t.classList.contains('modal')) closeAll();
+  if (t.classList.contains('modal') && clickedDirectlyOnBackdrop) closeAll(false);
 });
 
 document.addEventListener('keydown', e => {
@@ -1580,7 +1713,7 @@ function afHint() {
 $('inputCategory').onchange = afHint;
 
 // ---- Перевод и получение русских названий/описаний
-const SHK = {'Аниме': 'animes', 'Манга': 'mangas', 'Ранобэ': 'ranobe'}, SHD = ['shikimori.io', 'shikimori.me'], WDP = {animes: 'P4086', mangas: 'P4087', ranobe: 'P4087'};
+const SHK = {'Аниме': 'animes', 'Манга': 'mangas', 'Ранобэ': 'ranobe'}, SHD = ['shikimori.one', 'shikimori.io'], WDP = {animes: 'P4086', mangas: 'P4087', ranobe: 'P4087'};
 const hasRu = t => /[а-яё]/i.test(t || ''), ruN = t => (t || '').toLowerCase().replace(/[^a-z0-9а-яё]+/g, ''), ruWait = ms => new Promise(r => setTimeout(r, ms));
 const ruClean = t => (t || '').replace(/\[(character|person|anime|manga|ranobe|url|user)[^\]]*\]([^\[]*)\[\/\1\]/gi, '$2').replace(/\[\/?[a-z_]+(?:=[^\]]*)?\]/gi, '').replace(/\n{3,}/g, '\n\n').trim();
 const ruJson = async (u, ms = 7000) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); try { const r = await fetch(u, {signal: c.signal}); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); } finally { clearTimeout(t); } };
@@ -1775,11 +1908,14 @@ async function ensureCardRuDescription(c) {
   return r._descTranslating;
 }
 
-let _descBgRunId = 0;
 async function ruCards() {
   const allCards = [...cgGrid.children].filter(c => c._r);
   allCards.forEach(c => {
-    const dKey = 'd_' + getRuCacheKey(c._r);
+    const tKey = getRuCacheKey(c._r);
+    if (!hasRu(c._r.title) && RUC['t_' + tKey] && hasRu(RUC['t_' + tKey])) {
+      ruSet(c, RUC['t_' + tKey]);
+    }
+    const dKey = 'd_' + tKey;
     if (RUC[dKey] && hasRu(RUC[dKey])) ruSetDesc(c, RUC[dKey]);
   });
 
@@ -1795,38 +1931,12 @@ async function ruCards() {
       grp.forEach(c => {
         const ru = t[c._r.mal];
         if (ru && RUC[kind + c._r.mal] !== ru) addedNew = true;
-        RUC[kind + c._r.mal] = ru || '';
+        if (ru) RUC[kind + c._r.mal] = ru;
         ruSet(c, ru);
       });
       if (addedNew) scheduleSaveRuCacheToCloud();
       else saveRuCacheLocal();
     } catch (e) {}
-  }
-
-  const runId = ++_descBgRunId;
-  for (const c of allCards) {
-    if (runId !== _descBgRunId) break;
-    const r = c._r;
-    if (!r) continue;
-    const tKey = getRuCacheKey(r);
-    if (!hasRu(r.title)) {
-      if (RUC['t_' + tKey] && hasRu(RUC['t_' + tKey])) {
-        ruSet(c, RUC['t_' + tKey]);
-      } else {
-        try {
-          const trTitle = await ruTranslate(r.title);
-          if (trTitle && hasRu(trTitle)) {
-            RUC['t_' + tKey] = trTitle;
-            ruSet(c, trTitle);
-            scheduleSaveRuCacheToCloud();
-          }
-        } catch (e) {}
-      }
-    }
-    if (r.desc && !hasRu(r.desc) && !r.ruDescDone) {
-      await ensureCardRuDescription(c);
-      await ruWait(180);
-    }
   }
 }
 

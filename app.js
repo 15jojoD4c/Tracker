@@ -1,8 +1,6 @@
 // === ЧАСТЬ 3: Импорт/бэкапы, связывание с каталогом, Канбан, Персонажи, Полная страница, Битва тайтлов и Навигация (app.js) ===
 // ---------- Управление данными (💾), Пакетные операции, Поиск и объединение повторов (🧹), Связь с каталогом (🔗), Разобрать (📥) и Импорт (Бэкап, Кинопоиск, MAL/Shikimori/AniList) ----------
 
-let importReplace = false;
-
 function openDataManagementModal() {
   $('accMenu')?.classList.remove('open');
   $('hybMorePop')?.classList.remove('open');
@@ -191,19 +189,22 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
   }
 
   const basePool = replaceAll ? [] : items.map(x => ({ ...x, tags: [...(x.tags || [])], lists: [...(x.lists || [])] }));
+  const colDupIndex = createFastDuplicateIndex(basePool);
+  const batchDupIndex = createFastDuplicateIndex([]);
   const toAdd = [];
   const duplicates = [];
   const enrichedExisting = [];
 
   rawCandidates.forEach(cand => {
     if (!cand || !String(cand.title || '').trim()) return;
-    const dupInCol = findDuplicateMatch(cand, basePool);
-    const dupInBatch = findDuplicateMatch(cand, toAdd);
+    const dupInCol = findDuplicateMatch(cand, basePool, colDupIndex);
+    const dupInBatch = findDuplicateMatch(cand, toAdd, batchDupIndex);
     if (dupInCol) {
       // Слияние выполняется строго на копии (dupInCol из basePool) и применяется к основной коллекции только после подтверждения импорта
       const beforeJson = JSON.stringify(dupInCol);
       const merged = mergeTwoDuplicateItems(dupInCol, cand);
       Object.assign(dupInCol, merged);
+      colDupIndex.add(dupInCol);
       if (JSON.stringify(dupInCol) !== beforeJson && !enrichedExisting.includes(dupInCol)) {
         enrichedExisting.push(dupInCol);
       }
@@ -213,10 +214,12 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
     if (dupInBatch) {
       const mergedBatch = mergeTwoDuplicateItems(dupInBatch, cand);
       Object.assign(dupInBatch, mergedBatch);
+      batchDupIndex.add(dupInBatch);
       duplicates.push({ cand, existing: dupInBatch });
       return;
     }
     toAdd.push(cand);
+    batchDupIndex.add(cand);
   });
 
   const reviewList = toAdd.filter(x => x.needsReview);
@@ -404,7 +407,6 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
 // Загрузка JSON-бэкапа
 window.importData = e => {
   const f = e.target.files[0]; if (!f) return;
-  const rep = importReplace; importReplace = false;
   const r = new FileReader();
   r.onload = async () => {
     try {
@@ -426,14 +428,13 @@ window.importData = e => {
         const compTs = isDone && rawComp > 0 ? rawComp : 0;
         const catVal = x.category === 'Кино' ? 'Фильм' : (x.category === 'Манхва' || x.category === 'Маньхуа') ? 'Манга' : CATS.includes(x.category) ? x.category : 'Фильм';
         const subK = x.category === 'Манхва' ? 'Манхва' : x.category === 'Маньхуа' ? 'Маньхуа' : (x.subKind || (MANGA_SUBKINDS.includes(x.kind) ? x.kind : (catVal === 'Манга' ? 'Манга' : '')));
-        const hasExtId = Boolean(Number(x.aniId) || Number(x.mal) || x.tmdb);
         return fix({
           id: Number(x.id) || 0,
           title: String(x.title || '').trim(),
           category: catVal,
           subKind: subK,
           status: resolvedStatus,
-          needsReview: Boolean(x.needsReview || !knownStatus || !hasExtId),
+          needsReview: Boolean(x.needsReview || !knownStatus),
           fav: !!(x.fav || wasFavStatus),
           isAdult: Boolean(x.isAdult),
           completedAt: compTs,
@@ -449,7 +450,7 @@ window.importData = e => {
         });
       });
 
-      await previewAndExecuteImport(candidates, 'JSON-бэкап', fp, rep, profBackup);
+      await previewAndExecuteImport(candidates, 'JSON-бэкап', fp, false, profBackup);
     } catch (err) { toast('Ошибка чтения JSON файла: ' + err.message, true); }
     e.target.value = '';
   };
@@ -581,7 +582,20 @@ function parseKinopoiskDate(str) {
   return isNaN(ts) ? 0 : ts;
 }
 
-function buildKinopoiskCandidateFromRecord(rec, defaultCat = 'Фильм') {
+function normalizeAnixartBatchRatings(candidates) {
+  const rated = (candidates || []).map(c => parseFloat(c.rating) || 0).filter(v => v > 0);
+  if (rated.length > 0 && rated.every(v => v >= 1 && v <= 5)) {
+    candidates.forEach(c => {
+      const r = parseFloat(c.rating) || 0;
+      if (r >= 1 && r <= 5) c.rating = String(+(r * 2).toFixed(1).replace(/\.0$/, ''));
+      const ex = parseFloat(c.extRating) || 0;
+      if (ex > 0 && ex <= 5) c.extRating = (ex * 2).toFixed(1);
+    });
+  }
+  return candidates;
+}
+
+function buildKinopoiskCandidateFromRecord(rec, defaultCat = 'Фильм', isFiveStarScale = false) {
   let titleRu = String(rec.titleRu || rec.ru || rec.nameRu || rec.title || '').trim();
   let titleOrig = String(rec.titleOrig || rec.orig || rec.nameEn || rec.originalTitle || '').trim();
   let year = String(rec.year || '').trim();
@@ -589,7 +603,7 @@ function buildKinopoiskCandidateFromRecord(rec, defaultCat = 'Фильм') {
   const typeAndCatStr = String(rec.type || '') + ' ' + String(rec.category || '') + ' ' + String(rec.genre || '');
   const isRanobeHint = /ранобэ|light novel|новелл/i.test(typeAndCatStr);
   const isMangaHint = /манга|манхва|маньхуа|manga|manhwa|manhua|комикс/i.test(typeAndCatStr);
-  const isAnimeHint = defaultCat === 'Аниме' || /аниме|anime|anixart|shikimori|mal|озвучка|серий|эпизод|ova|ona|тв-\d/i.test(typeAndCatStr + ' ' + titleRu + ' ' + String(rec.status || ''));
+  const isAnimeHint = defaultCat === 'Аниме' || /(?:аниме|anime|anixart|shikimori|озвучка|серий|эпизод|\b(?:mal|ova|ona)\b|тв-\d)/i.test(typeAndCatStr + ' ' + String(rec.status || ''));
   const isSeriesHint = /сериал|мини-сериал|season|сезон/i.test(titleRu + ' ' + typeAndCatStr);
   if (yrInTitle && !year) year = yrInTitle[1];
   // Убираем в конце только чистый год (2014) или общую пометку (сериал)/(фильм) без номера сезона/части, чтобы НЕ терять (ТВ-2), (Фильм 1), (OVA) и т.д.
@@ -598,10 +612,12 @@ function buildKinopoiskCandidateFromRecord(rec, defaultCat = 'Фильм') {
   if (!titleRu) return null;
 
   let rawRateNum = parseFloat(String(rec.rating || rec.myRating || rec.vote || '').replace(',', '.')) || 0;
-  // Если в Anixart оценка по 5-балльной шкале и указан флаг 5-балльной, или если от 1 до 10 — сохраняем корректно
+  // В Anixart оценки выставляются по 5-звёздочной шкале (1–5) — конвертируем в 10-балльную (2–10)
   if (rawRateNum > 10 && rawRateNum <= 100) rawRateNum = +(rawRateNum / 10).toFixed(1);
+  else if (isFiveStarScale && rawRateNum >= 1 && rawRateNum <= 5) rawRateNum = +(rawRateNum * 2).toFixed(1).replace(/\.0$/, '');
   const myRating = (rawRateNum >= 1 && rawRateNum <= 10) ? String(rawRateNum) : '';
-  const extNum = parseFloat(String(rec.kpRating || rec.imdbRating || rec.extRating || '').replace(',', '.')) || 0;
+  let extNum = parseFloat(String(rec.kpRating || rec.imdbRating || rec.extRating || '').replace(',', '.')) || 0;
+  if (isFiveStarScale && extNum > 0 && extNum <= 5) extNum = +(extNum * 2);
   const extRating = (extNum > 0 && extNum <= 10) ? extNum.toFixed(1) : '';
   const imdbMatch = String(rec.imdb || rec.imdbId || rec.url || '').match(/tt\d{5,10}/i);
   const imdbId = imdbMatch ? imdbMatch[0].toLowerCase() : '';
@@ -816,7 +832,7 @@ function parseKinopoiskContent(text) {
         if (cand) outTxt.push(cand);
       }
     }
-    if (outTxt.length) return outTxt;
+    if (outTxt.length) return normalizeAnixartBatchRatings(outTxt);
   }
 
   const sep = first.includes(';') ? ';' : first.includes('\t') ? '\t' : first.includes(',') ? ',' : '';
@@ -876,7 +892,7 @@ function parseKinopoiskContent(text) {
       const cand = buildKinopoiskCandidateFromRecord(rec, defaultCsvCat);
       if (cand) out.push(cand);
     }
-    if (out.length) return out;
+    if (out.length) return isAnixartOrAnimeCsv ? normalizeAnixartBatchRatings(out) : out;
   }
 
   // 4. Простой текстовый список (по одной записи на строке: «Название (2014) - 9»)
@@ -1013,6 +1029,7 @@ window.handleUniversalFileImport = e => {
               note: x.note || x.comment || ''
             }, isAnixJson ? 'Аниме' : 'Фильм')).filter(Boolean);
             if (jsonCandidates.length) {
+              if (isAnixJson) normalizeAnixartBatchRatings(jsonCandidates);
               await previewAndExecuteImport(jsonCandidates, isAnixJson ? 'Anixart JSON' : 'JSON файл', fp, false, null);
               e.target.value = '';
               return;
@@ -1027,6 +1044,7 @@ window.handleUniversalFileImport = e => {
         const isAnixFile = /anix|anime|аниме|shiki|закладк/i.test(fName) || candidates.some(c => c.category === 'Аниме');
         if (/anix|anime|аниме/i.test(fName)) {
           candidates.forEach(c => { if (c.category === 'Фильм') c.category = 'Аниме'; });
+          normalizeAnixartBatchRatings(candidates);
         }
         const srcLabel = isAnixFile ? `Таблица Anixart / CSV (${f.name})` : `Таблица / Список (${f.name})`;
         await previewAndExecuteImport(candidates, srcLabel, fp, false, null);
@@ -1116,14 +1134,36 @@ async function findAndMergeDuplicatesModal() {
   const visited = new Set();
   const groups = [];
 
+  const buckets = new Map();
+  const pushToBucket = (key, it) => {
+    if (!key) return;
+    let b = buckets.get(key);
+    if (!b) { b = []; buckets.set(key, b); }
+    b.push(it);
+  };
+  items.forEach(it => {
+    if (!it) return;
+    if (it.tmdb) pushToBucket('tmdb:' + it.tmdb, it);
+    if (it.imdbId) pushToBucket('imdb:' + it.imdbId, it);
+    if (Number(it.aniId) > 0) pushToBucket('ani:' + it.aniId, it);
+    if (Number(it.mal) > 0) pushToBucket('mal:' + it.mal, it);
+    getCachedItemNormMeta(it).primary.forEach(nt => pushToBucket('t:' + nt, it));
+  });
+
   for (let i = 0; i < items.length; i++) {
     const a = items[i];
-    if (visited.has(a.id)) continue;
+    if (!a || visited.has(a.id)) continue;
+    const candidatePeers = new Set();
+    if (a.tmdb) (buckets.get('tmdb:' + a.tmdb) || []).forEach(x => candidatePeers.add(x));
+    if (a.imdbId) (buckets.get('imdb:' + a.imdbId) || []).forEach(x => candidatePeers.add(x));
+    if (Number(a.aniId) > 0) (buckets.get('ani:' + a.aniId) || []).forEach(x => candidatePeers.add(x));
+    if (Number(a.mal) > 0) (buckets.get('mal:' + a.mal) || []).forEach(x => candidatePeers.add(x));
+    getCachedItemNormMeta(a).primary.forEach(nt => (buckets.get('t:' + nt) || []).forEach(x => candidatePeers.add(x)));
+
     const grp = [a];
     visited.add(a.id);
-    for (let j = i + 1; j < items.length; j++) {
-      const b = items[j];
-      if (visited.has(b.id)) continue;
+    for (const b of candidatePeers) {
+      if (!b || visited.has(b.id)) continue;
       if (same(a, b)) {
         grp.push(b);
         visited.add(b.id);
@@ -1357,10 +1397,23 @@ async function findCatalogMatchForItem(it) {
       if (!wa.length || !wb.length) return 0;
       const setB = new Set(wb);
       const common = wa.filter(w => setB.has(w)).length;
-      return common / Math.max(Math.min(wa.length, wb.length), 1);
+      return common / Math.max(wa.length, wb.length, 1);
     };
 
-    // Шаг 3А: Прямой поиск в Shikimori (идеально понимает русские названия Anixart за 1 быстрый запрос!)
+    const isConfidentTitleOrYearMatch = c => {
+      const candNames = nset(c);
+      const exactTitle = itemNames.some(n => candNames.includes(n));
+      const overlap = Math.max(calcWordOverlap(it.title, c.title), calcWordOverlap(it.titleEn || it.title, c.en));
+      const cYear = parseInt(c.year) || 0;
+      const hasBothYears = Boolean(itemYear > 0 && cYear > 0);
+      const yearMatch = hasBothYears && Math.abs(itemYear - cYear) <= 1;
+      const yearCompatible = !hasBothYears || Math.abs(itemYear - cYear) <= 1;
+      const markerOk = getItemMarkers(c) === itemMarker;
+      if (!markerOk) return false;
+      return (exactTitle && yearCompatible) || (yearMatch && overlap >= 0.85);
+    };
+
+    // Шаг 3А: Прямой поиск в Shikimori
     const shikiKind = SHK[it.category] || 'animes';
     try {
       const shRes = await shiki(`/api/${shikiKind}?search=${encodeURIComponent(qStr)}&limit=6`);
@@ -1371,7 +1424,7 @@ async function findCatalogMatchForItem(it) {
           en: d.name || '',
           orig: d.name || '',
           alt: '',
-          poster: d.image?.original ? 'https://shikimori.io' + d.image.original : '',
+          poster: d.image?.original ? 'https://shikimori.one' + d.image.original : '',
           year: String(d.aired_on || d.released_on || '').slice(0, 4),
           ext: d.score && Number(d.score) > 0 ? Number(d.score).toFixed(1) : '',
           src: 'Shikimori',
@@ -1384,24 +1437,11 @@ async function findCatalogMatchForItem(it) {
         }));
 
         for (const c of shCandidates) {
-          const candNames = nset(c);
-          const exactTitle = itemNames.some(n => candNames.includes(n));
-          const overlap = Math.max(calcWordOverlap(it.title, c.title), calcWordOverlap(it.titleEn || it.title, c.en));
-          const cYear = parseInt(c.year) || 0;
-          const yearOk = !itemYear || !cYear || Math.abs(itemYear - cYear) <= 2;
-          const markerOk = getItemMarkers(c) === itemMarker || (!itemMarker && !getItemMarkers(c));
-          if ((exactTitle || overlap >= 0.8) && yearOk && markerOk) {
+          if (isConfidentTitleOrYearMatch(c)) {
             return { confident: true, match: c, candidates: shCandidates };
           }
         }
-        // Если на Shikimori ровно 1 результат или первый результат очень близок по словам и году
-        const topSh = shCandidates[0];
-        const topOverlap = Math.max(calcWordOverlap(it.title, topSh.title), calcWordOverlap(it.titleEn || it.title, topSh.en));
-        const topYearOk = !itemYear || !parseInt(topSh.year) || Math.abs(itemYear - parseInt(topSh.year)) <= 2;
-        if ((shCandidates.length === 1 && topOverlap >= 0.5) || (topOverlap >= 0.72 && topYearOk)) {
-          return { confident: true, match: topSh, candidates: shCandidates };
-        }
-        return { confident: false, match: topSh, candidates: shCandidates };
+        return { confident: false, match: shCandidates[0], candidates: shCandidates };
       }
     } catch (e) {}
 
@@ -1411,13 +1451,7 @@ async function findCatalogMatchForItem(it) {
     try { await ruFull(candidates[0]); } catch (e) {}
 
     for (const c of candidates) {
-      const candNames = nset(c);
-      const exactTitle = itemNames.some(n => candNames.includes(n));
-      const overlap = Math.max(calcWordOverlap(it.title, c.title), calcWordOverlap(it.titleEn || it.title, c.en));
-      const cYear = parseInt(c.year) || 0;
-      const yearOk = !itemYear || !cYear || Math.abs(itemYear - cYear) <= 2;
-      const markerOk = getItemMarkers(c) === itemMarker;
-      if ((exactTitle || overlap >= 0.8) && yearOk && markerOk) {
+      if (isConfidentTitleOrYearMatch(c)) {
         try { await ruFull(c); } catch (e) {}
         return { confident: true, match: c, candidates };
       }
@@ -1489,8 +1523,9 @@ async function findCatalogMatchForItem(it) {
       const candNames = nset(c);
       const exactTitle = itemNames.some(n => candNames.includes(n));
       const cYear = parseInt(c.year) || 0;
-      const yearOk = !itemYear || !cYear || Math.abs(itemYear - cYear) <= 1;
-      if (exactTitle && yearOk && sameCat(c.category, it.category)) {
+      const hasBothYears = Boolean(itemYear > 0 && cYear > 0);
+      const yearCompatible = !hasBothYears || Math.abs(itemYear - cYear) <= 1;
+      if (exactTitle && yearCompatible && sameCat(c.category, it.category)) {
         try { Object.assign(c, await tmdbInfo(c)); } catch (e) {}
         return { confident: true, match: c, candidates };
       }
@@ -2227,17 +2262,38 @@ if ($('charPopCloseBtn')) $('charPopCloseBtn').onclick = () => { $('charPopupMod
 class CharacterSeiyuuManager {
   static cache = new Map();
   static async fetchChars(item) {
+    if (!item) return { items: [] };
+    if (item.src === 'Комиксы' || item.src === 'Google Books' || item.subKind === 'Комикс' || item.kind === 'Комикс') {
+      return { items: [] };
+    }
     const k = `${item.category}_${item.aniId || ''}_${item.mal || ''}_${item.tmdb || ''}_${item.titleEn || item.title}`;
     if (this.cache.has(k)) return this.cache.get(k);
     if (['Аниме', 'Манга', 'Ранобэ'].includes(item.category) || item.src === 'AniList') {
       const mType = item.category === 'Аниме' ? 'ANIME' : 'MANGA';
-      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal status bannerImage format source duration episodes volumes chapters startDate{year month day} nextAiringEpisode{airingAt episode} trailer{id site} relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,RELEVANCE,ID],perPage:25){edges{role node{name{full native}image{large}}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
+      const hasDirectId = Boolean(Number(item.aniId) > 0 || Number(item.mal) > 0);
+      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal status bannerImage format source duration episodes volumes chapters title{romaji english native} synonyms startDate{year month day} nextAiringEpisode{airingAt episode} trailer{id site} relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,RELEVANCE,ID],perPage:25){edges{role node{name{full native}image{large}}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
       const vars = { t: mType };
-      if (item.aniId) vars.id = Number(item.aniId); else if (item.mal) vars.mal = Number(item.mal); else vars.s = item.titleEn || item.en || item.title;
+      if (Number(item.aniId) > 0) vars.id = Number(item.aniId);
+      else if (Number(item.mal) > 0) vars.mal = Number(item.mal);
+      else vars.s = item.titleEn || item.en || item.title;
       const j = await (await fetch('https://graphql.anilist.co', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, variables: vars }) })).json();
-      const media = j?.data?.Media, edges = media?.characters?.edges || [];
+      const media = j?.data?.Media;
+      if (!media) return { items: [] };
+      if (!hasDirectId) {
+        const itemNorms = nset(item);
+        const mediaNorms = [media.title?.romaji, media.title?.english, media.title?.native, ...(media.synonyms || [])]
+          .map(normTitleStr)
+          .filter(Boolean);
+        const exactMatch = itemNorms.some(n => mediaNorms.includes(n));
+        if (!exactMatch) {
+          const emptyRes = { mediaMeta: null, isAnime: item.category === 'Аниме', isLiveAction: false, items: [] };
+          this.cache.set(k, emptyRes);
+          return emptyRes;
+        }
+      }
+      const edges = media.characters?.edges || [];
       const ruMap = new Map();
-      const malId = media?.idMal || item.mal;
+      const malId = media.idMal || item.mal;
       if (malId && shikiOk() && SHK[item.category]) {
         try { (await shiki(`/api/${SHK[item.category]}/${malId}/roles`) || []).forEach(r => { if (r.character?.name && r.character?.russian) ruMap.set(ruN(r.character.name), r.character.russian); }); } catch (e) {}
       }
@@ -2314,28 +2370,38 @@ class CharacterSeiyuuManager {
 // ---------- Полная внутренняя страница тайтла: Дерево франшизы с галочками (Б1), Трейлер YouTube (Б2), Опенинги/Эндинги AnimeThemes (Б3) и фикс Ранобэ (Ошибка №11) ----------
 // FORMAT_RU и REL_RU объявлены в начале модуля
 
-async function openFullTitlePage(itemObj) {
+const _fullPageHistoryItems = new Map();
+
+async function openFullTitlePage(itemObj, fromHistory = false) {
   if (!itemObj) return;
-  closeAll();
+  closeAll(true);
   const page = $('titlePageView'); if (!page) return;
   $('catalogView').style.display = 'none';
   $('profileView').style.display = 'none';
   page.style.display = 'block';
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  const curTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
-  pushAppHistoryState({ tab: curTab, fullPage: true, titleId: itemObj.id || itemObj.title });
 
   const inCol = items.find(i => i.id === itemObj.id || same(i, itemObj));
   const activeItem = inCol || itemObj;
+  const stateKey = String(activeItem.id || activeItem.aniId || activeItem.mal || activeItem.tmdb || activeItem.title);
+  _fullPageHistoryItems.set(stateKey, activeItem);
+
+  const curTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
+  if (!fromHistory) {
+    pushAppHistoryState({ tab: curTab, fullPage: true, titleKey: stateKey });
+  }
 
   page.replaceChildren();
   const backWrap = el('div'); backWrap.style.marginBottom = '14px';
   const backBtn = el('button', 'btn btn-s', '← Назад'); backBtn.type = 'button';
   backBtn.onclick = () => {
-    page.style.display = 'none';
-    const activeTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
-    if (activeTab === 'profile' || activeTab === 'collection') $('profileView').style.display = '';
-    else $('catalogView').style.display = '';
+    if (history.state && history.state.fullPage) {
+      history.back();
+    } else {
+      page.style.display = 'none';
+      const activeTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
+      applyMainTabView(activeTab, true);
+    }
   };
   backWrap.append(backBtn);
 
@@ -2450,12 +2516,7 @@ async function openFullTitlePage(itemObj) {
   const relGrid = el('div', 'tp-rel-grid');
   franchiseSec.append(franchiseHdr, relGrid);
 
-  const autoSimSec = el('div'); autoSimSec.style.marginTop = '20px';
-  const autoSimHdr = el('h3', null, '🔗 Похожие произведения'); autoSimHdr.style.margin = '0 0 8px';
-  const autoSimChips = el('div', 'chips');
-  autoSimSec.append(autoSimHdr, autoSimChips);
-
-  wrap.append(hero, descHdr, descBody, mediaRowSec, charsSec, franchiseSec, autoSimSec);
+  wrap.append(hero, descHdr, descBody, mediaRowSec, charsSec, franchiseSec);
   page.append(backWrap, wrap);
 
   await CharacterSeiyuuManager.render(charsSec, activeItem);
@@ -2500,7 +2561,6 @@ async function openFullTitlePage(itemObj) {
   if (bestArtUrl && bestArtUrl !== FALL) {
     heroArtBg.style.backgroundImage = `url("${bestArtUrl.replace(/["\\()\r\n]/g, '')}")`;
   }
-  loadSimilarTitlesIntoBox(activeItem, autoSimChips).catch(() => {});
 
   // Отрисовка Трейлера YouTube + кнопки открытия (Б2)
   const ytId = activeItem.trailerId || (mediaMeta?.trailer?.site === 'youtube' ? mediaMeta.trailer.id : '');
@@ -2695,7 +2755,7 @@ if ($('openFullPageFromRndBtn')) $('openFullPageFromRndBtn').onclick = () => { i
 // ---------- Управление аккаунтом и диагностика облака (режим одного пользователя) ----------
 async function wipeAllUserDataFromFirestore(targetUid) {
   if (!targetUid || !auth.currentUser) return 0;
-  const docIds = new Set(['prof_' + targetUid]);
+  const docIds = new Set(['prof_' + targetUid, 'prof_rucache_' + targetUid]);
   try {
     const s = await getDocs(query(collection(db, 'items'), where('userId', '==', targetUid)));
     s.docs.forEach(d => docIds.add(d.id));
@@ -2707,6 +2767,30 @@ async function wipeAllUserDataFromFirestore(targetUid) {
     await track(b.commit());
   }
   return allIds.length;
+}
+
+async function purgeUserLocalCaches(uid) {
+  const keys = [
+    'items_' + uid,
+    'prof_' + uid,
+    'safetyBackup_' + uid,
+    'lastImportMeta_' + uid,
+    'linkAttemptsMap_' + uid,
+    'uncertainMatchesCache_' + uid,
+    'catalogLinkPending_' + uid,
+    'cloudHadSynced_' + uid,
+    'localMigrateDeclined_' + uid,
+    'localMigrateDone_' + uid,
+    'schemaMigratedV3_' + uid,
+    'schemaMigratedV4_' + uid
+  ];
+  keys.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  await Promise.allSettled([
+    idbVault.del('items_' + uid),
+    idbVault.del('prof_' + uid),
+    idbVault.del('safetyBackup_' + uid),
+    idbVault.del('uncertainMatchesCache_' + uid)
+  ]);
 }
 
 // ---------- Задержка закрытия выпадающих меню при уводе курсора (450 мс) ----------
@@ -3017,7 +3101,9 @@ function closePosterLightbox() {
 
 if ($('posterLightboxModal')) {
   $('posterLightboxModal').onclick = e => {
-    if (e.target === $('posterLightboxModal') || e.target === $('posterLightboxCloseBtn')) {
+    if (e.target === $('posterLightboxCloseBtn')) {
+      closePosterLightbox();
+    } else if (e.target === $('posterLightboxModal') && _lastMouseDownTarget === $('posterLightboxModal')) {
       closePosterLightbox();
     }
   };
@@ -3053,19 +3139,15 @@ document.addEventListener('click', e => {
 });
 
 
-// ---------- Удаление профиля строго по подтверждению через почту (без индексов Firebase) ----------
+// ---------- Удаление профиля строго по реальной реавторизации (Google / пароль) ----------
 if ($('deleteMyAccountBtn')) {
   $('deleteMyAccountBtn').onclick = async () => {
     if (!user) return;
     if (user.isLocal) {
       if (!(await uiConfirm('Точно удалить локальный профиль и все записи с этого устройства?', 'Удалить локальные данные', true))) return;
-      localStorage.removeItem('localItems');
-      localStorage.removeItem('items_local_user');
-      localStorage.removeItem('prof_local_user');
-      localStorage.removeItem('prof');
-      await idbVault.del('items_local_user');
+      await purgeUserLocalCaches('local_user');
+      try { localStorage.removeItem('localItems'); localStorage.removeItem('prof'); } catch (e) {}
       await idbVault.del('localItems');
-      await idbVault.del('prof_local_user');
       await idbVault.del('prof');
       items = [];
       resetProfObjectToDefault();
@@ -3080,67 +3162,33 @@ if ($('deleteMyAccountBtn')) {
     const hasGoogle = providers.includes('google.com');
     const hasPassword = providers.includes('password');
 
-    let emailInputEl = null, passInputEl = null, emailVerifiedStepDone = false;
+    let emailInputEl = null, passInputEl = null, googleReauthed = false;
     const confirmed = await dlgOpen(() => {
-      $('dlgTitle').textContent = '⚠ Удаление профиля по подтверждению почты';
-      $('dlgText').textContent = `Для защиты твоей коллекции (${items.length} тайтлов) удаление возможно только после подтверждения владельца почты ${userEmail}:`;
+      $('dlgTitle').textContent = '⚠ Удаление аккаунта (требуется реавторизация)';
+      $('dlgText').textContent = `Для защиты твоей коллекции (${items.length} тайтлов) подтверди личность через Google или текущий пароль от аккаунта ${userEmail}:`;
       const body = $('dlgBody');
       body.replaceChildren();
 
-      // Шаг 1: Отправка проверочного письма на почту или подтверждение через почтовый провайдер
-      const mailStepBox = el('div');
-      mailStepBox.style.cssText = 'padding:10px 12px;background:var(--inp);border:1px solid var(--bd);border-radius:10px;display:flex;flex-direction:column;gap:8px';
-      const mailHdr = el('div', 'meta', `1. Подтверди доступ к почте ${userEmail}:`);
-      mailHdr.style.margin = '0';
-      const btnRow = el('div', 'row');
-      btnRow.style.gap = '8px';
-
-      const sendMailBtn = el('button', 'btn btn-s', '📧 Отправить письмо на почту');
-      sendMailBtn.type = 'button';
-      sendMailBtn.style.cssText = 'flex:1;font-size:12.5px;padding:7px 10px';
-      sendMailBtn.onclick = async () => {
-        try {
-          sendMailBtn.disabled = true;
-          if (!auth.currentUser.emailVerified) {
-            await sendEmailVerification(auth.currentUser);
-            toast(`Письмо подтверждения отправлено на ${userEmail}! Перейди по ссылке в письме.`);
-          } else {
-            await sendPasswordResetEmail(auth, userEmail);
-            toast(`Контрольное письмо отправлено на ${userEmail}!`);
-          }
-          emailVerifiedStepDone = true;
-          sendMailBtn.textContent = '✓ Письмо отправлено на почту';
-        } catch (e) {
-          toast('Ошибка отправки письма: ' + (e.message || e.code), true);
-          sendMailBtn.disabled = false;
-        }
-      };
-      btnRow.append(sendMailBtn);
-
       if (hasGoogle) {
-        const googleReauthBtn = el('button', 'btn btn-s', '🔐 Подтвердить почту через Google');
+        const googleReauthBtn = el('button', 'btn btn-s', '🔐 Подтвердить вход через Google');
         googleReauthBtn.type = 'button';
-        googleReauthBtn.style.cssText = 'flex:1;font-size:12.5px;padding:7px 10px';
+        googleReauthBtn.style.cssText = 'width:100%;font-size:13px;padding:9px 12px';
         googleReauthBtn.onclick = async () => {
           try {
             const freshProvider = new GoogleAuthProvider();
             freshProvider.setCustomParameters({ prompt: 'select_account', login_hint: userEmail });
             await reauthenticateWithPopup(auth.currentUser, freshProvider);
-            emailVerifiedStepDone = true;
-            googleReauthBtn.textContent = '✓ Почта подтверждена';
+            googleReauthed = true;
+            googleReauthBtn.textContent = '✓ Личность подтверждена через Google';
             googleReauthBtn.disabled = true;
-            toast('Владение почтой подтверждено!');
+            toast('Реавторизация через Google выполнена!');
           } catch (e) {
-            if (e.code !== 'auth/popup-closed-by-user') toast('Не удалось подтвердить: ' + (e.message || e.code), true);
+            if (e.code !== 'auth/popup-closed-by-user') toast('Не удалось подтвердить через Google: ' + (e.message || e.code), true);
           }
         };
-        btnRow.append(googleReauthBtn);
+        body.append(googleReauthBtn);
       }
 
-      mailStepBox.append(mailHdr, btnRow);
-      body.append(mailStepBox);
-
-      // Шаг 2: Ввод своего точного Email (и пароля, если вход по паролю)
       emailInputEl = el('input');
       emailInputEl.type = 'email';
       emailInputEl.placeholder = `Введи свою почту (${userEmail}) для подтверждения`;
@@ -3149,7 +3197,7 @@ if ($('deleteMyAccountBtn')) {
       if (hasPassword) {
         passInputEl = el('input');
         passInputEl.type = 'password';
-        passInputEl.placeholder = 'Введи текущий пароль от аккаунта';
+        passInputEl.placeholder = 'Введи текущий пароль от аккаунта (обязательно)';
         body.append(passInputEl);
       }
     }, 'Удалить профиль навсегда', true, () => ({
@@ -3163,39 +3211,29 @@ if ($('deleteMyAccountBtn')) {
     }
 
     try {
-      if (hasPassword && confirmed.typedPass) {
+      let reauthenticated = googleReauthed;
+      if (!reauthenticated && hasPassword) {
+        if (!confirmed.typedPass) {
+          return toast('Введи текущий пароль от аккаунта для подтверждения удаления.', true);
+        }
         const cred = EmailAuthProvider.credential(userEmail, confirmed.typedPass);
         await reauthenticateWithCredential(auth.currentUser, cred);
-        emailVerifiedStepDone = true;
+        reauthenticated = true;
       }
-      if (!emailVerifiedStepDone) {
-        return toast('Сначала нажми кнопку подтверждения почты выше (письмо на почту или подтверждение Google / пароля).', true);
+      if (!reauthenticated) {
+        return toast('Сначала подтверди вход через кнопку Google или введи текущий пароль.', true);
       }
 
       toast('Очищаю все данные профиля и коллекции в облаке…');
       const uid = user.uid;
       window._explicitEmptyAllowed = true;
       await wipeAllUserDataFromFirestore(uid);
-      try {
-        localStorage.removeItem('items_' + uid);
-        localStorage.removeItem('prof_' + uid);
-      } catch (e) {}
-      await idbVault.del('items_' + uid);
-      await idbVault.del('prof_' + uid);
+      await purgeUserLocalCaches(uid);
       closeAll();
-      try {
-        await deleteUser(auth.currentUser);
-        toast('Твой аккаунт и все данные полностью удалены.');
-      } catch (authErr) {
-        if (authErr.code === 'auth/requires-recent-login') {
-          await signOut(auth).catch(() => {});
-          toast('Все данные коллекции и профиля удалены! Перезайди в аккаунт для окончательного удаления учётной записи.', true);
-        } else {
-          throw authErr;
-        }
-      }
+      await deleteUser(auth.currentUser);
+      toast('Твой аккаунт и все данные полностью удалены.');
     } catch (e) {
-      toast('Ошибка при проверке почты или удалении аккаунта: ' + (e.code || e.message), true);
+      toast('Ошибка реавторизации или удаления аккаунта: ' + (e.code || e.message), true);
     }
   };
 }
@@ -3756,7 +3794,7 @@ if ($('shikiImportBtn')) {
                 needsReview: Boolean(!knownSt),
                 rating: r.score ? String(r.score) : '',
                 extRating: d.score || '', extSrc: 'Shikimori',
-                poster: d.image?.original ? 'https://shikimori.io' + d.image.original : '',
+                poster: d.image?.original ? 'https://shikimori.one' + d.image.original : '',
                 year: (d.aired_on || '').slice(0, 4),
                 eps: (targetType === 'Anime' ? (d.episodes || r.episodes) : (d.chapters || r.chapters)) || 0,
                 vols: d.volumes || r.volumes || 0, dur: 24,
@@ -3777,10 +3815,11 @@ if ($('shikiImportBtn')) {
 
 // ---------- Навигация и поддержка кнопки «Назад» в браузере (History API) ----------
 let _suppressHistoryPush = false;
-function pushAppHistoryState(stateObj) {
+function pushAppHistoryState(stateObj, replace = false) {
   if (_suppressHistoryPush) return;
   try {
-    history.pushState(stateObj, '');
+    if (replace) history.replaceState(stateObj, '');
+    else history.pushState(stateObj, '');
   } catch (e) {}
 }
 
@@ -3811,8 +3850,9 @@ function applyMainTabView(v, fromHistory = false) {
   if (extrasEl) extrasEl.style.display = isCol ? 'none' : '';
   if (listsBlock) listsBlock.style.display = isCol ? '' : 'none';
   if (subtabsBar) subtabsBar.style.display = isCol ? '' : 'none';
+  if (revBox) revBox.style.display = 'none';
   if (colWrap) colWrap.style.display = isCol ? '' : 'none';
-  if (!isCol && revBox) revBox.style.display = 'none';
+  if (isCol) syncHybridStatusTabsUI();
   if (mode === 'catalog') cgMarks();
   if (!fromHistory && tabDone && (prevTab !== mode || wasFullPage)) {
     pushAppHistoryState({ tab: mode, fullPage: false });
@@ -3830,8 +3870,7 @@ function homeTab() {
   if (!['catalog', 'collection', 'profile'].includes(t)) t = 'catalog';
   applyMainTabView(t, true);
   try {
-    history.replaceState({ tab: t, fullPage: false, root: true }, '');
-    history.pushState({ tab: t, fullPage: false }, '');
+    history.replaceState({ tab: t, fullPage: false }, '');
   } catch (e) {}
 }
 
@@ -3868,7 +3907,6 @@ function refresh(opts = {}) {
   renderMyListsFolderBlock();
   updateLastImportBatchBarUI();
   if ($('reviewItemsBox')?.style.display !== 'none') renderReviewItemsTab();
-  // Фоновый перевод описаний вызывается только при открытии карточки, чтобы не нагружать сеть на 500 тайтлах
   setTimeout(backupNudge, 4000);
 }
 
@@ -3879,18 +3917,23 @@ function refresh(opts = {}) {
     const open = mods.find(m => m.style.display && m.style.display !== 'none');
     document.body.style.overflow = open ? 'hidden' : '';
     $('modalX').classList.toggle('show', !!open);
-    if (open && !back) {
-      back = document.activeElement;
+    if (open) {
+      if (!back) back = document.activeElement;
       const curTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
-      pushAppHistoryState({ tab: curTab, fullPage: $('titlePageView')?.style.display === 'block', modal: open.id });
+      const isFull = $('titlePageView')?.style.display === 'block';
+      const curTitleKey = history.state?.titleKey || '';
+      const alreadyModalState = Boolean(history.state && history.state.modal);
+      pushAppHistoryState({ tab: curTab, fullPage: isFull, titleKey: curTitleKey, modal: open.id }, alreadyModalState);
       const f = open.querySelector('input:not([type=hidden]),select,textarea,button');
       if (f) setTimeout(() => f.focus({preventScroll: true}), 30);
+    } else if (back) {
+      try { back.focus({preventScroll: true}); } catch (e) {}
+      back = null;
     }
-    if (!open && back) { try { back.focus({preventScroll: true}); } catch (e) {} back = null; }
   };
   mods.forEach(m => new MutationObserver(sync).observe(m, {attributes: true, attributeFilter: ['style']}));
 }
-$('modalX').onclick = closeAll;
+$('modalX').onclick = () => closeAll(false);
 document.querySelectorAll('#accMenu .mi, #accMenu .mrow').forEach(n => n.addEventListener('click', e => e.stopPropagation()));
 document.addEventListener('load', e => { if (e.target && e.target.tagName === 'IMG') e.target.classList.add('ld'); }, true);
 document.addEventListener('error', e => { if (e.target && e.target.tagName === 'IMG') e.target.classList.add('ld'); }, true);
@@ -3916,17 +3959,21 @@ document.addEventListener('error', e => {
 KanbanManager.init();
 
 window.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && _cloudSaveTimers.size && user && !user.isLocal && auth.currentUser) {
-    _cloudSaveTimers.forEach((entry, docId) => {
-      clearTimeout(entry.timer);
-      const it = items.find(x => getCloudDocId(x) === docId);
-      if (it) {
-        const { payload } = prepareTitleForCloud(it, user.uid);
-        setDoc(doc(db, 'items', docId), payload).catch(() => {});
-      }
-      entry.resolve();
-    });
-    _cloudSaveTimers.clear();
+  if (document.visibilityState === 'hidden') {
+    if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
+    if (typeof profSaveLocal === 'function') profSaveLocal(true);
+    if (_cloudSaveTimers.size && user && !user.isLocal && auth.currentUser) {
+      _cloudSaveTimers.forEach((entry, docId) => {
+        clearTimeout(entry.timer);
+        const it = items.find(x => getCloudDocId(x) === docId);
+        if (it) {
+          const { payload } = prepareTitleForCloud(it, user.uid);
+          setDoc(doc(db, 'items', docId), payload).catch(() => {});
+        }
+        entry.resolve();
+      });
+      _cloudSaveTimers.clear();
+    }
   }
 });
 
@@ -3942,41 +3989,35 @@ if ($('restoreSafetyBackupBtn')) {
   };
 }
 
-
 window.addEventListener('popstate', e => {
   if (!user) return;
   _suppressHistoryPush = true;
   try {
     if ($('posterLightboxModal')?.classList.contains('open')) {
       closePosterLightbox();
-      history.pushState({ tab: document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog' }, '');
       return;
     }
     if ($('qaFloatMenu')?.classList.contains('open')) {
       closeQuickAddStatusMenu();
-      history.pushState({ tab: document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog' }, '');
       return;
     }
     const openMod = [...document.querySelectorAll('.modal')].find(m => m.style.display && m.style.display !== 'none');
-    if (openMod) {
-      closeAll();
+    if (openMod && (!e.state || !e.state.modal)) {
+      closeAll(true);
       return;
     }
-    if ($('titlePageView')?.style.display === 'block' && (!e.state || !e.state.fullPage)) {
-      $('titlePageView').style.display = 'none';
-      const targetTab = (e.state && e.state.tab) || document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
-      applyMainTabView(targetTab, true);
-      return;
-    }
-    if (e.state && e.state.tab) {
-      applyMainTabView(e.state.tab, true);
-      if (e.state.root) {
-        history.pushState({ tab: e.state.tab, fullPage: false }, '');
+    if (e.state && e.state.fullPage && e.state.titleKey) {
+      const targetItem = _fullPageHistoryItems.get(e.state.titleKey) || items.find(i => String(i.id) === String(e.state.titleKey));
+      if (targetItem) {
+        openFullTitlePage(targetItem, true);
+        return;
       }
-      return;
     }
-    const curTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
-    history.pushState({ tab: curTab, fullPage: false }, '');
+    if ($('titlePageView')?.style.display === 'block') {
+      $('titlePageView').style.display = 'none';
+    }
+    const targetTab = (e.state && e.state.tab) || document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
+    applyMainTabView(targetTab, true);
   } finally {
     _suppressHistoryPush = false;
   }

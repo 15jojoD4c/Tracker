@@ -889,12 +889,17 @@ $('loginBtn').onclick = async () => {
   const freshProvider = new GoogleAuthProvider();
   freshProvider.setCustomParameters({ prompt: 'select_account' });
   try {
-    await signInWithRedirect(auth, freshProvider);
+    await signInWithPopup(auth, freshProvider);
   } catch (e) {
+    if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment'].includes(e.code)) {
+      return signInWithRedirect(auth, freshProvider);
+    }
     if (e.code === 'auth/unauthorized-domain') {
       return startLocalMode('Домен не добавлен в список разрешённых в Firebase Console (' + location.hostname + '). Включён локальный режим.');
     }
-    toast('Ошибка входа Google: ' + e.message, true);
+    if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(e.code)) {
+      toast('Ошибка входа Google: ' + e.message, true);
+    }
   }
 };
 
@@ -1493,7 +1498,7 @@ const closeAll = () => {
   if (dlgDone) dlgDone(null);
   if (cropDone) cropDone(null);
   if (typeof closeQuickAddStatusMenu === 'function') closeQuickAddStatusMenu();
-  ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'calModal', 'cropModal', 'charPopupModal', 'dataModal', 'themeModal'].forEach(id => {
+  ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'cropModal', 'charPopupModal', 'dataModal', 'themeModal'].forEach(id => {
     if ($(id)) $(id).style.display = 'none';
   });
 };
@@ -2938,6 +2943,7 @@ async function _tmdbRaw(search, path, media, page = 1) {
       title: x.title || x.name, en: x.original_language === 'en' ? orig : '', orig, alt: '',
       poster: x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '',
       banner: x.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + x.backdrop_path : '',
+      ongoing: Boolean(x.media_type === 'tv' && !isUpc && (!relDateStr || Number(relDateStr.slice(0, 4)) >= new Date().getFullYear() - 2)),
       upcoming: isUpc,
       year: relDateStr.slice(0, 4), ext: x.vote_count ? x.vote_average.toFixed(1) : '',
       tags: ids.map(g => TG[g]).filter(Boolean), tmdb: x.media_type + '/' + x.id, src: 'TMDB', url: 'https://www.themoviedb.org/' + x.media_type + '/' + x.id, desc: x.overview || '',
@@ -3601,7 +3607,7 @@ $('manageListBtn').onclick = async () => {
 // ---------- Каталог (AniList и TMDB) с кликабельной панелью жанров/тегов, полосой подкатегорий и живой подборкой ----------
 // Часть 1 п.4: Убрана кнопка «✕ Не показывать в каталоге» (.hid / cgHid)
 // Часть 1 п.5: Не восстанавливаем старые жанровые фильтры из localStorage при перезагрузке страницы, чтобы выдача не оказывалась скрыто урезанной на телефоне
-const cg = {g: 'Аниме', page: 1, q: '', t: 0, hide: false, min: 0, feedSeedPage: 1}, cgGrid = $('cgGrid');
+const cg = {g: 'Аниме', page: 1, q: '', t: 0, hide: false, ongOnly: false, min: 0, feedSeedPage: 1}, cgGrid = $('cgGrid');
 const has = r => items.some(i => same(i, r));
 const cgKey = r => r.url || r.title + '|' + r.category;
 try { localStorage.removeItem('cgHid'); localStorage.removeItem('cgTagStateV2'); } catch (e) {}
@@ -3610,7 +3616,7 @@ try { localStorage.removeItem('cgHid'); localStorage.removeItem('cgTagStateV2');
 const cgTagState = new Map();
 const saveCgTagState = () => {};
 
-const cgPass = r => !(cg.hide && has(r)) && num(r.ext) >= cg.min;
+const cgPass = r => !(cg.hide && has(r)) && (!cg.ongOnly || r.ongoing) && num(r.ext) >= cg.min;
 
 const CLASSIC_GENRES = [
   ['g:Action', 'Экшен'], ['g:Adventure', 'Приключения'], ['g:Comedy', 'Комедия'], ['g:Drama', 'Драма'],
@@ -3765,7 +3771,7 @@ function renderCatalogActiveChipsBar() {
   if (cg.q) addChip(`🔍 «${cg.q}»`, () => { $('cgSearch').value = ''; cg.q = ''; $('cgClear').style.display = 'none'; cgLoad(true); });
   if ($('cgYear')?.value) addChip(`Год от: ${$('cgYear').value}`, () => { $('cgYear').value = ''; cgLoad(true); });
   if ($('cgYear2')?.value) addChip(`Год до: ${$('cgYear2').value}`, () => { $('cgYear2').value = ''; cgLoad(true); });
-  if ($('cgSeason')?.value && cg.g === 'Аниме') addChip(`Сезон: ${$('cgSeason').selectedOptions[0]?.textContent}`, () => { $('cgSeason').value = ''; cgLoad(true); });
+  if (cg.ongOnly) addChip('🟢 Только онгоинги', () => { cg.ongOnly = false; $('cgOngBtn')?.classList.remove('on'); cgLoad(true); });
   if ($('cgLen')?.value) addChip(`Длина: ${$('cgLen').selectedOptions[0]?.textContent}`, () => { $('cgLen').value = ''; cgLoad(true); });
   if ($('cgCountry')?.value && cg.g === 'Кино и сериалы') addChip(`Страна: ${$('cgCountry').selectedOptions[0]?.textContent}`, () => { $('cgCountry').value = ''; cgLoad(true); });
   if ($('cgAge')?.value && cg.g !== 'Кино и сериалы') addChip(`${$('cgAge').selectedOptions[0]?.textContent}`, () => { $('cgAge').value = ''; cgGenres(); cgLoad(true); });
@@ -3810,12 +3816,12 @@ function updateActiveFiltersCounterUI() {
   let totalActive = tagCnt;
   if ($('cgYear')?.value) totalActive++;
   if ($('cgYear2')?.value) totalActive++;
+  if (cg.ongOnly) totalActive++;
   if (cg.hide) totalActive++;
   if (cg.min > 0) totalActive++;
   if ($('cgKind')?.value && cg.g === 'Манга') totalActive++;
   if ($('cgAnimeKind')?.value && cg.g === 'Аниме') totalActive++;
   if ($('cgVideoKind')?.value && $('cgVideoKind').value !== 'all' && cg.g === 'Кино и сериалы') totalActive++;
-  if ($('cgSeason')?.value && cg.g === 'Аниме') totalActive++;
   if ($('cgLen')?.value) totalActive++;
   if ($('cgAge')?.value && !isVideo) totalActive++;
   if ($('cgCountry')?.value && isVideo) totalActive++;
@@ -3874,7 +3880,6 @@ function cgGenres() {
   if ($('cgKind')) $('cgKind').style.display = cg.g === 'Манга' ? '' : 'none';
   if ($('cgVideoKind')) $('cgVideoKind').style.display = cg.g === 'Кино и сериалы' ? '' : 'none';
   $('cgCountry').style.display = isVideo ? '' : 'none';
-  $('cgSeason').style.display = cg.g === 'Аниме' ? '' : 'none';
   $('cgAge').style.display = isVideo ? 'none' : '';
   const L = cg.g === 'Аниме' ? [['', 'Любая длина'], ['s', 'Короткие (до 13 серий)'], ['m', 'До 26 серий'], ['l', 'Длинные (50+ серий)']] : isVideo ? [['', 'Любая длина'], ['s', 'До 100 минут'], ['m', 'До 130 минут'], ['l', 'Длинные (от 150 мин)']] : cg.g === 'Манга' ? [['', 'Любой объём'], ['s', 'Короткие (до 30 глав)'], ['m', 'До 100 глав'], ['l', 'Длинные (200+ глав)']] : [['', 'Любая длина']];
   const prevLen = $('cgLen').value;
@@ -4206,23 +4211,21 @@ async function cgFetch(page, per, q, mode) {
   }
 
   const { incG, excG, incT, excT } = getActiveCatalogTagLists();
-  const len = $('cgLen').value, season = $('cgSeason').value;
+  const len = $('cgLen').value;
   const yrFrom = parseInt($('cgYear').value) || 0;
   const yrTo = parseInt($('cgYear2').value) || 0;
   const iso = d => d.toISOString().slice(0, 10), today = iso(new Date()), ago = n => iso(new Date(Date.now() - n * 864e5)), num8 = t => Number(t.replace(/-/g, ''));
   const SO = {actual: 'TRENDING_DESC', top: 'SCORE_DESC', trend: 'TRENDING_DESC', date: 'START_DATE_DESC', votes: 'FAVOURITES_DESC', hidden: 'SCORE_DESC', classic: 'SCORE_DESC', rare: 'SCORE_DESC'};
   const age = $('cgAge').value;
   const baseOpts = {page: effPage, per, ad: age === 'only' ? true : age === 'all' ? undefined : false};
+  if (cg.ongOnly) baseOpts.status = 'RELEASING';
   if (incG.length) baseOpts.genre = incG;
   if (excG.length) baseOpts.genreNot = excG;
   if (incT.length) baseOpts.tag = incT;
   if (excT.length) baseOpts.tagNot = excT;
 
-  if (g === 'Аниме' && season) { baseOpts.se = season; baseOpts.sy = yrFrom || yrTo || new Date().getFullYear(); }
-  else {
-    if (yrFrom) baseOpts.sg = yrFrom * 10000 - 1;
-    if (yrTo) baseOpts.sl = (yrTo + 1) * 10000;
-  }
+  if (yrFrom) baseOpts.sg = yrFrom * 10000 - 1;
+  if (yrTo) baseOpts.sl = (yrTo + 1) * 10000;
   if (g === 'Аниме') {
     const ak = $('cgAnimeKind')?.value || '';
     if (ak === 'MOVIE') baseOpts.format = 'MOVIE';
@@ -4240,10 +4243,10 @@ async function cgFetch(page, per, q, mode) {
     if (mk === 'JP' || mk === 'KR' || mk === 'CN') baseOpts.country = mk;
   }
 
-  // Живая подборка «🔥 Сейчас актуально» (Часть 3): смесь трендов, активно выходящих онгоингов и текущего сезона
-  if (!q && (mode === 'actual' || !mode)) {
+  // Живая подборка «🔥 Сейчас актуально»: смесь трендов, активно выходящих онгоингов и текущего сезона
+  if (!q && (mode === 'actual' || !mode) && !cg.ongOnly) {
     const mType = g === 'Аниме' ? 'ANIME' : 'MANGA';
-    if (g === 'Аниме' && !season && !yrFrom && !yrTo) {
+    if (g === 'Аниме' && !yrFrom && !yrTo) {
       const { se, sy } = getCurrentAnimeSeasonAndYear();
       const [trendRes, airingRes, seasonRes] = await Promise.all([
         anilist(null, 'ANIME', { ...baseOpts, per: 16, sort: ['TRENDING_DESC'] }).catch(() => []),
@@ -4306,7 +4309,16 @@ const SHORT_ST_ICON = {
   'Любимое': '❤'
 };
 
-// Быстрый индекс по ID и нормализованным названиям для мгновенного сопоставления каталога с коллекцией
+// Быстрый и строгий индекс по внешним ID и основным названиям (без коротких alt-синонимов, чтобы чужие тайтлы не помечались как добавленные)
+const primaryNamesSet = o => {
+  if (!o) return [];
+  return [...new Set(
+    [o.title, o.titleEn || o.en, o.titleOrig || o.orig]
+      .map(normTitleStr)
+      .filter(x => x && x.length >= 3)
+  )];
+};
+
 function buildCollectionLookupIndex(pool = items) {
   const byTmdb = new Map(), byImdb = new Map(), byAniId = new Map(), byMal = new Map(), byNormTitle = new Map();
   (pool || []).forEach(it => {
@@ -4315,7 +4327,7 @@ function buildCollectionLookupIndex(pool = items) {
     if (it.imdbId) byImdb.set(String(it.imdbId), it);
     if (Number(it.aniId) > 0) byAniId.set(Number(it.aniId), it);
     if (Number(it.mal) > 0) byMal.set(Number(it.mal), it);
-    nset(it).forEach(nt => {
+    primaryNamesSet(it).forEach(nt => {
       let arr = byNormTitle.get(nt);
       if (!arr) { arr = []; byNormTitle.set(nt, arr); }
       arr.push(it);
@@ -4326,6 +4338,9 @@ function buildCollectionLookupIndex(pool = items) {
 
 function findInCollectionWithIndex(r, idx) {
   if (!r || !idx) return null;
+  if (r.id && items.some(x => String(x.id) === String(r.id))) {
+    return items.find(x => String(x.id) === String(r.id)) || null;
+  }
   if (r.tmdb && idx.byTmdb.has(String(r.tmdb))) return idx.byTmdb.get(String(r.tmdb));
   if (r.imdbId && idx.byImdb.has(String(r.imdbId))) return idx.byImdb.get(String(r.imdbId));
   if (Number(r.aniId) > 0 && idx.byAniId.has(Number(r.aniId))) {
@@ -4336,7 +4351,7 @@ function findInCollectionWithIndex(r, idx) {
     const hit = idx.byMal.get(Number(r.mal));
     if (sameCat(hit.category, r.category)) return hit;
   }
-  const namesR = nset(r);
+  const namesR = primaryNamesSet(r);
   const checked = new Set();
   for (const nt of namesR) {
     const bucket = idx.byNormTitle.get(nt);
@@ -4344,6 +4359,10 @@ function findInCollectionWithIndex(r, idx) {
     for (const cand of bucket) {
       if (checked.has(cand)) continue;
       checked.add(cand);
+      // Если у записи в коллекции уже привязан другой внешний ID из того же источника — это точно другой тайтл
+      if (cand.aniId && r.aniId && Number(cand.aniId) !== Number(r.aniId)) continue;
+      if (cand.mal && r.mal && Number(cand.mal) !== Number(r.mal)) continue;
+      if (cand.tmdb && r.tmdb && String(cand.tmdb) !== String(r.tmdb)) continue;
       if (same(cand, r)) return cand;
     }
   }
@@ -4453,7 +4472,8 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
   _qaLockCard = hostCard || null;
   if (_qaLockCard) _qaLockCard.classList.add('qa-hover-lock');
 
-  const existing = items.find(i => same(i, r));
+  const idxLookup = buildCollectionLookupIndex(items);
+  let existing = (r.id && items.find(i => String(i.id) === String(r.id))) || findInCollectionWithIndex(r, idxLookup);
   const itemCat = (existing && existing.category) || r.category || '';
   menu.replaceChildren();
 
@@ -4479,10 +4499,100 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
       await quickAdd(r, stKey);
       anchorBtn.disabled = false;
       cgMarks();
-      if (onAfterPick) onAfterPick(items.find(i => same(i, r)));
+      if (onAfterPick) onAfterPick(findInCollectionWithIndex(r, buildCollectionLookupIndex(items)));
     };
     menu.append(b);
   });
+
+  // Компактный пункт «📁 В подборку…» (раскрывает прокручиваемый список всех подборок без перегрузки постера)
+  const curListsCount = existing && Array.isArray(existing.lists) ? existing.lists.length : 0;
+  const folderToggleBtn = el('button');
+  folderToggleBtn.type = 'button';
+  folderToggleBtn.style.borderTop = '1px solid var(--bd)';
+  folderToggleBtn.style.marginTop = '2px';
+  folderToggleBtn.append(
+    el('span', null, `📁 В подборку${curListsCount ? ` (${curListsCount})` : ''}`),
+    el('span', 'meta', '▸')
+  );
+  const folderSub = el('div', 'qa-folder-sub');
+  folderSub.style.display = 'none';
+
+  const rebuildFolderSub = () => {
+    folderSub.replaceChildren();
+    const allFolders = [...new Set([...(prof.customLists || []), ...items.flatMap(i => i.lists || [])])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ru'));
+    if (!allFolders.length) {
+      const emptyHint = el('div', 'meta', 'Подборок пока нет');
+      emptyHint.style.padding = '4px 8px';
+      folderSub.append(emptyHint);
+    } else {
+      allFolders.forEach(folderName => {
+        const hasF = Boolean(existing && (existing.lists || []).some(x => x.toLowerCase() === folderName.toLowerCase()));
+        const fb = el('button', 'qa-folder-item' + (hasF ? ' on' : ''));
+        fb.type = 'button';
+        fb.append(
+          el('span', null, `${hasF ? '✓ ' : '📁 '}${folderName}`),
+          el('span', 'meta', hasF ? 'убрать' : '+')
+        );
+        fb.onclick = async ev => {
+          ev.stopPropagation();
+          if (!existing) {
+            existing = await quickAdd(r, 'В планах');
+          }
+          if (!existing) return;
+          existing.lists = existing.lists || [];
+          const existsNow = existing.lists.some(x => x.toLowerCase() === folderName.toLowerCase());
+          if (existsNow) {
+            existing.lists = existing.lists.filter(x => x.toLowerCase() !== folderName.toLowerCase());
+            toast(`Убрано из подборки «${folderName}»`);
+          } else {
+            existing.lists.push(folderName);
+            toast(`Добавлено в подборку «${folderName}»`);
+          }
+          cloudSave(existing);
+          refresh({ itemId: existing.id });
+          const cnt = existing.lists.length;
+          folderToggleBtn.firstChild.textContent = `📁 В подборку${cnt ? ` (${cnt})` : ''}`;
+          rebuildFolderSub();
+          if (onAfterPick) onAfterPick(existing);
+        };
+        folderSub.append(fb);
+      });
+    }
+    const newFB = el('button', 'qa-folder-item');
+    newFB.type = 'button';
+    newFB.style.color = 'var(--ach)';
+    newFB.append(el('span', null, '＋ Новая подборка…'));
+    newFB.onclick = async ev => {
+      ev.stopPropagation();
+      closeQuickAddStatusMenu();
+      const nm = ((await uiPrompt('Новая подборка', '', 'Например: Избранное, Шедевры...')) || '').trim();
+      if (!nm) return;
+      prof.customLists = prof.customLists || [];
+      if (!prof.customLists.some(x => x.toLowerCase() === nm.toLowerCase())) prof.customLists.push(nm);
+      if (!existing) {
+        existing = await quickAdd(r, 'В планах');
+      }
+      if (existing) {
+        existing.lists = existing.lists || [];
+        if (!existing.lists.some(x => x.toLowerCase() === nm.toLowerCase())) existing.lists.push(nm);
+        cloudSave(existing);
+      }
+      profCloud();
+      refresh();
+      toast(`Подборка «${nm}» создана и тайтл добавлен!`);
+      if (onAfterPick && existing) onAfterPick(existing);
+    };
+    folderSub.append(newFB);
+  };
+
+  folderToggleBtn.onclick = ev => {
+    ev.stopPropagation();
+    const isHidden = folderSub.style.display === 'none';
+    if (isHidden) rebuildFolderSub();
+    folderSub.style.display = isHidden ? 'flex' : 'none';
+    folderToggleBtn.lastChild.textContent = isHidden ? '▾' : '▸';
+  };
+  menu.append(folderToggleBtn, folderSub);
 
   if (existing) {
     const delB = el('button'); delB.type = 'button'; delB.style.color = '#fda4af';
@@ -4706,18 +4816,6 @@ async function cgLoad(reset) {
   }
 }
 
-// Кнопка «🔄 Обновить» — сбрасывает кэш и загружает свежую ленту трендов и сезона (Часть 3)
-function refreshCatalogFeedWithNewPage() {
-  ALC.clear();
-  const nextSeed = 1 + ((cg.feedSeedPage % 6));
-  cg.feedSeedPage = nextSeed === cg.feedSeedPage ? 2 : nextSeed;
-  updateActiveFiltersCounterUI();
-  cgLoad(true);
-  toast(`Лента обновлена: свежая подборка #${cg.feedSeedPage} (${cg.g})`);
-}
-if ($('cgRefreshFeedBtn')) $('cgRefreshFeedBtn').onclick = refreshCatalogFeedWithNewPage;
-if ($('cgQuickShuffleBtn')) $('cgQuickShuffleBtn').onclick = refreshCatalogFeedWithNewPage;
-
 document.querySelectorAll('#cgCats .tb').forEach(b => b.onclick = () => {
   document.querySelectorAll('#cgCats .tb').forEach(x => x.classList.toggle('on', x === b));
   cg.g = b.dataset.g;
@@ -4725,7 +4823,7 @@ document.querySelectorAll('#cgCats .tb').forEach(b => b.onclick = () => {
   $('cgKind').style.display = cg.g === 'Манга' ? '' : 'none';
   cgGenres(); cgLoad(true);
 });
-['cgMode', 'cgKind', 'cgYear2', 'cgSeason', 'cgLen', 'cgCountry'].forEach(id => {
+['cgMode', 'cgKind', 'cgYear2', 'cgLen', 'cgCountry'].forEach(id => {
   if ($(id)) $(id).onchange = () => { cg.feedSeedPage = 1; updateActiveFiltersCounterUI(); cgLoad(true); };
 });
 $('cgAge').onchange = () => {
@@ -4738,27 +4836,29 @@ $('cgAge').onchange = () => {
   cgGenres();
   cgLoad(true);
 };
-$('cgNow').onclick = () => {
-  const m = new Date().getMonth();
-  $('cgSeason').value = m < 2 || m === 11 ? 'WINTER' : m < 5 ? 'SPRING' : m < 8 ? 'SUMMER' : 'FALL';
-  $('cgYear').value = new Date().getFullYear();
-  if ($('cgSeason').style.display === 'none') toast('Сезоны работают для аниме — открой вкладку «Аниме»');
-  cgLoad(true);
-};
 
 let cgT; const cgGo = () => { clearTimeout(cgT); cg.q = $('cgSearch').value.trim(); cg.feedSeedPage = 1; cgLoad(true); };
 $('cgSearch').oninput = () => { $('cgClear').style.display = $('cgSearch').value ? 'grid' : 'none'; clearTimeout(cgT); cgT = setTimeout(cgGo, 450); };
 $('cgSearch').onkeydown = e => { if (e.key === 'Enter') cgGo(); };
+if ($('cgOngBtn')) {
+  $('cgOngBtn').onclick = e => {
+    cg.ongOnly = !cg.ongOnly;
+    e.currentTarget.classList.toggle('on', cg.ongOnly);
+    updateActiveFiltersCounterUI();
+    cgLoad(true);
+  };
+}
 $('cgHide').onclick = e => { cg.hide = !cg.hide; e.currentTarget.classList.toggle('on', cg.hide); updateActiveFiltersCounterUI(); cgLoad(true); };
 let cgY; $('cgYear').oninput = () => { clearTimeout(cgY); cgY = setTimeout(() => { cg.feedSeedPage = 1; updateActiveFiltersCounterUI(); cgLoad(true); }, 600); };
 $('cgReset').onclick = () => {
   cgTagState.clear(); saveCgTagState();
-  ['cgYear2', 'cgSeason', 'cgLen', 'cgCountry', 'cgMood', 'cgAge'].forEach(i => { if ($(i)) $(i).value = ''; });
+  ['cgYear2', 'cgLen', 'cgCountry', 'cgAge'].forEach(i => { if ($(i)) $(i).value = ''; });
   $('cgSearch').value = ''; cg.q = ''; $('cgYear').value = ''; $('cgKind').value = ''; $('cgMode').value = 'actual';
   if ($('cgAnimeKind')) $('cgAnimeKind').value = '';
   if ($('cgVideoKind')) $('cgVideoKind').value = 'all';
-  cg.hide = false; cg.min = 0; cg.feedSeedPage = 1; $('cgMin').value = '0'; $('cgClear').style.display = 'none';
+  cg.hide = false; cg.ongOnly = false; cg.min = 0; cg.feedSeedPage = 1; $('cgMin').value = '0'; $('cgClear').style.display = 'none';
   $('cgHide').classList.remove('on');
+  $('cgOngBtn')?.classList.remove('on');
   cgGenres(); cgLoad(true);
 };
 $('cgMore').onclick = () => cgLoad(false);
@@ -4767,21 +4867,6 @@ $('cgClear').onclick = () => { $('cgSearch').value = ''; $('cgClear').style.disp
 $('cgFltBtn').onclick = () => {
   $('cgFilters').classList.toggle('fopen');
   updateCatalogFilterBtnState();
-};
-
-const MOODS = {fun: ['g:Comedy', '35'], serious: ['g:Drama', '18'], scary: ['g:Horror', '27'], love: ['g:Romance', '10749'], thrill: ['g:Action', '28'], mystery: ['g:Mystery', '9648'], scifi: ['g:Sci-Fi', '878']};
-$('cgMood').onchange = () => {
-  const v = $('cgMood').value; if (!v) return; $('cgMood').value = '';
-  if (v === 'short') { if ($('cgLen').style.display === 'none') return toast('Для этой категории фильтр длины недоступен'); $('cgLen').value = 's'; return cgLoad(true); }
-  const isVideo = cg.g === 'Кино и сериалы' || cg.g === 'Фильм' || cg.g === 'Сериал';
-  const key = (MOODS[v] || [])[isVideo ? 1 : 0];
-  if (!key) return;
-  cgTagState.clear();
-  cgTagState.set(key, 1);
-  saveCgTagState();
-  $('cgMode').value = 'top';
-  cgGenres();
-  cgLoad(true);
 };
 
 // Меню «🎲 Подобрать» (объединяет Случайное, Три варианта, Для тебя и Выбери за меня)
@@ -5009,69 +5094,6 @@ $('rndAdd').onclick = e => {
   openQuickAddStatusMenu($('rndAdd'), rndR, () => syncRndAddBtnUI(rndR));
 };
 
-// ---------- Календарь выхода серий ----------
-let calWeek = 0, calTab = 'a', calMine = false;
-const calStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + calWeek * 7); return d; };
-const fmtD = d => d.toLocaleDateString('ru-RU', {day: 'numeric', month: 'long'});
-
-async function calAnime(a, b) {
-  const q = 'query($a:Int,$b:Int,$p:Int){Page(page:$p,perPage:50){pageInfo{hasNextPage} airingSchedules(airingAt_greater:$a,airingAt_lesser:$b,sort:TIME){airingAt episode media{idMal title{romaji english} coverImage{medium} siteUrl isAdult}}}}', out = [];
-  for (let p = 1; p <= 6; p++) {
-    const j = await (await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({query: q, variables: {a: Math.floor(a / 1000), b: Math.floor(b / 1000), p}})})).json(), pg = j.data.Page;
-    pg.airingSchedules.forEach(x => { if (!x.media.isAdult) out.push({t: x.airingAt * 1000, ep: x.episode, mal: x.media.idMal, en: x.media.title.english || x.media.title.romaji, names: [x.media.title.romaji, x.media.title.english], img: x.media.coverImage.medium, url: x.media.siteUrl}); });
-    if (!pg.pageInfo.hasNextPage) break;
-  }
-  const mals = [...new Set(out.map(x => x.mal).filter(Boolean))];
-  for (let i = 0; i < mals.length; i += 50) { try { const t = await ruTitles('animes', mals.slice(i, i + 50)); out.forEach(x => { if (t[x.mal]) { x.ru = t[x.mal]; x.names.push(t[x.mal]); } }); } catch (e) {} }
-  return out;
-}
-
-async function calMovies(a, b) {
-  const k = getActiveTmdbKey();
-  const A = a.toISOString().slice(0, 10), B = new Date(b - 864e5).toISOString().slice(0, 10), out = [];
-  for (const [m, dk] of [['movie', 'primary_release_date'], ['tv', 'first_air_date']]) {
-    const j = await ruJson(`https://api.themoviedb.org/3/discover/${m}?api_key=${encodeURIComponent(k)}&language=ru-RU&sort_by=popularity.desc&${dk}.gte=${A}&${dk}.lte=${B}`, 8000);
-    (j.results || []).slice(0, 15).forEach(x => out.push({t: new Date((x.release_date || x.first_air_date) + 'T12:00:00').getTime(), day: true, ep: m === 'movie' ? 'Фильм' : 'Сериал', ru: x.title || x.name, names: [x.title, x.name, x.original_title, x.original_name], img: x.poster_path ? 'https://image.tmdb.org/t/p/w92' + x.poster_path : '', url: 'https://www.themoviedb.org/' + m + '/' + x.id}));
-  }
-  return out;
-}
-
-function calDraw(ev) {
-  const body = $('calBody'), find = n => items.find(i => nset(i).some(x => n.some(y => y && ruN(y) === ruN(x)))), fol = prof.follow || [];
-  ev = ev.map(x => ({...x, it: find(x.names)})).filter(x => !calMine || x.it || (x.mal && fol.includes(x.mal))).sort((p, q) => p.t - q.t);
-  body.replaceChildren(); if (!ev.length) return body.append(el('div', 'msg', calMine ? 'На этой неделе из твоей коллекции и подписок ничего не выходит.' : 'Ничего не нашлось.'));
-  const todayS = new Date().toDateString(); let last = '';
-  ev.forEach(x => {
-    const d = new Date(x.t), ds = d.toDateString();
-    if (ds !== last) { last = ds; body.append(el('div', 'fs', (ds === todayS ? 'Сегодня · ' : '') + d.toLocaleDateString('ru-RU', {weekday: 'long', day: 'numeric', month: 'long'}))); }
-    const r = el('div', 'calr'), img = el('img'), tx = el('div', 'calt'); img.src = x.img || ''; img.alt = ''; img.loading = 'lazy';
-    tx.append(el('b', null, x.ru || x.en), el('span', 'meta', (x.day ? x.ep : d.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'}) + ' · серия ' + x.ep)));
-    if (x.it) tx.append(el('span', 'chip', '✓ ' + x.it.status));
-    if (!x.day && x.t < Date.now()) tx.append(el('span', 'chip', 'вышла'));
-    r.append(img, tx);
-    if (x.mal) {
-      const st = el('button', 'chip', fol.includes(x.mal) ? '★' : '☆'); st.title = 'Следить за этим тайтлом';
-      st.onclick = () => { const f = prof.follow || []; prof.follow = f.includes(x.mal) ? f.filter(m => m !== x.mal) : [...f, x.mal]; profCloud(); st.textContent = prof.follow.includes(x.mal) ? '★' : '☆'; };
-      r.append(st);
-    }
-    if (x.url) { img.style.cursor = 'pointer'; img.onclick = () => window.open(x.url, '_blank', 'noopener'); }
-    body.append(r);
-  });
-}
-
-async function calLoad() {
-  const a = calStart(), b = new Date(a.getTime() + 7 * 864e5), body = $('calBody');
-  $('calRange').textContent = `${fmtD(a)} — ${fmtD(new Date(b.getTime() - 864e5))}`;
-  body.replaceChildren(el('div', 'msg', 'Загружаю…'));
-  try { calDraw(calTab === 'a' ? await calAnime(a, b) : await calMovies(a, b)); } catch (e) { body.replaceChildren(el('div', 'msg', 'Не удалось загрузить календарь: ' + e.message)); }
-}
-const calOpen = () => { calWeek = 0; $('calModal').style.display = 'flex'; calLoad(); };
-$('cgCal').onclick = calOpen; $('calClose').onclick = () => { $('calModal').style.display = 'none'; };
-$('calPrev').onclick = () => { calWeek--; calLoad(); }; $('calNext').onclick = () => { calWeek++; calLoad(); }; $('calToday').onclick = () => { calWeek = 0; calLoad(); };
-$('calTabA').onclick = () => { calTab = 'a'; $('calTabA').classList.add('on'); $('calTabM').classList.remove('on'); calLoad(); };
-$('calTabM').onclick = () => { calTab = 'm'; $('calTabM').classList.add('on'); $('calTabA').classList.remove('on'); calLoad(); };
-$('calMine').onclick = () => { calMine = !calMine; $('calMine').classList.toggle('on', calMine); calLoad(); };
-
 // ---------- Управление данными (💾), Пакетные операции, Поиск и объединение повторов (🧹), Связь с каталогом (🔗), Разобрать (📥) и Импорт (Бэкап, Кинопоиск, MAL/Shikimori/AniList) ----------
 
 let importReplace = false;
@@ -5130,8 +5152,8 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
   backupCopies.forEach(it => {
     const primaryDocId = getCloudDocId(it);
     const actualDocId = it._docId ? String(it._docId) : primaryDocId;
+    // Добавляем в пакет удаления только реальный docId документа, чтобы правила Firestore не отклоняли батч из-за несуществующего ID
     docIdsToRemove.add(actualDocId);
-    docIdsToRemove.add(primaryDocId);
     window._recentlyDeletedIds.add(String(it.id));
     window._recentlyDeletedIds.add(actualDocId);
     window._recentlyDeletedIds.add(primaryDocId);
@@ -5144,9 +5166,10 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
     });
   });
 
-  // 2. Сразу обновляем локальный список, кэш и DOM ДО сетевого ожидания, чтобы onSnapshot не вернул старый кэш
-  window._explicitEmptyAllowed = true;
-  items = items.filter(i => !delIdStrs.has(String(i.id)));
+  // 2. Сразу обновляем локальный список, кэш и DOM ДО сетевого ожидания; разрешаем пустой список ТОЛЬКО если реально удалены все тайтлы!
+  const remainingAfterDelete = items.filter(i => !delIdStrs.has(String(i.id)));
+  window._explicitEmptyAllowed = (remainingAfterDelete.length === 0);
+  items = remainingAfterDelete;
   saveLocalItems(items.length === 0);
   profCloud(true);
   refresh();
@@ -7303,7 +7326,7 @@ class CharacterSeiyuuManager {
     if (this.cache.has(k)) return this.cache.get(k);
     if (['Аниме', 'Манга', 'Ранобэ'].includes(item.category) || item.src === 'AniList') {
       const mType = item.category === 'Аниме' ? 'ANIME' : 'MANGA';
-      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal bannerImage format source duration episodes volumes chapters trailer{id site} relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,RELEVANCE,ID],perPage:25){edges{role node{name{full native}image{large}}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
+      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal status bannerImage format source duration episodes volumes chapters startDate{year month day} nextAiringEpisode{airingAt episode} trailer{id site} relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,RELEVANCE,ID],perPage:25){edges{role node{name{full native}image{large}}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
       const vars = { t: mType };
       if (item.aniId) vars.id = Number(item.aniId); else if (item.mal) vars.mal = Number(item.mal); else vars.s = item.titleEn || item.en || item.title;
       const j = await (await fetch('https://graphql.anilist.co', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, variables: vars }) })).json();
@@ -7331,7 +7354,12 @@ class CharacterSeiyuuManager {
       const res = {
         isAnime: false,
         isLiveAction: true,
-        mediaMeta: { bannerImage: d?.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + d.backdrop_path : '' },
+        mediaMeta: {
+          bannerImage: d?.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + d.backdrop_path : '',
+          isOngoingTmdb: d?.status === 'Returning Series' || d?.status === 'In Production',
+          nextEpAirDate: d?.next_episode_to_air?.air_date || d?.last_air_date || d?.first_air_date || '',
+          nextEpNum: d?.next_episode_to_air?.episode_number || 0
+        },
         items: cast.slice(0, 20).map((c, idx) => ({ name: c.character || c.name, enName: c.original_name || c.name, role: idx < 4 ? 'MAIN' : 'SUP', img: c.profile_path ? 'https://image.tmdb.org/t/p/w342' + c.profile_path : FALL, vaName: c.name || '', vaImg: c.profile_path ? 'https://image.tmdb.org/t/p/w185' + c.profile_path : '', isLiveActor: true }))
       };
       this.cache.set(k, res); return res;
@@ -7389,6 +7417,8 @@ async function openFullTitlePage(itemObj) {
   $('profileView').style.display = 'none';
   page.style.display = 'block';
   window.scrollTo({ top: 0, behavior: 'smooth' });
+  const curTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
+  pushAppHistoryState({ tab: curTab, fullPage: true, titleId: itemObj.id || itemObj.title });
 
   const inCol = items.find(i => i.id === itemObj.id || same(i, itemObj));
   const activeItem = inCol || itemObj;
@@ -7526,6 +7556,38 @@ async function openFullTitlePage(itemObj) {
   await CharacterSeiyuuManager.render(charsSec, activeItem);
   const cachedData = await CharacterSeiyuuManager.fetchChars(activeItem);
   const mediaMeta = cachedData?.mediaMeta;
+
+  // Вывод дня недели и даты выхода серий для онгоингов на полной странице тайтла
+  const isOngoingNow = Boolean(activeItem.ongoing || mediaMeta?.status === 'RELEASING' || mediaMeta?.isOngoingTmdb);
+  if (isOngoingNow) {
+    const WEEKDAYS_ACC = ['воскресеньям', 'понедельникам', 'вторникам', 'средам', 'четвергам', 'пятницам', 'субботам'];
+    const WEEKDAYS_NOM = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+    let scheduleText = '';
+    if (mediaMeta?.nextAiringEpisode?.airingAt) {
+      const airDate = new Date(mediaMeta.nextAiringEpisode.airingAt * 1000);
+      const dayIdx = airDate.getDay();
+      const dateStr = airDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+      const timeStr = airDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      const epNum = mediaMeta.nextAiringEpisode.episode;
+      scheduleText = `По ${WEEKDAYS_ACC[dayIdx]} (${WEEKDAYS_NOM[dayIdx]}) · ${epNum ? epNum + ' серия — ' : ''}${dateStr} в ${timeStr}`;
+    } else if (mediaMeta?.nextEpAirDate) {
+      const airDate = new Date(mediaMeta.nextEpAirDate + 'T12:00:00');
+      if (!isNaN(airDate.getTime())) {
+        const dayIdx = airDate.getDay();
+        const dateStr = airDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+        scheduleText = `По ${WEEKDAYS_ACC[dayIdx]} (${WEEKDAYS_NOM[dayIdx]})${mediaMeta.nextEpNum ? ` · ${mediaMeta.nextEpNum} серия — ${dateStr}` : ''}`;
+      }
+    } else if (mediaMeta?.startDate?.year && mediaMeta?.startDate?.month && mediaMeta?.startDate?.day) {
+      const stDate = new Date(mediaMeta.startDate.year, mediaMeta.startDate.month - 1, mediaMeta.startDate.day, 12, 0, 0);
+      if (!isNaN(stDate.getTime())) {
+        const dayIdx = stDate.getDay();
+        scheduleText = `По ${WEEKDAYS_ACC[dayIdx]} (${WEEKDAYS_NOM[dayIdx]})`;
+      }
+    }
+    if (scheduleText) {
+      addSpec('📅 Расписание выхода (Онгоинг)', scheduleText);
+    }
+  }
 
   // Устанавливаем на правую часть шапки портрет главного героя или широкоформатный баннер (как на Jut-su, Скриншот 5)
   const mainCharImg = (cachedData?.items || []).find(c => c.role === 'MAIN' && c.img && c.img !== FALL)?.img || (cachedData?.items || [])[0]?.img || '';
@@ -8808,9 +8870,20 @@ if ($('shikiImportBtn')) {
   };
 }
 
+// ---------- Навигация и поддержка кнопки «Назад» в браузере (History API) ----------
+let _suppressHistoryPush = false;
+function pushAppHistoryState(stateObj) {
+  if (_suppressHistoryPush) return;
+  try {
+    history.pushState(stateObj, '');
+  } catch (e) {}
+}
+
 // ---------- Переключение 3 главных вкладок: 🌐 Каталог / 📚 Моя коллекция / 👤 Профиль ----------
-function applyMainTabView(v) {
+function applyMainTabView(v, fromHistory = false) {
   const mode = (v === 'collection' || v === 'profile') ? v : 'catalog';
+  const prevTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || '';
+  const wasFullPage = $('titlePageView')?.style.display === 'block';
   document.querySelectorAll('#mainTabs .tab').forEach(x => x.classList.toggle('on', x.dataset.v === mode));
   document.querySelectorAll('#botnav button').forEach(x => x.classList.toggle('on', x.dataset.go === mode));
   try { localStorage.setItem('lastTab', mode); } catch (e) {}
@@ -8836,6 +8909,9 @@ function applyMainTabView(v) {
   if (colWrap) colWrap.style.display = isCol ? '' : 'none';
   if (!isCol && revBox) revBox.style.display = 'none';
   if (mode === 'catalog') cgMarks();
+  if (!fromHistory && tabDone && (prevTab !== mode || wasFullPage)) {
+    pushAppHistoryState({ tab: mode, fullPage: false });
+  }
 }
 
 document.querySelectorAll('#mainTabs .tab').forEach(b => {
@@ -8847,7 +8923,11 @@ function homeTab() {
   if (tabDone) return; tabDone = true;
   let t = ''; try { t = localStorage.getItem('lastTab'); } catch (e) {}
   if (!['catalog', 'collection', 'profile'].includes(t)) t = 'catalog';
-  applyMainTabView(t);
+  applyMainTabView(t, true);
+  try {
+    history.replaceState({ tab: t, fullPage: false, root: true }, '');
+    history.pushState({ tab: t, fullPage: false }, '');
+  } catch (e) {}
 }
 
 function refresh(opts = {}) {
@@ -8896,6 +8976,8 @@ function refresh(opts = {}) {
     $('modalX').classList.toggle('show', !!open);
     if (open && !back) {
       back = document.activeElement;
+      const curTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
+      pushAppHistoryState({ tab: curTab, fullPage: $('titlePageView')?.style.display === 'block', modal: open.id });
       const f = open.querySelector('input:not([type=hidden]),select,textarea,button');
       if (f) setTimeout(() => f.focus({preventScroll: true}), 30);
     }
@@ -8954,3 +9036,43 @@ if ($('restoreSafetyBackupBtn')) {
     await previewAndExecuteImport(pool.map(fix), 'Страховочная копия браузера', '', false, null);
   };
 }
+
+
+window.addEventListener('popstate', e => {
+  if (!user) return;
+  _suppressHistoryPush = true;
+  try {
+    if ($('posterLightboxModal')?.classList.contains('open')) {
+      closePosterLightbox();
+      history.pushState({ tab: document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog' }, '');
+      return;
+    }
+    if ($('qaFloatMenu')?.classList.contains('open')) {
+      closeQuickAddStatusMenu();
+      history.pushState({ tab: document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog' }, '');
+      return;
+    }
+    const openMod = [...document.querySelectorAll('.modal')].find(m => m.style.display && m.style.display !== 'none');
+    if (openMod) {
+      closeAll();
+      return;
+    }
+    if ($('titlePageView')?.style.display === 'block' && (!e.state || !e.state.fullPage)) {
+      $('titlePageView').style.display = 'none';
+      const targetTab = (e.state && e.state.tab) || document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
+      applyMainTabView(targetTab, true);
+      return;
+    }
+    if (e.state && e.state.tab) {
+      applyMainTabView(e.state.tab, true);
+      if (e.state.root) {
+        history.pushState({ tab: e.state.tab, fullPage: false }, '');
+      }
+      return;
+    }
+    const curTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
+    history.pushState({ tab: curTab, fullPage: false }, '');
+  } finally {
+    _suppressHistoryPush = false;
+  }
+});

@@ -820,3 +820,32 @@ html[data-theme=white] .toast.bad {
   color: #991b1b !important;
   border-color: #ef4444 !important;
 }
+
+/* === Компактный выбор подборок внутри всплывающего меню статуса (#qaFloatMenu) === */
+.qa-folder-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 185px;
+  overflow-y: auto;
+  padding: 4px 2px;
+  border-top: 1px solid var(--bd);
+  margin-top: 2px;
+}
+.qa-folder-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px !important;
+  font-size: 12.5px !important;
+  border-radius: var(--rad-sm);
+}
+.qa-folder-item.on {
+  background: color-mix(in srgb, var(--ac) 22%, transparent) !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+}
+html[data-theme=white] .qa-folder-item.on {
+  color: #14161f !important;
+}

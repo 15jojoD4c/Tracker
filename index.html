@@ -148,15 +148,6 @@
           <select id="cgCountry"><option value="">Любая страна</option><option value="US">США</option><option value="RU">Россия</option><option value="GB">Великобритания</option><option value="FR">Франция</option><option value="DE">Германия</option><option value="JP">Япония</option><option value="KR">Южная Корея</option><option value="CN">Китай</option><option value="IN">Индия</option></select>
           <button class="tb" id="cgReset" type="button">Сбросить <span id="cgActiveFiltersBadge"></span></button>
         </div>
-          <select id="cgMood" title="Подобрать по настроению"><option value="">Настроение…</option><option value="fun">Весёлое</option><option value="serious">Серьёзное</option><option value="scary">Страшное</option><option value="love">Романтичное</option><option value="thrill">Захватывающее</option><option value="mystery">Загадочное</option><option value="scifi">Фантастика</option><option value="short">Короткое</option></select>
-          <select id="cgSeason"><option value="">Любой сезон</option><option value="WINTER">Зима</option><option value="SPRING">Весна</option><option value="SUMMER">Лето</option><option value="FALL">Осень</option></select>
-          <select id="cgLen"></select>
-          <select id="cgAge" title="Возрастной контент"><option value="">Без 18+</option><option value="all">С 18+</option><option value="only">Только 18+</option></select>
-          <select id="cgCountry"><option value="">Любая страна</option><option value="US">США</option><option value="RU">Россия</option><option value="GB">Великобритания</option><option value="FR">Франция</option><option value="DE">Германия</option><option value="JP">Япония</option><option value="KR">Южная Корея</option><option value="CN">Китай</option><option value="IN">Индия</option></select>
-          <button class="tb" id="cgNow" type="button">Текущий сезон</button>
-          <button class="tb" id="cgRefreshFeedBtn" type="button">Обновить ленту</button>
-          <button class="tb" id="cgReset" type="button">Сбросить <span id="cgActiveFiltersBadge"></span></button>
-        </div>
         <div class="cg-tags-panel" id="cgTagsPanel" style="display:none"></div>
       </div>
       <!-- Видимые чипы активных фильтров каталога (показываются даже если панель фильтров свёрнута на телефоне — Часть 1 п.5) -->
@@ -672,6 +663,47 @@
   </div>
 </div>
 
-<script type="module" src="app.js"></script>
+<script type="module">
+try {
+  const [fbApp, fbAuth, fbDb] = await Promise.all([
+    import("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"),
+    import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js"),
+    import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js")
+  ]);
+  Object.assign(window, fbApp, fbAuth, fbDb);
+} catch (e) {
+  console.warn("Firebase недоступен (офлайн-режим):", e);
+  const noop = () => Promise.resolve();
+  Object.assign(window, {
+    initializeApp: () => ({}),
+    getAuth: () => ({ currentUser: null }),
+    getFirestore: () => ({}),
+    GoogleAuthProvider: class { setCustomParameters() {} },
+    EmailAuthProvider: { credential: () => ({}) },
+    signInWithPopup: noop, signInWithRedirect: noop, getRedirectResult: () => Promise.resolve(null),
+    linkWithPopup: noop, linkWithCredential: noop, reauthenticateWithPopup: noop, reauthenticateWithCredential: noop,
+    updatePassword: noop, signOut: noop,
+    onAuthStateChanged: (_a, cb) => { setTimeout(() => cb(null), 0); return () => {}; },
+    signInWithEmailAndPassword: noop, createUserWithEmailAndPassword: noop,
+    sendPasswordResetEmail: noop, sendEmailVerification: noop, deleteUser: noop,
+    collection: () => ({}), doc: () => ({}), setDoc: noop, deleteDoc: noop,
+    getDoc: () => Promise.resolve({ exists: () => false }),
+    getDocs: () => Promise.resolve({ docs: [] }),
+    query: () => ({}), where: () => ({}), limit: () => ({}),
+    onSnapshot: () => () => {},
+    writeBatch: () => ({ set() {}, delete() {}, commit: noop })
+  });
+}
+
+for (const src of ["app-core.js", "app-catalog.js", "app.js"]) {
+  await new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.body.appendChild(s);
+  });
+}
+</script>
 </body>
 </html>

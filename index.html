@@ -11,9 +11,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Мой Медиа Трекер</title>
+<link rel="preload" href="app_core.js" as="script">
+<link rel="preload" href="app_catalog.js" as="script">
+<link rel="preload" href="app.js" as="script">
 <link rel="stylesheet" href="style.css">
 <style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
-<script>setTimeout(()=>document.body&&document.body.classList.remove('auth-checking'),1200);</script>
+<script>setTimeout(()=>document.body&&document.body.classList.remove('auth-checking'),600);</script>
 </head>
 <body class="auth-checking">
 
@@ -165,7 +168,7 @@
           <div class="hyb-now-watching" id="hybNowWatching" style="display:none" title="Нажми, чтобы открыть тайтл">
             <img id="hybNwPoster" src="" alt="">
             <div style="min-width:0">
-              <div class="hyb-nw-tag">СЕЙЧАС СМОТРЮ</div>
+              <div class="hyb-nw-tag" id="hybNwTag">СЕЙЧАС СМОТРЮ</div>
               <div class="hyb-nw-title" id="hybNwTitle"></div>
               <div class="hyb-nw-sub" id="hybNwSub">активно сейчас</div>
             </div>
@@ -399,13 +402,7 @@
     <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;color:#f472b6;font-weight:700"><input type="checkbox" id="inputFavHeart" style="width:18px;height:18px"> ❤ Отметить как «Любимое» (не сбрасывает статус просмотра)</label>
   </div>
   <select id="inputKind" style="display:none"><option>Манга</option><option>Манхва</option><option>Маньхуа</option><option>Комикс</option></select>
-  <button type="button" class="btn btn-s" id="afToggle">✍ Заполнить вручную</button>
-  <div class="af" id="afBox">
-    <div class="row"><input id="afQuery" placeholder="Автозаполнение: введи название..." style="flex:1"><button class="btn btn-s" id="afBtn" type="button">Найти</button></div>
-    <div class="meta" id="afHint" style="margin:0"></div>
-    <div id="afResults"></div>
-  </div>
-  <div id="manualTitlesSec" style="display:none;flex-direction:column;gap:10px">
+  <div id="manualTitlesSec" style="display:flex;flex-direction:column;gap:10px">
     <div class="fs">Названия</div>
     <input type="text" id="inputTitle" placeholder="Название (русское) *">
     <div class="row2"><input id="inputTitleEn" placeholder="Английское"><input id="inputTitleOrig" placeholder="Оригинальное"></div>
@@ -665,15 +662,23 @@
 </div>
 
 <script type="module">
+const importWithTimeout = (url, ms = 4500) => Promise.race([
+  import(url),
+  new Promise((_, rej) => setTimeout(() => rej(new Error("Firebase load timeout")), ms))
+]);
+
+// Запускаем предзагрузку локальных скриптов в кэш браузера параллельно с импортом Firebase
+const prefetchLocal = ["app_core.js", "app_catalog.js", "app.js"].map(u => fetch(u).catch(() => null));
+
 try {
   const [fbApp, fbAuth, fbDb] = await Promise.all([
-    import("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"),
-    import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js"),
-    import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js")
+    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"),
+    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js"),
+    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js")
   ]);
   Object.assign(window, fbApp, fbAuth, fbDb);
 } catch (e) {
-  console.warn("Firebase недоступен (офлайн-режим):", e);
+  console.warn("Firebase недоступен или медленный VPN (включён быстрый офлайн-фоллбэк):", e);
   const noop = () => Promise.resolve();
   Object.assign(window, {
     initializeApp: () => ({}),
@@ -685,7 +690,16 @@ try {
     signInWithPopup: noop, signInWithRedirect: noop, getRedirectResult: () => Promise.resolve(null),
     linkWithPopup: noop, linkWithCredential: noop, reauthenticateWithPopup: noop, reauthenticateWithCredential: noop,
     updatePassword: noop, signOut: noop,
-    onAuthStateChanged: (_a, cb) => { setTimeout(() => cb(null), 0); return () => {}; },
+    onAuthStateChanged: (_a, cb) => {
+      let cachedUid = "";
+      try { cachedUid = localStorage.getItem("lastCloudUid") || ""; } catch (err) {}
+      if (cachedUid) {
+        setTimeout(() => cb({ uid: cachedUid, email: localStorage.getItem("lastCloudEmail") || "", displayName: localStorage.getItem("lastCloudName") || "Моя коллекция" }), 0);
+      } else {
+        setTimeout(() => cb(null), 0);
+      }
+      return () => {};
+    },
     signInWithEmailAndPassword: noop, createUserWithEmailAndPassword: noop,
     sendPasswordResetEmail: noop, sendEmailVerification: noop, deleteUser: noop,
     collection: () => ({}), doc: () => ({}), setDoc: noop, deleteDoc: noop,
@@ -696,6 +710,8 @@ try {
     writeBatch: () => ({ set() {}, delete() {}, commit: noop })
   });
 }
+
+await Promise.allSettled(prefetchLocal);
 
 const loadScript = src => new Promise((resolve, reject) => {
   const s = document.createElement("script");

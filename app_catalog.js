@@ -30,7 +30,107 @@ async function ruToEnTranslate(qStr) {
   return '';
 }
 
+// Маппинг объекта медиа AniList в карточку каталога
+function mapAniListMediaNode(m, type = 'ANIME') {
+  const t = m.title || {}, main = t.english || t.romaji || t.native || '';
+  const stf = m.staff?.edges || [], pick = re => [...new Set(stf.filter(e => re.test(e.role)).map(e => e.node.name.full))].slice(0, 2).join(', ');
+  const alt = [...new Set([t.romaji, ...(m.synonyms || [])].filter(x => x && x !== main && x !== t.english))].join(', ');
+  return {
+    aniId: m.id || 0, mal: m.idMal || 0, isAdult: !!m.isAdult, format: m.format || '',
+    banner: m.bannerImage || '',
+    upcoming: m.status === 'NOT_YET_RELEASED',
+    trailerId: (m.trailer && m.trailer.site === 'youtube') ? m.trailer.id : '',
+    rawGenres: m.genres || [], rawTags: (m.tags || []).filter(t => !t.isMediaSpoiler && t.rank >= 55).map(t => t.name),
+    vols: m.volumes || 0, eps: m.episodes || m.chapters || 0, dur: m.duration || 0, title: main, en: t.english || '', orig: t.native || '', alt,
+    author: type === 'ANIME' ? (pick(/Original Creator/i) || pick(/Director/i)) : (pick(/Story/i) || pick(/Art/i)),
+    studio: (m.studios?.nodes || []).map(n => n.name).slice(0, 2).join(', '), source: SRC[m.source] || '', ongoing: m.status === 'RELEASING', src: 'AniList', url: m.siteUrl, poster: m.coverImage?.large || '', year: m.startDate?.year || '',
+    ext: m.averageScore ? (m.averageScore / 10).toFixed(1) : '', tags: [...(m.genres || []).map(g => RU[g] || g), ...(m.tags || []).filter(t => !t.isMediaSpoiler && t.rank >= 60).slice(0, 8).map(t => ruTag(t.name))],
+    desc: m.description ? decode(m.description.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim() : '',
+    category: type === 'ANIME' ? 'Аниме' : m.format === 'NOVEL' ? 'Ранобэ' : 'Манга',
+    kind: {KR: 'Манхва', CN: 'Маньхуа', TW: 'Маньхуа', JP: 'Манга'}[m.countryOfOrigin] || 'Комикс',
+    subKind: {KR: 'Манхва', CN: 'Маньхуа', TW: 'Маньхуа', JP: 'Манга'}[m.countryOfOrigin] || 'Комикс'
+  };
+}
+
+// Фоллбэк каталога через Shikimori API (shikimori.one работает в России без VPN!)
+async function _shikiCatalogFallback(search, type, o = {}) {
+  const isNovel = o.format === 'NOVEL';
+  const endpoint = type === 'ANIME' ? 'animes' : (isNovel ? 'ranobe' : 'mangas');
+  const params = new URLSearchParams();
+  params.set('page', String(o.page || 1));
+  params.set('limit', String(Math.min(50, o.per || 24)));
+  const sortVal = (o.sort && o.sort[0]) || 'POPULARITY_DESC';
+  const orderMap = {
+    SCORE_DESC: 'ranked',
+    TRENDING_DESC: 'popularity',
+    POPULARITY_DESC: 'popularity',
+    START_DATE_DESC: 'aired_on',
+    FAVOURITES_DESC: 'popularity',
+    SEARCH_MATCH: 'ranked'
+  };
+  params.set('order', orderMap[sortVal] || 'popularity');
+  if (search) params.set('search', search);
+  if (o.status === 'RELEASING') params.set('status', 'ongoing');
+  else if (o.status === 'NOT_YET_RELEASED') params.set('status', 'anons');
+  if (type === 'ANIME') {
+    if (o.format === 'MOVIE') params.set('kind', 'movie');
+    else if (o.fn === 'MOVIE') params.set('kind', 'tv,ova,ona,special');
+  } else if (!isNovel) {
+    if (o.country === 'KR') params.set('kind', 'manhwa');
+    else if (o.country === 'CN') params.set('kind', 'manhua');
+    else if (o.country === 'JP') params.set('kind', 'manga,one_shot');
+  }
+  if (o.ad === false) params.set('censored', 'true');
+  if (o.ag && o.ag >= 70) params.set('score', '7');
+
+  const list = await shiki(`/api/${endpoint}?${params.toString()}`);
+  if (!Array.isArray(list)) return [];
+  return list.map(d => {
+    const ruName = d.russian || d.name || '';
+    const enName = d.name || '';
+    if (d.id && ruName) RUC[endpoint + d.id] = ruName;
+    const catName = type === 'ANIME' ? 'Аниме' : (isNovel || d.kind === 'light_novel' || d.kind === 'novel' ? 'Ранобэ' : 'Манга');
+    const subK = catName === 'Манга' ? (d.kind === 'manhwa' ? 'Манхва' : d.kind === 'manhua' ? 'Маньхуа' : 'Манга') : '';
+    const fmt = d.kind === 'movie' ? 'MOVIE' : d.kind === 'tv' ? 'TV' : d.kind === 'ova' ? 'OVA' : d.kind === 'ona' ? 'ONA' : (catName === 'Ранобэ' ? 'NOVEL' : 'MANGA');
+    return {
+      aniId: 0,
+      mal: d.id || 0,
+      isAdult: d.rating === 'rx',
+      format: fmt,
+      banner: '',
+      upcoming: d.status === 'anons',
+      trailerId: '',
+      rawGenres: [],
+      rawTags: [],
+      vols: Number(d.volumes) || 0,
+      eps: Number(d.episodes || d.chapters || d.episodes_aired) || 0,
+      dur: type === 'ANIME' ? 24 : 0,
+      title: ruName,
+      en: enName,
+      orig: enName,
+      alt: '',
+      author: '',
+      studio: '',
+      source: '',
+      ongoing: d.status === 'ongoing',
+      src: 'AniList',
+      url: 'https://shikimori.one' + (d.url || `/${endpoint}/${d.id}`),
+      poster: d.image?.original ? 'https://shikimori.one' + d.image.original : (d.image?.preview ? 'https://shikimori.one' + d.image.preview : ''),
+      year: String(d.aired_on || d.released_on || '').slice(0, 4),
+      ext: d.score && Number(d.score) > 0 ? Number(d.score).toFixed(1) : '',
+      tags: [],
+      desc: '',
+      ruTitle: ruName ? 1 : 0,
+      _fromShikiFallback: true,
+      category: catName,
+      kind: subK || catName,
+      subKind: subK
+    };
+  });
+}
+
 async function _anilistRaw(search, type, o = {}) {
+  const origSearch = search;
   if (hasRu(search)) {
     let en = findCachedEnForRuQuery(search, type);
     if (!en && shikiOk()) {
@@ -46,38 +146,89 @@ async function _anilistRaw(search, type, o = {}) {
     if (!en) { try { en = await ruToEnTranslate(search); } catch (e) {} }
     if (en) search = en;
   }
-  const gql = 'query($s:String,$id:Int,$idMal:Int,$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int,$g:[String],$gn:[String],$sg:FuzzyDateInt,$sl:FuzzyDateInt,$ag:Int,$pl:Int,$el:Int,$eg:Int,$cl:Int,$cg:Int,$se:MediaSeason,$sy:Int,$tg:[String],$tgn:[String]){Page(page:$p,perPage:$pp){media(search:$s,id:$id,idMal:$idMal,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg,genre_in:$g,genre_not_in:$gn,startDate_greater:$sg,startDate_lesser:$sl,averageScore_greater:$ag,popularity_lesser:$pl,episodes_lesser:$el,episodes_greater:$eg,chapters_lesser:$cl,chapters_greater:$cg,season:$se,seasonYear:$sy,tag_in:$tg,tag_not_in:$tgn){id idMal isAdult format siteUrl countryOfOrigin bannerImage trailer{id site} title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore episodes duration chapters volumes genres tags{name rank isMediaSpoiler} status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
-  const r = await fetch('https://graphql.anilist.co', {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'}, body: JSON.stringify({query: gql, variables: {s: search || undefined, id: o.id || undefined, idMal: o.idMal || undefined, t: type, p: o.page || 1, pp: o.per || 10, so: o.sort || ['SEARCH_MATCH'], st: o.status, f: o.format, fn: o.fn, c: o.country, ad: o.ad, pg: o.pg, g: o.genre, gn: o.genreNot, sg: o.sg, sl: o.sl, ag: o.ag, pl: o.pl, el: o.el, eg: o.eg, cl: o.cl, cg: o.cg, se: o.se, sy: o.sy, tg: o.tag, tgn: o.tagNot}})});
-  const j = await r.json(); if (j.errors) throw new Error(j.errors[0].message);
-  return j.data.Page.media.map(m => {
-    const t = m.title, main = t.english || t.romaji || t.native;
-    const stf = m.staff?.edges || [], pick = re => [...new Set(stf.filter(e => re.test(e.role)).map(e => e.node.name.full))].slice(0, 2).join(', ');
-    const alt = [...new Set([t.romaji, ...(m.synonyms || [])].filter(x => x && x !== main && x !== t.english))].join(', ');
-    return {
-      aniId: m.id || 0, mal: m.idMal || 0, isAdult: !!m.isAdult, format: m.format || '',
-      banner: m.bannerImage || '',
-      upcoming: m.status === 'NOT_YET_RELEASED',
-      trailerId: (m.trailer && m.trailer.site === 'youtube') ? m.trailer.id : '',
-      rawGenres: m.genres || [], rawTags: (m.tags || []).filter(t => !t.isMediaSpoiler && t.rank >= 55).map(t => t.name),
-      vols: m.volumes || 0, eps: m.episodes || m.chapters || 0, dur: m.duration || 0, title: main, en: t.english || '', orig: t.native || '', alt,
-      author: type === 'ANIME' ? (pick(/Original Creator/i) || pick(/Director/i)) : (pick(/Story/i) || pick(/Art/i)),
-      studio: (m.studios?.nodes || []).map(n => n.name).slice(0, 2).join(', '), source: SRC[m.source] || '', ongoing: m.status === 'RELEASING', src: 'AniList', url: m.siteUrl, poster: m.coverImage.large, year: m.startDate.year || '',
-      ext: m.averageScore ? (m.averageScore / 10).toFixed(1) : '', tags: [...(m.genres || []).map(g => RU[g] || g), ...(m.tags || []).filter(t => !t.isMediaSpoiler && t.rank >= 60).slice(0, 8).map(t => ruTag(t.name))],
-      desc: m.description ? decode(m.description.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim() : '',
-      category: type === 'ANIME' ? 'Аниме' : m.format === 'NOVEL' ? 'Ранобэ' : 'Манга',
-      kind: {KR: 'Манхва', CN: 'Маньхуа', TW: 'Маньхуа', JP: 'Манга'}[m.countryOfOrigin] || 'Комикс',
-      subKind: {KR: 'Манхва', CN: 'Маньхуа', TW: 'Маньхуа', JP: 'Манга'}[m.countryOfOrigin] || 'Комикс'
-    };
-  });
+  const gql = 'query($s:String,$id:Int,$idMal:Int,$idMalIn:[Int],$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int,$g:[String],$gn:[String],$sg:FuzzyDateInt,$sl:FuzzyDateInt,$ag:Int,$pl:Int,$el:Int,$eg:Int,$cl:Int,$cg:Int,$se:MediaSeason,$sy:Int,$tg:[String],$tgn:[String]){Page(page:$p,perPage:$pp){media(search:$s,id:$id,idMal:$idMal,idMal_in:$idMalIn,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg,genre_in:$g,genre_not_in:$gn,startDate_greater:$sg,startDate_lesser:$sl,averageScore_greater:$ag,popularity_lesser:$pl,episodes_lesser:$el,episodes_greater:$eg,chapters_lesser:$cl,chapters_greater:$cg,season:$se,seasonYear:$sy,tag_in:$tg,tag_not_in:$tgn){id idMal isAdult format siteUrl countryOfOrigin bannerImage trailer{id site} title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore episodes duration chapters volumes genres tags{name rank isMediaSpoiler} status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4800);
+    let r;
+    try {
+      r = await fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+        body: JSON.stringify({query: gql, variables: {s: search || undefined, id: o.id || undefined, idMal: o.idMal || undefined, idMalIn: o.idMalIn || undefined, t: type, p: o.page || 1, pp: o.per || 10, so: o.sort || ['SEARCH_MATCH'], st: o.status, f: o.format, fn: o.fn, c: o.country, ad: o.ad, pg: o.pg, g: o.genre, gn: o.genreNot, sg: o.sg, sl: o.sl, ag: o.ag, pl: o.pl, el: o.el, eg: o.eg, cl: o.cl, cg: o.cg, se: o.se, sy: o.sy, tg: o.tag, tgn: o.tagNot}})
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (r.status === 429) {
+      const err429 = new Error('HTTP 429 Too Many Requests');
+      err429.isRateLimit = true;
+      throw err429;
+    }
+    const j = await r.json();
+    if (j.errors) throw new Error(j.errors[0].message);
+    return (j.data?.Page?.media || []).map(m => mapAniListMediaNode(m, type));
+  } catch (err) {
+    // Если AniList недоступен без VPN в РФ — бесшовно переключаемся на Shikimori API (shikimori.one)
+    if (!o.id && !o.idMal && !o.idMalIn && shikiOk()) {
+      const fbRes = await _shikiCatalogFallback(origSearch || search, type, o).catch(() => null);
+      if (fbRes && fbRes.length) return fbRes;
+    }
+    throw err;
+  }
 }
 
 const getActiveTmdbKey = () => localStorage.getItem('tmdbKey') || DEFAULT_TMDB_KEY;
 
+// Запрос к TMDB с автоматическим обходом блокировки в РФ без VPN через прокси при недоступности api.themoviedb.org
+let _tmdbDirectBlocked = false;
+async function fetchTmdbJson(targetUrl, timeoutMs = 4200) {
+  const tryDirect = async () => {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), timeoutMs);
+    try {
+      const r = await fetch(targetUrl, { signal: c.signal });
+      if (r.status === 401) {
+        localStorage.removeItem('tmdbKey');
+        throw new Error('ключ TMDB не подошёл');
+      }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } finally {
+      clearTimeout(t);
+    }
+  };
+  const tryProxy = async () => {
+    const proxies = [
+      'https://api.allorigins.win/raw?url=' + encodeURIComponent(targetUrl),
+      'https://corsproxy.io/?' + encodeURIComponent(targetUrl)
+    ];
+    return await Promise.any(proxies.map(pu => ruJson(pu, 6500)));
+  };
+  if (!_tmdbDirectBlocked) {
+    try {
+      return await tryDirect();
+    } catch (e) {
+      if (/ключ/.test(e.message)) throw e;
+      _tmdbDirectBlocked = true;
+      return await tryProxy();
+    }
+  }
+  try {
+    return await tryProxy();
+  } catch (e) {
+    _tmdbDirectBlocked = false;
+    return await tryDirect();
+  }
+}
+
 async function _tmdbRaw(search, path, media, page = 1) {
   const k = getActiveTmdbKey();
-  const r = await fetch(path ? `https://api.themoviedb.org/3${path}${path.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(k)}&language=ru-RU&page=${page}` : `https://api.themoviedb.org/3/search/multi?api_key=${encodeURIComponent(k)}&language=ru-RU&include_adult=false&query=${encodeURIComponent(search)}`);
-  if (r.status === 401) { localStorage.removeItem('tmdbKey'); throw new Error('ключ TMDB не подошёл'); }
-  const j = await r.json();
+  const targetUrl = path
+    ? `https://api.themoviedb.org/3${path}${path.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(k)}&language=ru-RU&page=${page}`
+    : `https://api.themoviedb.org/3/search/multi?api_key=${encodeURIComponent(k)}&language=ru-RU&include_adult=false&query=${encodeURIComponent(search)}`;
+  const j = await fetchTmdbJson(targetUrl);
   const nowMs = Date.now();
   const isReturningFilter = Boolean(path && path.includes('with_status=0'));
   return (j.results || []).map(x => ({...x, media_type: x.media_type || media})).filter(x => x.media_type === 'movie' || x.media_type === 'tv').slice(0, path ? 20 : 10).map(x => {
@@ -114,7 +265,7 @@ const tmdb = cached(_tmdbRaw);
 
 async function tmdbInfo(r) {
   const k = getActiveTmdbKey();
-  const d = await (await fetch(`https://api.themoviedb.org/3/${r.tmdb}?api_key=${encodeURIComponent(k)}&language=ru-RU&append_to_response=credits`)).json();
+  const d = await fetchTmdbJson(`https://api.themoviedb.org/3/${r.tmdb}?api_key=${encodeURIComponent(k)}&language=ru-RU&append_to_response=credits`);
   const dir = (d.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name), by = (d.created_by || []).map(c => c.name);
   return {author: [...new Set([...by, ...dir])].slice(0, 2).join(', '), studio: (d.production_companies || []).slice(0, 2).map(c => c.name).join(', '), ongoing: d.status === 'Returning Series', dur: d.runtime || (d.episode_run_time || [])[0] || 0, eps: d.number_of_episodes || 0, seasons: d.number_of_seasons || 0};
 }
@@ -165,23 +316,7 @@ function fillForm(r) {
   }
 }
 
-$('afBtn').onclick = async () => {
-  const q = $('afQuery').value.trim(), c = $('inputCategory').value, box = $('afResults'); if (!q) return;
-  const tk = ++afTok; box.replaceChildren(el('div', 'meta', 'Ищу...'));
-  try {
-    const res = c === 'Аниме' ? await anilist(q, 'ANIME') : ['Манга', 'Манхва', 'Ранобэ'].includes(c) ? await anilist(q, 'MANGA') : await tmdb(q);
-    if (tk !== afTok) return; box.replaceChildren(); if (!res.length) return box.append(el('div', 'meta', 'Ничего не найдено.'));
-    res.forEach(r => {
-      const row = el('div', 'afr'), im = el('img'), t = el('div');
-      im.loading = 'lazy'; im.src = safePosterUrl(r.poster);
-      t.append(el('b', null, r.title), el('div', 'meta', `${r.category} • ${r.year || '?'}${r.ext ? ' • ★ ' + r.ext : ''}`));
-      row.append(im, t);
-      row.onclick = async () => { fillForm(r); box.replaceChildren(); if (r.tmdb) { try { await tmdbExtra(r); } catch (e) {} } };
-      box.append(row);
-    });
-  } catch (e) { box.replaceChildren(el('div', 'meta', 'Ошибка поиска: ' + e.message)); }
-};
-$('afQuery').onkeydown = e => { if (e.key === 'Enter') $('afBtn').click(); };
+// Поиск тайтлов выполняется напрямую через вкладку «Каталог»
 
 // ---------- Расчёт времени просмотра и пересмотров (Б4) ----------
 function formatWatchTimeRu(totalMinutes) {
@@ -1108,10 +1243,12 @@ function verifyCatalogItemMatchesFilters(r) {
       const valid = (CANONICAL_TAG_SYNONYMS[tEn] || [tEn, ruTag(tEn)]).map(s => s.toLowerCase());
       return (r.rawTags || []).some(x => valid.includes(x.toLowerCase())) || (r.tags || []).some(x => valid.includes(x.toLowerCase()));
     };
-    for (const g of incG) if (!itemHasGenre(g)) return false;
-    for (const g of excG) if (itemHasGenre(g)) return false;
-    for (const t of incT) if (!itemHasTag(t)) return false;
-    for (const t of excT) if (itemHasTag(t)) return false;
+    if (!r._fromShikiFallback || (r.tags && r.tags.length)) {
+      for (const g of incG) if (!itemHasGenre(g)) return false;
+      for (const g of excG) if (itemHasGenre(g)) return false;
+      for (const t of incT) if (!itemHasTag(t)) return false;
+      for (const t of excT) if (itemHasTag(t)) return false;
+    }
   } else if (isVideo) {
     const vk = $('cgVideoKind')?.value || 'all';
     if (cg.g === 'Кино и сериалы') {
@@ -2150,12 +2287,13 @@ async function loadSimilarTitlesIntoBox(r, targetBox) {
         list = ns.map(x => ({ mal: x.mal, en: x.en, label: ru[x.mal] || x.en }));
       } else if (r.tmdb && String(r.tmdb).includes('/')) {
         const k = getActiveTmdbKey();
-        const j = await ruJson(`https://api.themoviedb.org/3/${r.tmdb}/recommendations?api_key=${encodeURIComponent(k)}&language=ru-RU&page=1`, 6000);
+        const j = await fetchTmdbJson(`https://api.themoviedb.org/3/${r.tmdb}/recommendations?api_key=${encodeURIComponent(k)}&language=ru-RU&page=1`, 6000);
         list = (j.results || []).slice(0, 6).map(x => ({ en: x.title || x.name, label: x.title || x.name }));
       } else {
         list = [];
       }
       simPreviewCache.set(cacheKey, list);
+      if (simPreviewCache.size > 120) simPreviewCache.delete(simPreviewCache.keys().next().value);
     }
     targetBox.replaceChildren();
     if (!list || !list.length) {

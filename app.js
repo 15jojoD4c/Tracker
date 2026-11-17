@@ -9,7 +9,7 @@ function openDataManagementModal() {
 }
 if ($('accDataBtn')) $('accDataBtn').onclick = openDataManagementModal;
 if ($('profDataModalBtn')) $('profDataModalBtn').onclick = openDataManagementModal;
-if ($('closeDataModalBtn')) $('closeDataModalBtn').onclick = () => { $('dataModal').style.display = 'none'; };
+if ($('closeDataModalBtn')) $('closeDataModalBtn').onclick = () => hideModalElement('dataModal');
 
 $('accKey').onclick = async () => {
   let cur = ''; try { cur = localStorage.getItem('tmdbKey') || ''; } catch (e) {}
@@ -69,11 +69,12 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
     });
   });
 
-  // 2. Сразу обновляем локальный список, кэш и DOM ДО сетевого ожидания; разрешаем пустой список ТОЛЬКО если реально удалены все тайтлы!
+  // 2. Сразу обновляем локальный список, кэш и DOM ДО сетевого ожидания; разрешаем обновление safetyBackup при штатном удалении!
   const remainingAfterDelete = items.filter(i => !delIdStrs.has(String(i.id)));
   window._explicitEmptyAllowed = (remainingAfterDelete.length === 0);
+  window._userInitiatedDelete = true;
   items = remainingAfterDelete;
-  saveLocalItems(items.length === 0);
+  flushLocalItemsNow(items.length === 0);
   profCloud(true);
   refresh();
 
@@ -92,7 +93,7 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
       }
     }
   } finally {
-    setTimeout(() => { window._explicitEmptyAllowed = false; }, 1500);
+    setTimeout(() => { window._explicitEmptyAllowed = false; window._userInitiatedDelete = false; }, 1500);
   }
 
   toast(toastMsg, false, {
@@ -298,7 +299,7 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
       await batchSaveItems(enrichedExisting);
       saveLocalItems();
       refresh();
-      $('dataModal').style.display = 'none';
+      hideModalElement('dataModal');
       toast(`Все тайтлы уже были в коллекции — обновлены данные (избранное / альт. названия / оценки) у ${enrichedExisting.length} записей! ✨`);
       return;
     }
@@ -391,7 +392,7 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
   saveLocalItems();
   setSavedImportMeta({ batchId, source: sourceName, count: finalAdd.length, fingerprint: fileFingerprint, ts: Date.now() });
   refresh();
-  $('dataModal').style.display = 'none';
+  hideModalElement('dataModal');
 
   toast(`Импортировано: ${finalAdd.length} шт. (повторов пропущено: ${duplicates.length}, на разбор: ${reviewList.length})`, false, {
     label: '↩ Отменить импорт',
@@ -1130,7 +1131,7 @@ function mergeTwoDuplicateItems(best, other) {
 }
 
 async function findAndMergeDuplicatesModal() {
-  $('dataModal').style.display = 'none';
+  hideModalElement('dataModal');
   const visited = new Set();
   const groups = [];
 
@@ -1438,7 +1439,7 @@ async function findCatalogMatchForItem(it) {
 
         for (const c of shCandidates) {
           if (isConfidentTitleOrYearMatch(c)) {
-            return { confident: true, match: c, candidates: shCandidates };
+            return { confident: true, match: c, candidates: shCandidates, needsFullEnrich: true };
           }
         }
         return { confident: false, match: shCandidates[0], candidates: shCandidates };
@@ -1463,7 +1464,7 @@ async function findCatalogMatchForItem(it) {
     if (it.tmdb && /^(movie|tv)\/\d+$/i.test(String(it.tmdb))) {
       try {
         const [mType, rawId] = String(it.tmdb).split('/');
-        const d = await ruJson(`https://api.themoviedb.org/3/${mType}/${rawId}?api_key=${encodeURIComponent(k)}&language=ru-RU&append_to_response=credits`, 6000);
+        const d = await fetchTmdbJson(`https://api.themoviedb.org/3/${mType}/${rawId}?api_key=${encodeURIComponent(k)}&language=ru-RU&append_to_response=credits`, 6000);
         if (d && d.id) {
           const orig = d.original_title || d.original_name || '';
           const dir = (d.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name);
@@ -1489,7 +1490,7 @@ async function findCatalogMatchForItem(it) {
     // 2. Поиск по imdbId (с одинарным слэшем /^tt\d+$/i!)
     if (it.imdbId && /^tt\d+$/i.test(it.imdbId)) {
       try {
-        const fj = await ruJson(`https://api.themoviedb.org/3/find/${encodeURIComponent(it.imdbId)}?api_key=${encodeURIComponent(k)}&language=ru-RU&external_source=imdb_id`, 6000);
+        const fj = await fetchTmdbJson(`https://api.themoviedb.org/3/find/${encodeURIComponent(it.imdbId)}?api_key=${encodeURIComponent(k)}&language=ru-RU&external_source=imdb_id`, 6000);
         const hitM = (fj.movie_results || [])[0];
         const hitT = (fj.tv_results || [])[0];
         const x = hitM || hitT;
@@ -1546,6 +1547,63 @@ function updateCatalogLinkProgressUI(text, showStop = true) {
   }
 }
 
+// Догрузка полных метаданных (описание, жанры, студия, автор, aniId) для совпадений из Shikimori
+// пачками по 35 штук за 1 запрос к AniList (ускорение в 20–30 раз без 429) и фоллбэком на детальный API Shikimori
+const SHIKI_STUDIO_DESC_CACHE = new Map();
+async function enrichItemsByMalIdsBatch(itemsWithMal) {
+  const valid = (itemsWithMal || []).filter(i => i && Number(i.mal) > 0 && ['Аниме', 'Манга', 'Ранобэ'].includes(i.category));
+  if (!valid.length) return;
+
+  for (const [mType, filterFn] of [['ANIME', i => i.category === 'Аниме'], ['MANGA', i => i.category !== 'Аниме']]) {
+    const group = valid.filter(filterFn);
+    if (!group.length) continue;
+    const mals = [...new Set(group.map(i => Number(i.mal)).filter(Boolean))];
+    for (let k = 0; k < mals.length; k += 35) {
+      if (catalogLinkingStopRequested) break;
+      const chunkMals = mals.slice(k, k + 35);
+      let aniListNodes = [];
+      try {
+        aniListNodes = await _anilistRaw(null, mType, { idMalIn: chunkMals, per: 50 });
+      } catch (e) {}
+      const byMal = new Map((aniListNodes || []).map(n => [Number(n.mal), n]));
+      for (const it of group) {
+        const hit = byMal.get(Number(it.mal));
+        if (hit) {
+          applyCatalogMatchToItem(it, hit, true);
+        }
+      }
+    }
+  }
+
+  // Если у каких-то записей ещё нет русского описания или жанров (например, AniList недоступен без VPN) — догружаем из Shikimori
+  const needShikiDetail = valid.filter(i => !i.description || !hasRu(i.description) || !(i.tags && i.tags.length));
+  for (const it of needShikiDetail) {
+    if (catalogLinkingStopRequested || !shikiOk()) break;
+    const shKind = SHK[it.category] || 'animes';
+    try {
+      const det = await shiki(`/api/${shKind}/${it.mal}`);
+      if (det) {
+        if (det.russian && !hasRu(it.title)) {
+          if (!it.titleEn) it.titleEn = it.title;
+          it.title = det.russian;
+        }
+        const cleanDesc = ruClean(det.description || '');
+        if (cleanDesc && (!it.description || !hasRu(it.description))) it.description = cleanDesc;
+        if (Array.isArray(det.genres) && det.genres.length && (!it.tags || !it.tags.length)) {
+          it.tags = det.genres.map(g => g.russian || g.name).filter(Boolean);
+        }
+        if (Array.isArray(det.studios) && det.studios.length && !it.studio) {
+          it.studio = det.studios.map(s => s.filtered_name || s.name).filter(Boolean).slice(0, 2).join(', ');
+        }
+        if (Number(det.duration) > 0 && !num(it.dur)) it.dur = Number(det.duration);
+        if (Number(det.episodes || det.chapters) > 0 && !num(it.eps)) it.eps = Number(det.episodes || det.chapters);
+        fix(it);
+      }
+      await ruWait(260);
+    } catch (e) {}
+  }
+}
+
 async function startCatalogLinkingForList(targetList, manualTrigger = false) {
   if (catalogLinkingActive) {
     if (manualTrigger) toast('Связывание с каталогом уже выполняется в фоне');
@@ -1554,7 +1612,7 @@ async function startCatalogLinkingForList(targetList, manualTrigger = false) {
   const now = Date.now();
   const queue = (targetList || []).filter(i => {
     if (!i || i.archived) return false;
-    if (hasExternalCatalogId(i) && i.poster && num(i.eps || i.dur)) return false;
+    if (hasExternalCatalogId(i) && i.poster && i.description && (i.tags || []).length && num(i.eps || i.dur)) return false;
     const lastTry = getItemLastLinkAttempt(i);
     if (!manualTrigger && lastTry && (now - lastTry) < 86400000) return false;
     return true;
@@ -1568,7 +1626,7 @@ async function startCatalogLinkingForList(targetList, manualTrigger = false) {
 
   catalogLinkingActive = true;
   catalogLinkingStopRequested = false;
-  $('dataModal').style.display = 'none';
+  hideModalElement('dataModal');
   try { localStorage.setItem(getUidStorageKey('catalogLinkPending'), '1'); } catch (e) {}
 
   let linkedCount = 0;
@@ -1580,39 +1638,81 @@ async function startCatalogLinkingForList(targetList, manualTrigger = false) {
     try { await batchSaveItems(toSave); } catch (e) {}
   };
 
-  // Обрабатываем микро-пачками по 2 тайтла с короткой паузой 320мс и пакетной записью в Firestore каждые 25 записей
-  const CONCURRENCY = 2;
-  for (let idx = 0; idx < queue.length; idx += CONCURRENCY) {
-    if (catalogLinkingStopRequested) break;
-    const slice = queue.slice(idx, idx + CONCURRENCY);
-    updateCatalogLinkProgressUI(`🔗 Связываю с каталогом: ${Math.min(queue.length, idx + slice.length)} из ${queue.length} («${slice[0].title}»)… Связано: ${linkedCount}`);
-
-    await Promise.all(slice.map(async it => {
+  // Шаг 1: Тайтлы, у которых УЖЕ есть mal ID (например, после импорта XML/JSON), обогащаем пачками по 35 штук за 1 запрос!
+  const alreadyHaveMal = queue.filter(i => Number(i.mal) > 0 && (!i.aniId || !i.description || !(i.tags || []).length));
+  if (alreadyHaveMal.length) {
+    updateCatalogLinkProgressUI(`⚡ Пакетная загрузка метаданных по ID: ${alreadyHaveMal.length} шт.…`);
+    await enrichItemsByMalIdsBatch(alreadyHaveMal);
+    alreadyHaveMal.forEach(it => {
       recordItemLinkAttempt(it.id);
+      dirtyBatch.push(it);
+      linkedCount++;
+      updateSingleItemCardInDOM(it.id);
+    });
+    await flushDirtyBatch();
+  }
+
+  // Шаг 2: Оставшиеся без ID тайтлы ищем по названию с защитой от 429 и последующим пакетным обогащением
+  const remainingQueue = queue.filter(i => !alreadyHaveMal.includes(i));
+  const pendingMalEnrich = [];
+  const CONCURRENCY = 2;
+
+  for (let idx = 0; idx < remainingQueue.length; idx += CONCURRENCY) {
+    if (catalogLinkingStopRequested) break;
+    const slice = remainingQueue.slice(idx, idx + CONCURRENCY);
+    updateCatalogLinkProgressUI(`🔗 Связываю с каталогом: ${Math.min(remainingQueue.length, idx + slice.length)} из ${remainingQueue.length} («${slice[0].title}»)… Связано: ${linkedCount}`);
+
+    let hitRateLimit = false;
+    await Promise.all(slice.map(async it => {
       try {
         const res = await findCatalogMatchForItem(it);
+        // Отмечаем попытку ТОЛЬКО при успешном ответе каталога (не при сетевом сбое / 429)
+        recordItemLinkAttempt(it.id);
         if (res.confident && res.match) {
           applyCatalogMatchToItem(it, res.match, true);
           it.needsReview = false;
+          if (res.needsFullEnrich && Number(it.mal) > 0) {
+            pendingMalEnrich.push(it);
+          }
           dirtyBatch.push(it);
           linkedCount++;
           const qIdx = uncertainMatchesQueue.findIndex(u => String(u.item.id) === String(it.id));
           if (qIdx > -1) uncertainMatchesQueue.splice(qIdx, 1);
           updateSingleItemCardInDOM(it.id);
         } else if (res.candidates && res.candidates.length) {
-          // Не сбрасываем статус и не прячем тайтл из коллекции — просто сохраняем кандидатов в список спорных
           const existingQ = uncertainMatchesQueue.findIndex(u => String(u.item.id) === String(it.id));
           if (existingQ > -1) uncertainMatchesQueue[existingQ] = { item: it, candidates: res.candidates.slice(0, 4) };
           else uncertainMatchesQueue.push({ item: it, candidates: res.candidates.slice(0, 4) });
         }
-      } catch (e) {}
+      } catch (e) {
+        if (e && (e.isRateLimit || /429/.test(e.message || ''))) {
+          hitRateLimit = true;
+        }
+      }
     }));
+
+    if (hitRateLimit) {
+      updateCatalogLinkProgressUI('⏳ Пауза 4 сек. (лимит запросов API)…');
+      await ruWait(4000);
+    }
+
+    if (pendingMalEnrich.length >= 24) {
+      const chunk = pendingMalEnrich.splice(0, pendingMalEnrich.length);
+      await enrichItemsByMalIdsBatch(chunk);
+      chunk.forEach(it => updateSingleItemCardInDOM(it.id));
+    }
 
     if (dirtyBatch.length >= 25) {
       await flushDirtyBatch();
       saveUncertainMatchesCache();
     }
-    await ruWait(320);
+    await ruWait(360);
+  }
+
+  if (pendingMalEnrich.length) {
+    await enrichItemsByMalIdsBatch(pendingMalEnrich);
+    pendingMalEnrich.forEach(it => updateSingleItemCardInDOM(it.id));
+    pendingMalEnrich.forEach(it => { if (!dirtyBatch.includes(it)) dirtyBatch.push(it); });
   }
 
   await flushDirtyBatch();
@@ -1725,6 +1825,9 @@ async function openUncertainMatchesConfirmDialog() {
         pickB.onclick = async () => {
           applyCatalogMatchToItem(entry.item, cand, true);
           entry.item.needsReview = false;
+          if (Number(entry.item.mal) > 0 && (!entry.item.description || !(entry.item.tags || []).length)) {
+            await enrichItemsByMalIdsBatch([entry.item]);
+          }
           await cloudSave(entry.item);
           const qIdx = uncertainMatchesQueue.indexOf(entry);
           if (qIdx > -1) uncertainMatchesQueue.splice(qIdx, 1);
@@ -1824,7 +1927,13 @@ function renderReviewItemsTab() {
       el('div', 'meta', `${linkedTxt} · Текущий статус: ${it.status}${it.importSource ? ' · Импорт: ' + it.importSource : ''}`)
     );
     const oneLinkB = el('button', 'btn btn-s', '🔗 Найти в каталоге'); oneLinkB.type = 'button';
-    oneLinkB.onclick = () => { closeAll(); openAdd(it); $('afQuery').value = it.titleEn || it.title; $('afBtn').click(); };
+    oneLinkB.onclick = () => {
+      closeAll();
+      applyMainTabView('catalog');
+      $('cgSearch').value = it.titleEn || it.title;
+      $('cgClear').style.display = 'grid';
+      cgGo();
+    };
     const okB = el('button', 'btn', '✓ ОК'); okB.type = 'button';
     okB.onclick = async () => { it.needsReview = false; await cloudSave(it); refresh(); renderReviewItemsTab(); };
     row.append(cb, im, inf, oneLinkB, okB);
@@ -1870,7 +1979,14 @@ class KanbanManager {
     board.replaceChildren();
     const vis = getVisibleItems();
     const q = $('searchInput').value.toLowerCase().trim(), tg = $('tagFilter').value, lf = $('listFilter').value;
-    const pool = vis.filter(i => !i.archived && (!q || names(i).includes(q)) && (cat === 'Всё' || (cat === 'Кино и сериалы' ? KINO.includes(i.category) : i.category === cat)) && (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) && (lf === 'Все' || (i.lists || []).some(t => t.toLowerCase() === lf)));
+    const pool = vis.filter(i => {
+      if (i.archived) return false;
+      const catMatch = cat === 'Всё' ? true : cat === 'Кино и сериалы' ? (KINO.includes(i.category) && (videoSubKind === 'Все' || i.category === videoSubKind)) : i.category === cat;
+      const kindMatch = (cat !== 'Манга' || kind === 'Все' || getMangaSubKind(i) === kind) && (cat !== 'Аниме' || animeSubKind === 'Все' || getAnimeSubKind(i) === animeSubKind);
+      return (!q || names(i).includes(q)) && catMatch && kindMatch && (!ongOnly || i.ongoing) && (!xf || xmatch(i)) &&
+        (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) &&
+        (lf === 'Все' || (i.lists || []).some(t => t.toLowerCase() === lf));
+    });
     this.STATUSES.forEach(stCol => {
       const col = el('div', 'kanban-col'), list = el('div', 'kanban-list');
       const colItems = pool.filter(i => stCol.key === 'Смотрю/Читаю' ? (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю') : i.status === stCol.key);
@@ -1879,7 +1995,7 @@ class KanbanManager {
       col.ondragleave = () => col.classList.remove('drag-over');
       col.ondrop = e => { e.preventDefault(); col.classList.remove('drag-over'); const id = Number(e.dataTransfer?.getData('text/plain') || this.draggedId); if (id) this.move(id, stCol.key); };
       colItems.forEach(it => {
-        const c = el('div', 'k-card' + (selMode && selSet.has(it.id) ? ' sel' : ''));
+        const c = el('div', 'k-card' + (selMode && selHas(it.id) ? ' sel' : ''));
         c.dataset.id = String(it.id);
         c.draggable = !selMode;
         c.ondragstart = e => { this.draggedId = it.id; e.dataTransfer?.setData('text/plain', String(it.id)); };
@@ -1896,8 +2012,8 @@ class KanbanManager {
         inf.append(el('div', 'k-title', it.title), mRow, qm); c.append(im, inf);
         c.onclick = () => {
           if (selMode) {
-            if (selSet.has(it.id)) selSet.delete(it.id);
-            else selSet.add(it.id);
+            if (selHas(it.id)) selDelete(it.id);
+            else selAdd(it.id);
             selPaint();
             this.renderBoard();
             return;
@@ -1977,15 +2093,28 @@ function renderAnixartHeroAndCategoryCards() {
   const favCount = vis.filter(i => i.fav).length;
   const ratedCount = vis.filter(i => num(i.rating) > 0).length;
 
-  // Плашка «СЕЙЧАС СМОТРЮ» на обложке
+  // Плашка «СЕЙЧАС СМОТРЮ» / «СЕЙЧАС ЧИТАЮ» на обложке с правильными единицами (сер. / гл. / мин.)
   const nwBox = $('hybNowWatching');
   if (nwBox) {
     const watchingItem = vis.filter(i => i.status === 'Смотрю/Читаю').sort((a, b) => (b.updatedAt || b.id) - (a.updatedAt || a.id))[0];
     if (watchingItem) {
+      const isReading = watchingItem.category === 'Манга' || watchingItem.category === 'Ранобэ';
+      const nwTag = $('hybNwTag') || nwBox.querySelector('.hyb-nw-tag');
+      if (nwTag) nwTag.textContent = isReading ? 'СЕЙЧАС ЧИТАЮ' : 'СЕЙЧАС СМОТРЮ';
+      let volStr = '';
+      if (isReading) {
+        if (num(watchingItem.eps) > 0) volStr = ` · ${watchingItem.eps} гл.`;
+        if (num(watchingItem.vols) > 0) volStr += ` (${watchingItem.vols} т.)`;
+      } else if (watchingItem.category === 'Фильм') {
+        if (num(watchingItem.dur) > 0) volStr = ` · ${watchingItem.dur} мин.`;
+        else if (watchingItem.year) volStr = ` · ${watchingItem.year}`;
+      } else {
+        if (num(watchingItem.eps) > 0) volStr = ` · ${watchingItem.eps} сер.`;
+      }
       nwBox.style.display = 'inline-flex';
       $('hybNwPoster').src = safePosterUrl(watchingItem.poster);
       $('hybNwTitle').textContent = watchingItem.title;
-      $('hybNwSub').textContent = `${catLabel(watchingItem)}${watchingItem.eps ? ' · ' + watchingItem.eps + ' сер.' : ''}`;
+      $('hybNwSub').textContent = `${catLabel(watchingItem)}${volStr}`;
       nwBox.onclick = () => openDetail(watchingItem.id);
     } else {
       nwBox.style.display = 'none';
@@ -2215,7 +2344,7 @@ async function openCharacterPopup(ch) {
     if (!hasRu($('charPopVaRu').textContent) && !seiyuuRuCache.has(ch.vaName)) {
       try {
         const tr = await ruChunk(ch.vaName);
-        if (hasRu(tr)) { seiyuuRuCache.set(ch.vaName, tr.trim()); $('charPopVaRu').textContent = tr.trim(); }
+        if (hasRu(tr)) { seiyuuRuCache.set(ch.vaName, tr.trim()); if (seiyuuRuCache.size > 150) seiyuuRuCache.delete(seiyuuRuCache.keys().next().value); $('charPopVaRu').textContent = tr.trim(); }
       } catch (e) {}
     }
     if (!hasRu($('charPopRuName').textContent) && ch.enName) {
@@ -2257,7 +2386,7 @@ async function openCharacterPopup(ch) {
     };
   }
 }
-if ($('charPopCloseBtn')) $('charPopCloseBtn').onclick = () => { $('charPopupModal').style.display = 'none'; };
+if ($('charPopCloseBtn')) $('charPopCloseBtn').onclick = () => hideModalElement('charPopupModal');
 
 class CharacterSeiyuuManager {
   static cache = new Map();
@@ -2276,8 +2405,37 @@ class CharacterSeiyuuManager {
       if (Number(item.aniId) > 0) vars.id = Number(item.aniId);
       else if (Number(item.mal) > 0) vars.mal = Number(item.mal);
       else vars.s = item.titleEn || item.en || item.title;
-      const j = await (await fetch('https://graphql.anilist.co', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, variables: vars }) })).json();
-      const media = j?.data?.Media;
+      let media = null;
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 4500);
+        try {
+          const j = await (await fetch('https://graphql.anilist.co', { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, variables: vars }) })).json();
+          media = j?.data?.Media || null;
+        } finally {
+          clearTimeout(t);
+        }
+      } catch (aniErr) {
+        // Если AniList недоступен без VPN в РФ, загружаем персонажей напрямую из Shikimori по mal ID
+        if (Number(item.mal) > 0 && shikiOk() && SHK[item.category]) {
+          try {
+            const roles = await shiki(`/api/${SHK[item.category]}/${item.mal}/roles`);
+            const charRoles = (Array.isArray(roles) ? roles : []).filter(r => r.character);
+            const shikiItems = charRoles.slice(0, 25).map(r => ({
+              name: r.character.russian || r.character.name || '',
+              enName: r.character.name || '',
+              role: (r.roles || []).includes('Main') ? 'MAIN' : 'SUP',
+              img: r.character.image?.original ? 'https://shikimori.one' + r.character.image.original : FALL,
+              vaName: '',
+              vaImg: '',
+              isLiveActor: false
+            }));
+            const fbRes = { mediaMeta: null, isAnime: item.category === 'Аниме', isLiveAction: false, items: shikiItems };
+            this.cache.set(k, fbRes);
+            return fbRes;
+          } catch (e2) {}
+        }
+      }
       if (!media) return { items: [] };
       if (!hasDirectId) {
         const itemNorms = nset(item);
@@ -2306,11 +2464,13 @@ class CharacterSeiyuuManager {
           return { name: ruMap.get(ruN(en)) || en, enName: en, role: e.role === 'MAIN' ? 'MAIN' : 'SUP', img: e.node?.image?.large || FALL, vaName: va?.name?.full || '', vaImg: va?.image?.large || '', isLiveActor: false };
         })
       };
-      this.cache.set(k, res); return res;
+      this.cache.set(k, res);
+      if (this.cache.size > 120) this.cache.delete(this.cache.keys().next().value);
+      return res;
     }
     const tk = getActiveTmdbKey();
     if (tk && item.tmdb) {
-      const d = await ruJson(`https://api.themoviedb.org/3/${item.tmdb}?api_key=${encodeURIComponent(tk)}&language=ru-RU&append_to_response=credits`, 6000);
+      const d = await fetchTmdbJson(`https://api.themoviedb.org/3/${item.tmdb}?api_key=${encodeURIComponent(tk)}&language=ru-RU&append_to_response=credits`, 6000);
       const cast = d?.credits?.cast || d?.cast || [];
       const res = {
         isAnime: false,
@@ -2323,7 +2483,9 @@ class CharacterSeiyuuManager {
         },
         items: cast.slice(0, 20).map((c, idx) => ({ name: c.character || c.name, enName: c.original_name || c.name, role: idx < 4 ? 'MAIN' : 'SUP', img: c.profile_path ? 'https://image.tmdb.org/t/p/w342' + c.profile_path : FALL, vaName: c.name || '', vaImg: c.profile_path ? 'https://image.tmdb.org/t/p/w185' + c.profile_path : '', isLiveActor: true }))
       };
-      this.cache.set(k, res); return res;
+      this.cache.set(k, res);
+      if (this.cache.size > 120) this.cache.delete(this.cache.keys().next().value);
+      return res;
     }
     return { items: [] };
   }
@@ -2385,6 +2547,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   const activeItem = inCol || itemObj;
   const stateKey = String(activeItem.id || activeItem.aniId || activeItem.mal || activeItem.tmdb || activeItem.title);
   _fullPageHistoryItems.set(stateKey, activeItem);
+  if (_fullPageHistoryItems.size > 80) _fullPageHistoryItems.delete(_fullPageHistoryItems.keys().next().value);
 
   const curTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
   if (!fromHistory) {
@@ -2716,14 +2879,14 @@ async function openCatalogByCreator(kindType, nameStr, itemCat) {
     } else {
       const k = getActiveTmdbKey();
       if (kindType === 'studio') {
-        const cj = await ruJson(`https://api.themoviedb.org/3/search/company?api_key=${encodeURIComponent(k)}&query=${encodeURIComponent(nameStr)}`, 6000);
+        const cj = await fetchTmdbJson(`https://api.themoviedb.org/3/search/company?api_key=${encodeURIComponent(k)}&query=${encodeURIComponent(nameStr)}`, 6000);
         const cid = cj?.results?.[0]?.id;
         if (cid) found = await tmdb(null, `/discover/movie?with_companies=${cid}&sort_by=popularity.desc`, 'movie', 1);
       } else {
-        const pj = await ruJson(`https://api.themoviedb.org/3/search/person?api_key=${encodeURIComponent(k)}&language=ru-RU&query=${encodeURIComponent(nameStr)}`, 6000);
+        const pj = await fetchTmdbJson(`https://api.themoviedb.org/3/search/person?api_key=${encodeURIComponent(k)}&language=ru-RU&query=${encodeURIComponent(nameStr)}`, 6000);
         const pid = pj?.results?.[0]?.id;
         if (pid) {
-          const cr = await ruJson(`https://api.themoviedb.org/3/person/${pid}/combined_credits?api_key=${encodeURIComponent(k)}&language=ru-RU`, 6000);
+          const cr = await fetchTmdbJson(`https://api.themoviedb.org/3/person/${pid}/combined_credits?api_key=${encodeURIComponent(k)}&language=ru-RU`, 6000);
           found = [...(cr.crew || []), ...(cr.cast || [])].filter(x => x.media_type === 'movie' || x.media_type === 'tv').slice(0, 24).map(x => ({
             title: x.title || x.name, en: x.original_title || x.original_name || '', orig: x.original_title || x.original_name || '', alt: '',
             poster: x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '',
@@ -3710,7 +3873,7 @@ function openTitleBattleModal() {
 if ($('shikiImportBtn')) {
   $('shikiImportBtn').onclick = () => {
     $('hybMorePop')?.classList.remove('open');
-    $('dataModal').style.display = 'none';
+    hideModalElement('dataModal');
     let iNick, iPlatform;
     dlgOpen(() => {
       $('dlgTitle').textContent = '⚡ Импорт из Shikimori / AniList / MyAnimeList';
@@ -3933,7 +4096,7 @@ function refresh(opts = {}) {
   };
   mods.forEach(m => new MutationObserver(sync).observe(m, {attributes: true, attributeFilter: ['style']}));
 }
-$('modalX').onclick = () => closeAll(false);
+$('modalX').onclick = () => closeTopModal(false);
 document.querySelectorAll('#accMenu .mi, #accMenu .mrow').forEach(n => n.addEventListener('click', e => e.stopPropagation()));
 document.addEventListener('load', e => { if (e.target && e.target.tagName === 'IMG') e.target.classList.add('ld'); }, true);
 document.addEventListener('error', e => { if (e.target && e.target.tagName === 'IMG') e.target.classList.add('ld'); }, true);

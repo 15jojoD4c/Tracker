@@ -27,13 +27,14 @@ async function sha256Hex(str) {
 let _wsrvDown = false;
 
 // ИСПРАВЛЕНИЕ БАГА №6 (Shikimori постеры): прокси для обхода блокировки картинок с shikimori.one без VPN
+// Проксирование постеров Shikimori и TMDB через wsrv.nl для стабильной загрузки в РФ без VPN
 function safePosterUrl(u) {
   if (!u || typeof u !== 'string') return FALL;
   const s = u.trim();
   if (!s) return FALL;
   if (s.startsWith('data:image/')) return s;
   if (!/^https?:\/\//i.test(s)) return FALL;
-  if (!_wsrvDown && /^https?:\/\/((?:desu\.)?shikimori\.(?:one|io|me|org))\//i.test(s)) {
+  if (!_wsrvDown && /^https?:\/\/((?:desu\.)?shikimori\.(?:one|io|me|org)|image\.tmdb\.org)\//i.test(s)) {
     return 'https://wsrv.nl/?url=' + encodeURIComponent(s);
   }
   return s;
@@ -67,8 +68,17 @@ const el = (t, c, x) => { const e = document.createElement(t); if (c) e.classNam
 let dlgDone = null;
 function dlgOpen(build, okLabel, danger, getVal) {
   return new Promise(res => {
-    if (dlgDone) dlgDone(null);
-    const m = $('dlgModal'), done = v => { if (dlgDone !== done) return; dlgDone = null; m.style.display = 'none'; res(v); };
+    if (dlgDone) {
+      battleActiveInProgress = false;
+      dlgDone(null);
+    }
+    const m = $('dlgModal'), done = v => {
+      if (dlgDone !== done) return;
+      dlgDone = null;
+      battleActiveInProgress = false;
+      hideModalElement(m);
+      res(v);
+    };
     dlgDone = done; build();
     const ok = $('dlgOk'); ok.textContent = okLabel; ok.className = 'btn' + (danger ? ' btn-d' : '');
     ok.onclick = () => done(getVal()); $('dlgCancel').onclick = () => done(null);
@@ -294,13 +304,17 @@ const flushLocalItemsNow = (forceEmpty = false) => {
   idbVault.set(uidKey, slimItems);
   if (user && user.isLocal) idbVault.set('localItems', slimItems);
 
+  const allowSafetyShrink = Boolean(window._userInitiatedDelete || forceEmpty);
   if (slimItems.length > 0) {
     idbVault.get(safetyKey).then(prevSafety => {
-      if (!Array.isArray(prevSafety) || slimItems.length >= prevSafety.length) {
+      if (allowSafetyShrink || !Array.isArray(prevSafety) || slimItems.length >= prevSafety.length) {
         idbVault.set(safetyKey, slimItems);
         try { localStorage.setItem(safetyKey, JSON.stringify(slimItems)); } catch (e) {}
       }
     });
+  } else if (forceEmpty) {
+    idbVault.set(safetyKey, []);
+    try { localStorage.removeItem(safetyKey); } catch (e) {}
   }
 
   try {
@@ -769,6 +783,11 @@ async function activateCloudUserSession(uObj) {
   syncBad = false;
   _cloudProfLoaded = false;
   const effUid = uObj.uid;
+  try {
+    localStorage.setItem('lastCloudUid', effUid);
+    if (uObj.email) localStorage.setItem('lastCloudEmail', uObj.email);
+    if (uObj.displayName) localStorage.setItem('lastCloudName', uObj.displayName);
+  } catch (e) {}
   profTried = false;
   resetProfObjectToDefault();
   try { Object.assign(prof, JSON.parse(localStorage.getItem('prof_' + effUid) || '{}')); } catch (e) {}
@@ -1015,7 +1034,12 @@ function resetSessionMemoryState() {
 }
 
 $('logoutBtn').onclick = async () => {
-  try { localStorage.removeItem('useLocalMode'); } catch (e) {}
+  try {
+    localStorage.removeItem('useLocalMode');
+    localStorage.removeItem('lastCloudUid');
+    localStorage.removeItem('lastCloudEmail');
+    localStorage.removeItem('lastCloudName');
+  } catch (e) {}
   if (unsub) { unsub(); unsub = null; }
   resetSessionMemoryState();
   resetProfObjectToDefault();
@@ -1028,6 +1052,23 @@ let _appStarted = false;
 window.startApp = function startApp() {
   if (_appStarted) return;
   _appStarted = true;
+
+  // Мгновенный старт из локального кэша без ожидания ответа Firebase Auth при медленном VPN
+  if (localStorage.getItem('useLocalMode') === '1') {
+    document.body.classList.remove('auth-checking');
+    startLocalMode();
+  } else {
+    const cachedUid = localStorage.getItem('lastCloudUid');
+    if (cachedUid && !user) {
+      document.body.classList.remove('auth-checking');
+      activateCloudUserSession({
+        uid: cachedUid,
+        email: localStorage.getItem('lastCloudEmail') || '',
+        displayName: localStorage.getItem('lastCloudName') || 'Моя коллекция',
+        photoURL: ''
+      });
+    }
+  }
 
   getRedirectResult(auth).catch(e => {
     if (e && e.code === 'auth/unauthorized-domain') {
@@ -1044,6 +1085,7 @@ window.startApp = function startApp() {
       return activateCloudUserSession(u);
     }
     if (localStorage.getItem('useLocalMode') === '1') return startLocalMode();
+    try { localStorage.removeItem('lastCloudUid'); } catch (e) {}
     if (unsub) { unsub(); unsub = null; }
     resetSessionMemoryState();
     items = []; loaded = false;
@@ -1142,7 +1184,6 @@ const same = (a, b) => {
 
   const ya = parseInt(a.year) || 0, yb = parseInt(b.year) || 0;
   if (ya && yb && Math.abs(ya - yb) > 1) return false;
-  if ((!ya || !yb) && !a.aniId && !b.aniId && !a.mal && !b.mal && !a.tmdb && !b.tmdb) return false;
 
   return true;
 };
@@ -1610,21 +1651,61 @@ function confirmExitBattleIfActive() {
   return ok;
 }
 
+// Приоритет модальных окон от самого верхнего к нижнему (по z-index)
+const MODAL_STACK_ORDER = ['cropModal', 'dlgModal', 'charPopupModal', 'themeModal', 'dataModal', 'profModal', 'statsModal', 'addModal', 'detailModal', 'rndModal'];
+
+function getOpenModalsInStackOrder() {
+  return MODAL_STACK_ORDER.map(id => $(id)).filter(m => m && m.style.display && m.style.display !== 'none');
+}
+
+function hideModalElement(modalElOrId, fromPopState = false) {
+  const m = typeof modalElOrId === 'string' ? $(modalElOrId) : modalElOrId;
+  if (!m || !m.style.display || m.style.display === 'none') return;
+  m.style.display = 'none';
+  const remaining = getOpenModalsInStackOrder();
+  if (!fromPopState && remaining.length === 0 && history.state && history.state.modal) {
+    try { history.back(); } catch (e) {}
+  }
+}
+
+function closeTopModal(fromPopState = false) {
+  if (typeof closeQuickAddStatusMenu === 'function' && $('qaFloatMenu')?.classList.contains('open')) {
+    closeQuickAddStatusMenu();
+    return;
+  }
+  const openList = getOpenModalsInStackOrder();
+  if (!openList.length) return;
+  const topModal = openList[0];
+  if (topModal.id === 'cropModal' && cropDone) {
+    cropDone(null);
+    return;
+  }
+  if (topModal.id === 'dlgModal') {
+    if (battleActiveInProgress && !confirmExitBattleIfActive()) return;
+    if (dlgDone) dlgDone(null);
+    else hideModalElement(topModal, fromPopState);
+    return;
+  }
+  hideModalElement(topModal, fromPopState);
+}
+
 const closeAll = (fromPopState = false) => {
   if (battleActiveInProgress && !confirmExitBattleIfActive()) return;
   if (dlgDone) dlgDone(null);
   if (cropDone) cropDone(null);
   if (typeof closeQuickAddStatusMenu === 'function') closeQuickAddStatusMenu();
-  const modalIds = ['addModal', 'detailModal', 'statsModal', 'rndModal', 'profModal', 'cropModal', 'charPopupModal', 'dataModal', 'themeModal'];
-  const hadOpenModal = modalIds.some(id => $(id) && $(id).style.display && $(id).style.display !== 'none');
-  modalIds.forEach(id => {
+  const openList = getOpenModalsInStackOrder();
+  MODAL_STACK_ORDER.forEach(id => {
     if ($(id)) $(id).style.display = 'none';
   });
-  if (!fromPopState && hadOpenModal && history.state && history.state.modal) {
+  if (!fromPopState && openList.length > 0 && history.state && history.state.modal) {
     try { history.back(); } catch (e) {}
   }
 };
-['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'closeStatsTopBtn', 'rndClose'].forEach(id => { if ($(id)) $(id).onclick = () => closeAll(false); });
+
+['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'closeStatsTopBtn', 'rndClose'].forEach(id => {
+  if ($(id)) $(id).onclick = () => closeTopModal(false);
+});
 
 let _lastMouseDownTarget = null;
 document.addEventListener('mousedown', e => {
@@ -1656,7 +1737,10 @@ document.addEventListener('click', e => {
     if (dlgDone) dlgDone(null);
     return;
   }
-  if (t.classList.contains('modal') && clickedDirectlyOnBackdrop) closeAll(false);
+  if (t.classList.contains('modal') && clickedDirectlyOnBackdrop) {
+    if (t.id === 'cropModal' && cropDone) { cropDone(null); return; }
+    hideModalElement(t, false);
+  }
 });
 
 document.addEventListener('keydown', e => {
@@ -1673,14 +1757,16 @@ document.addEventListener('keydown', e => {
       closeQuickAddStatusMenu();
       return;
     }
-    if (cropDone) { cropDone(null); return; }
-    if (dlgDone) {
-      if (battleActiveInProgress && !confirmExitBattleIfActive()) return;
-      dlgDone(null);
-    } else closeAll();
+    closeTopModal(false);
   }
 });
 
+$('posterPreview').onerror = () => {
+  if ($('posterPreview').src !== FALL) {
+    $('posterPreview').src = FALL;
+    pvDraw();
+  }
+};
 function setPoster(v) {
   posterValue = v || ''; const data = posterValue.startsWith('data:');
   $('inputPoster').value = data ? '' : posterValue;
@@ -1705,10 +1791,6 @@ const parseTags = s => { const seen = new Set(); return s.split(',').map(t => t.
 
 function afHint() {
   $('inputKind').style.display = $('inputCategory').value === 'Манга' ? '' : 'none';
-  const c = $('inputCategory').value;
-  $('afHint').textContent = c === 'Аниме' || ['Манга', 'Манхва', 'Ранобэ'].includes(c)
-    ? 'Ищет в AniList: можно вводить русское, английское или японское название.'
-    : 'Ищет в TMDB: подойдёт русское или английское название.';
 }
 $('inputCategory').onchange = afHint;
 
@@ -1843,7 +1925,22 @@ function ruFull(r) {
   return r.ruP ||= (async () => {
     let ru = '', d = '';
     if (r.mal && SHK[r.category]) {
-      if (shikiOk()) { try { const x = await shiki(`/api/${SHK[r.category]}/${r.mal}`); ru = x.russian || ''; d = ruClean(x.description); } catch (e) {} }
+      if (shikiOk()) {
+        try {
+          const x = await shiki(`/api/${SHK[r.category]}/${r.mal}`);
+          ru = x.russian || '';
+          d = ruClean(x.description);
+          if (Array.isArray(x.genres) && x.genres.length && (!r.tags || !r.tags.length)) {
+            r.tags = x.genres.map(g => g.russian || g.name).filter(Boolean);
+          }
+          if (Array.isArray(x.studios) && x.studios.length && !r.studio) {
+            r.studio = x.studios.map(s => s.filtered_name || s.name).filter(Boolean).slice(0, 2).join(', ');
+          }
+          if (Number(x.duration) > 0 && !r.dur) r.dur = Number(x.duration);
+          if (Number(x.episodes || x.chapters) > 0 && !r.eps) r.eps = Number(x.episodes || x.chapters);
+          if (Number(x.volumes) > 0 && !r.vols) r.vols = Number(x.volumes);
+        } catch (e) {}
+      }
       if (!ru || !hasRu(d)) { try { const w = (await wdBatch([r.mal], WDP[SHK[r.category]]))[r.mal]; if (w) { if (!ru && hasRu(w.ru)) ru = w.ru; if (!hasRu(d) && w.wiki) d = await ruWikiDesc(w.wiki); } } catch (e) {} }
     }
     if (ru && !hasRu(r.title)) { if (!r.en) r.en = r.title; r.title = ru; }
@@ -1853,9 +1950,16 @@ function ruFull(r) {
 }
 async function ruPreview(r) {
   if (r.src !== 'AniList' || r.ruDone) return;
-  $('rndDesc').textContent = 'Перевожу на русский…';
+  if (!r.desc) $('rndDesc').textContent = 'Загружаю описание на русском…';
+  else if (!hasRu(r.desc)) $('rndDesc').textContent = 'Перевожу на русский…';
   await ruFull(r);
-  if (rndR === r) { $('rndTitle').textContent = r.title; $('rndNames').textContent = [r.en, r.orig].filter(Boolean).join(' / '); $('rndDesc').textContent = r.desc || 'Описание отсутствует.'; }
+  if (rndR === r) {
+    $('rndTitle').textContent = r.title;
+    $('rndNames').textContent = [r.en, r.orig].filter(Boolean).join(' / ');
+    $('rndDesc').textContent = r.desc || 'Описание отсутствует.';
+    $('rndCredits').textContent = [r.author && 'Автор: ' + r.author, r.studio && 'Студия: ' + r.studio, r.source && 'Источник: ' + r.source].filter(Boolean).join('  •  ');
+    if (typeof rndTagChips === 'function') rndTagChips(r);
+  }
 }
 const getRuCacheKey = r => (SHK[r.category] || 'media') + '_' + (r.mal || r.aniId || r.tmdb || ruN(r.title));
 const ruSet = (c, ru) => {
@@ -1985,8 +2089,8 @@ if ($('accThemeModalBtn')) {
     $('themeModal').style.display = 'flex';
   };
 }
-if ($('closeThemeModalBtn')) $('closeThemeModalBtn').onclick = () => { $('themeModal').style.display = 'none'; };
-if ($('doneThemeModalBtn')) $('doneThemeModalBtn').onclick = () => { $('themeModal').style.display = 'none'; };
+if ($('closeThemeModalBtn')) $('closeThemeModalBtn').onclick = () => hideModalElement('themeModal');
+if ($('doneThemeModalBtn')) $('doneThemeModalBtn').onclick = () => hideModalElement('themeModal');
 
 function profPaint() {
   rtApply();
@@ -2122,7 +2226,7 @@ function openImageCropperModal(file, targetW, targetH, quality = 0.78, titleText
           if (cropDone !== finish) return;
           cropDone = null;
           window.removeEventListener('mouseup', onUp);
-          modal.style.display = 'none';
+          hideModalElement(modal);
           resolve(resultDataUrl);
         };
         cropDone = finish;
@@ -2329,7 +2433,7 @@ $('pfFile').onchange = async () => {
 };
 $('pfAvDel').onclick = () => { pf.avatar = ''; pfDraw(); };
 $('pfCvDel').onclick = () => { pf.cover = ''; pf.coverColor = 0; pfDraw(); };
-$('pfCancel').onclick = () => { $('profModal').style.display = 'none'; };
+$('pfCancel').onclick = () => hideModalElement('profModal');
 $('pfCustomColor').oninput = () => { pf.customColor = $('pfCustomColor').value; };
 $('pfColReset').onclick = () => { pf.customColor = ''; $('pfCustomColor').value = ACC[0][0]; };
 
@@ -2356,7 +2460,7 @@ $('pfSave').onclick = () => {
   profCloud();
   profPaint();
   refresh();
-  $('profModal').style.display = 'none';
+  hideModalElement('profModal');
   toast('Настройки профиля сохранены!');
 };
 
@@ -2580,11 +2684,7 @@ function openAdd(item) {
   $('inputVols').value = i.vols || '';
   $('inputDur').value = i.dur || '';
   $('inputMyNote').value = i.myNote || '';
-  $('afQuery').value = '';
-  $('afResults').replaceChildren();
-
-  // Этап 3 п.5: Два режима («Автозаполнение» — виден только поиск; «Заполнить вручную» — видны поля названий; при редактировании существующего тайтла поля открыты)
-  setAddFormManualMode(Boolean(item && (item.id || item.title)));
+  setAddFormManualMode(true, false);
 
   const c = i.criteria || null;
   criteriaActiveInForm = !!c;
@@ -2631,21 +2731,10 @@ $('addModal').addEventListener('change', draftSave);
 $('closeAddBtn').addEventListener('click', draftClear);
 $('openModalBtn').onclick = () => { openAdd(null); draftRestore(); };
 
-function setAddFormManualMode(isManual, keepSearchVisible = false) {
-  const afEl = $('afBox') || document.querySelector('#addModal .af');
+function setAddFormManualMode() {
   const manEl = $('manualTitlesSec');
-  if (afEl) afEl.style.display = (isManual && !keepSearchVisible) ? 'none' : '';
-  if (manEl) manEl.style.display = isManual ? 'flex' : 'none';
-  if ($('afToggle')) {
-    $('afToggle').textContent = (isManual && !keepSearchVisible) ? '🔍 Режим: Автозаполнение' : '✍ Заполнить вручную';
-  }
+  if (manEl) manEl.style.display = 'flex';
 }
-
-$('afToggle').onclick = () => {
-  const manEl = $('manualTitlesSec');
-  const currentlyManualOnly = manEl && manEl.style.display !== 'none' && ($('afBox')?.style.display === 'none');
-  setAddFormManualMode(!currentlyManualOnly, false);
-};
 
 ['dragover', 'drop'].forEach(ev => $('posterPreview').addEventListener(ev, async e => {
   e.preventDefault(); if (ev !== 'drop') return;

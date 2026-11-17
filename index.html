@@ -13,6 +13,7 @@
 <title>Мой Медиа Трекер</title>
 <link rel="stylesheet" href="style.css">
 <style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
+<script>setTimeout(()=>document.body&&document.body.classList.remove('auth-checking'),1200);</script>
 </head>
 <body class="auth-checking">
 
@@ -695,14 +696,34 @@ try {
   });
 }
 
-for (const src of ["app-core.js", "app-catalog.js", "app.js"]) {
-  await new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = src;
-    s.onload = resolve;
-    s.onerror = reject;
-    document.body.appendChild(s);
-  });
+const loadScriptWithFallback = (primarySrc, fallbackSrc) => new Promise((resolve, reject) => {
+  const s = document.createElement("script");
+  s.src = primarySrc;
+  s.onload = resolve;
+  s.onerror = () => {
+    if (!fallbackSrc) {
+      document.body.classList.remove("auth-checking");
+      return reject(new Error("Не удалось загрузить " + primarySrc));
+    }
+    const s2 = document.createElement("script");
+    s2.src = fallbackSrc;
+    s2.onload = resolve;
+    s2.onerror = () => {
+      document.body.classList.remove("auth-checking");
+      reject(new Error("Не удалось загрузить " + fallbackSrc));
+    };
+    document.body.appendChild(s2);
+  };
+  document.body.appendChild(s);
+});
+
+try {
+  await loadScriptWithFallback("app_core.js", "app-core.js");
+  await loadScriptWithFallback("app_catalog.js", "app-catalog.js");
+  await loadScriptWithFallback("app.js", null);
+} catch (err) {
+  console.error(err);
+  document.body.classList.remove("auth-checking");
 }
 </script>
 </body>

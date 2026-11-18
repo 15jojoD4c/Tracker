@@ -67,16 +67,18 @@ textarea{resize:vertical;min-height:80px}
 /* Сетка карточек в стиле Yummy Anime */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cw,185px),1fr));gap:20px 16px;margin-top:14px}
 .msg{color:var(--mu);grid-column:1/-1;text-align:center;padding:40px 12px;font-size:14px}
-.card{cursor:pointer;animation:fin .2s ease both}
+.card{cursor:pointer;animation:cardEnter .38s cubic-bezier(.22,.61,.36,1) both;animation-delay:calc(min(var(--card-i,0),16) * 22ms);will-change:transform}
 body.selmode .card.sel .pc{box-shadow:0 0 0 2px var(--ac)!important}
 body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:8px;bottom:8px;z-index:5;width:24px;height:24px;border-radius:var(--rad-sm);background:var(--ac);color:#fff;font-weight:800;font-size:13px;display:grid;place-items:center}
-@keyframes fin{from{opacity:0;transform:translateY(4px)}}
-.pc{position:relative;width:100%;aspect-ratio:2/3;border-radius:var(--rad);overflow:hidden;background:#14171f;border:1px solid var(--bd);transition:transform .18s ease,border-color .18s ease}
-.pc img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:opacity .25s ease,transform .25s ease}
+@keyframes cardEnter{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.pc{position:relative;width:100%;aspect-ratio:2/3;border-radius:var(--rad);overflow:hidden;background:#14171f;border:1px solid var(--bd);transition:transform .28s cubic-bezier(.22,.61,.36,1),border-color .22s ease,box-shadow .28s ease}
+.pc::before{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;background:linear-gradient(120deg,transparent 25%,rgba(255,255,255,.16) 50%,transparent 75%);transform:translateX(-125%);transition:transform .55s cubic-bezier(.22,.61,.36,1)}
+.pc img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:opacity .28s ease,transform .35s cubic-bezier(.22,.61,.36,1)}
 .pc img:not(.ld){opacity:0}
-.card:hover .pc,.card.qa-hover-lock .pc{transform:translateY(-3px);border-color:rgba(255,255,255,.24)}
-.card:hover .pc img,.card.qa-hover-lock .pc img{transform:scale(1.03)}
-.ov{position:absolute;inset:0;z-index:1;display:flex;align-items:flex-end;padding:10px;opacity:0;transition:opacity .2s;background:linear-gradient(to top,rgba(10,12,16,.96) 0%,rgba(10,12,16,.82) 58%,rgba(10,12,16,.15) 100%)}
+.card:hover .pc,.card.qa-hover-lock .pc{transform:translateY(-5px);border-color:color-mix(in srgb,var(--ac) 60%,rgba(255,255,255,.28));box-shadow:0 14px 30px rgba(0,0,0,.45),0 0 0 1px color-mix(in srgb,var(--ac) 28%,transparent)}
+.card:hover .pc::before{transform:translateX(125%)}
+.card:hover .pc img,.card.qa-hover-lock .pc img{transform:scale(1.05)}
+.ov{position:absolute;inset:0;z-index:1;display:flex;align-items:flex-end;padding:10px;opacity:0;transition:opacity .24s ease;background:linear-gradient(to top,rgba(10,12,16,.96) 0%,rgba(10,12,16,.82) 58%,rgba(10,12,16,.15) 100%)}
 .card:hover .ov{opacity:1}
 .ov p{margin:0;font-size:12px;line-height:1.45;color:#e2e6f0;display:-webkit-box;-webkit-line-clamp:7;-webkit-box-orient:vertical;overflow:hidden}
 .status{display:inline-block;background:#1f2430;color:#fff;padding:3px 7px;border-radius:var(--rad-sm);font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,.12)}
@@ -210,7 +212,7 @@ body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:8px;botto
 .list .card{display:grid;grid-template-columns:64px 1fr auto;gap:14px;align-items:center;background:var(--card);border:1px solid var(--bd);border-radius:var(--rad);padding:8px 12px;transition:border-color .15s;position:relative}
 .list .card:hover{border-color:var(--ac)}
 .list .pc{border-radius:var(--rad-sm);aspect-ratio:2/3;width:64px}
-.list .pc .status,.list .pc .ong,.list .pc .anon-badge,.list .ov,.list .fav-heart-badge,.list .pc .qa{display:none!important}
+.list .pc .status,.list .pc .ong,.list .pc .anon-badge,.list .ov,.list .fav-heart-badge,.list .pc .qa,.list .pc::before{display:none!important}
 .list .card:hover .pc{box-shadow:none;transform:none}
 .list .card:hover .pc img{transform:none}
 .list .mine,.list .card:hover .mine{display:none}
@@ -370,17 +372,27 @@ body.rt-none .mine,body.rt-none .star{display:none}
 .insight-body b{display:block;font-size:12.5px;margin-bottom:2px}
 .insight-body p{margin:0;font-size:11.5px;color:var(--mu);line-height:1.4}
 
-.kanban-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:12px;align-items:start}
-.kanban-col{background:var(--card);border:1px solid var(--bd);border-radius:var(--rad);padding:10px;display:flex;flex-direction:column;gap:8px;min-height:300px;max-height:75vh}
-.kanban-col.drag-over{border-color:var(--ac)}
-.kanban-hdr{display:flex;justify-content:space-between;padding:4px 6px 8px;border-bottom:1px solid var(--bd);font-weight:600;font-size:13px}
-.kanban-list{display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1}
-.k-card{display:grid;grid-template-columns:42px 1fr;gap:8px;align-items:center;padding:6px;border-radius:var(--rad-sm);background:var(--inp);border:1px solid var(--bd);cursor:grab}
-.k-card img{width:42px;height:60px;object-fit:cover;border-radius:var(--rad-sm)}
-.k-title{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.k-meta{font-size:11px;color:var(--mu);display:flex;justify-content:space-between}
-.k-quick-move{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap}
-.k-move-btn{background:var(--card);border:1px solid var(--bd);color:var(--mu);border-radius:var(--rad-sm);padding:1px 5px;font-size:10px;cursor:pointer}
+.mini,.anix-r-card,.cg-hero-card{transition:transform .24s cubic-bezier(.22,.61,.36,1),border-color .2s ease,box-shadow .24s ease}
+.mini:hover,.anix-r-card:hover,.cg-hero-card:hover{transform:translateY(-3px)}
+
+/* График прогресса */
+.progress-chart-box{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;align-items:stretch}
+.prog-panel{background:var(--inp);border:1px solid var(--bd);border-radius:var(--rad);padding:12px 14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.prog-panel-title{font-size:12.5px;font-weight:700;color:#e2e6f0;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.prog-cat-list{display:flex;flex-direction:column;gap:9px}
+.prog-cat-row{display:flex;flex-direction:column;gap:4px}
+.prog-cat-meta{display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:8px}
+.prog-cat-meta b{color:#fff;font-weight:700}
+.prog-bar-track{width:100%;height:8px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden}
+.prog-bar-fill{height:100%;border-radius:999px;transition:width .75s cubic-bezier(.22,.61,.36,1);min-width:0}
+.prog-svg-wrap{width:100%;display:flex;flex-direction:column;gap:8px;flex:1;justify-content:space-between}
+.prog-svg-chart{width:100%;height:150px;display:block;overflow:visible}
+.prog-svg-bar{transition:opacity .2s ease,transform .25s ease;transform-origin:bottom center;cursor:pointer}
+.prog-svg-bar:hover{opacity:.85}
+.prog-chart-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--mu)}
+.prog-chart-legend span{display:inline-flex;align-items:center;gap:5px}
+.prog-chart-legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+@media(max-width:768px){.progress-chart-box{grid-template-columns:1fr}}
 
 /* Персонажи и сэйю */
 .jutsu-chars-sec{grid-column:1/-1;background:var(--inp);border:1px solid var(--bd);border-radius:var(--rad);padding:14px;margin-top:6px}
@@ -646,7 +658,6 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
   .card .qa,.qa{right:6px;bottom:6px;width:28px!important;height:28px!important;min-width:28px!important;min-height:28px!important;padding:0!important;font-size:12px!important}
   .card .qa .qa-lbl,.qa .qa-lbl{display:none!important}
   .card .mine{left:6px;right:auto;bottom:6px;font-size:10.5px;padding:2px 5px}
-  #kanbanBoard{display:none!important}
   .qa-float-menu{left:10px!important;right:10px!important;bottom:12px!important;top:auto!important;width:auto!important;min-width:0!important;max-width:none!important;border-radius:var(--rad-lg)!important;padding:8px!important}
   .qa-float-menu button{padding:10px 12px!important;font-size:13.5px!important;min-height:40px!important}
 }
@@ -813,10 +824,17 @@ html[data-theme=white] #botnav button.on {
   color: #14161f !important;
   background: rgba(0, 0, 0, 0.06) !important;
 }
-html[data-theme=white] :is(#selbar, #modalX, .toast, .k-card, .pb, .pc) {
+html[data-theme=white] :is(#selbar, #modalX, .toast, .pb, .pc) {
   background-color: #ffffff !important;
   color: #14161f !important;
   border-color: rgba(0, 0, 0, 0.14) !important;
+}
+html[data-theme=white] .prog-panel-title,
+html[data-theme=white] .prog-cat-meta b {
+  color: #14161f !important;
+}
+html[data-theme=white] .prog-bar-track {
+  background: rgba(0, 0, 0, 0.08) !important;
 }
 html[data-theme=white] .toast.bad {
   background-color: #fee2e2 !important;

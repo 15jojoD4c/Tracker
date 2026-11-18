@@ -15,10 +15,10 @@
 <meta property="og:title" content="Мой Медиа Трекер">
 <meta property="og:description" content="Трекер фильмов, сериалов, аниме, манги и ранобэ с каталогом и облачной синхронизацией">
 <meta property="og:type" content="website">
-<link rel="preload" href="app_core.js" as="script">
-<link rel="preload" href="app_catalog.js" as="script">
-<link rel="preload" href="app.js" as="script">
-<link rel="stylesheet" href="style.css">
+<link rel="preload" href="./app_core.js" as="script">
+<link rel="preload" href="./app_catalog.js" as="script">
+<link rel="preload" href="./app.js" as="script">
+<link rel="stylesheet" href="./style.css">
 <style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
 <script>setTimeout(()=>document.body&&document.body.classList.remove('auth-checking'),600);</script>
 </head>
@@ -243,9 +243,16 @@
         </div>
       </div>
 
-      <!-- Блоки по образцу Anixart: Статистика по типам, Любимые полки и Оценки -->
+      <!-- Блоки по образцу Anixart: Статистика по типам, График прогресса, Любимые полки и Оценки -->
       <div id="profAnixartExtrasSec" class="anix-sec-grid">
         <div id="anixTypeStatsGrid" class="anix-type-stats"></div>
+        <div class="anix-sec-card progress-chart-card" id="profProgressChartCard" style="grid-column:1/-1">
+          <div class="anix-sec-hdr">
+            <h4>📈 График прогресса</h4>
+            <span class="meta" id="profProgressSummaryMeta" style="margin:0"></span>
+          </div>
+          <div id="profProgressChartBox" class="progress-chart-box"></div>
+        </div>
         <div id="profStrips" style="grid-column:1/-1"></div>
 
         <div class="anix-sec-card" style="grid-column:1/-1">
@@ -314,7 +321,7 @@
             <option>Брошено</option>
             <option value="Архив">📦 Архив</option>
           </select>
-          <button class="btn btn-s" id="viewBtn" type="button" title="Переключить вид: Сетка → Список → Канбан">Вид: Сетка</button>
+          <button class="btn btn-s" id="viewBtn" type="button" title="Переключить вид: Сетка ↔ Список">Вид: Сетка</button>
           <button class="btn btn-s" id="selBtn" type="button">Выбрать</button>
           <button class="btn btn-s" id="colBattleBtn" type="button" title="Запустить турнир среди завершённых тайтлов">⚔ Битва тайтлов</button>
           <div class="toolbar-more-wrap" id="colMoreWrap">
@@ -384,7 +391,6 @@
         <div id="statusSummaryBanner" class="status-summary-banner" style="display:none"></div>
         <div class="grid" id="itemsGrid"></div>
         <div style="text-align:center;margin:18px 0"><button class="btn btn-s" id="colLoadMoreBtn" type="button" style="display:none">Показать ещё</button></div>
-        <div class="kanban-board" id="kanbanBoard" style="display:none"></div>
       </div>
     </div>
 
@@ -672,7 +678,7 @@ const importWithTimeout = (url, ms = 2500) => Promise.race([
 ]);
 
 // Запускаем предзагрузку локальных скриптов в кэш браузера параллельно с импортом Firebase
-const prefetchLocal = ["app_core.js", "app_catalog.js", "app.js"].map(u => fetch(u).catch(() => null));
+const prefetchLocal = ["./app_core.js", "./app_catalog.js", "./app.js"].map(u => fetch(u).catch(() => null));
 
 try {
   const [fbApp, fbAuth, fbDb] = await Promise.all([
@@ -729,9 +735,9 @@ const loadScript = src => new Promise((resolve, reject) => {
 });
 
 try {
-  await loadScript("app_core.js");
-  await loadScript("app_catalog.js");
-  await loadScript("app.js");
+  await loadScript("./app_core.js");
+  await loadScript("./app_catalog.js");
+  await loadScript("./app.js");
   if (typeof window.startApp === "function") window.startApp();
 } catch (err) {
   console.error(err);

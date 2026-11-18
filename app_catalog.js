@@ -549,6 +549,206 @@ function backfillMissingDurations() { resumeBackgroundCatalogLinkingIfNeeded(); 
 const MON = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'], PAL = ['#7c5cff','#38bdf8','#10b981','#f59e0b','#ec4899','#ef4444'];
 function topBy(f) { const c = {}; getVisibleItems().forEach(i => f(i).forEach(x => c[x] = (c[x] || 0) + 1)); return Object.entries(c).sort((a, b) => b[1] - a[1]); }
 
+function computeProgressChartData(visList, nowMs = Date.now()) {
+  const list = Array.isArray(visList) ? visList.filter(i => i && !i.archived) : [];
+  const catDefs = [
+    { key: 'Аниме', label: 'Аниме', color: '#7c5cff', match: i => i.category === 'Аниме' },
+    { key: 'Кино и сериалы', label: 'Фильмы и сериалы', color: '#38bdf8', match: i => (typeof KINO !== 'undefined' ? KINO : ['Фильм', 'Сериал', 'Мультфильм']).includes(i.category) },
+    { key: 'Манга', label: 'Манга', color: '#f59e0b', match: i => i.category === 'Манга' },
+    { key: 'Ранобэ', label: 'Ранобэ', color: '#ec4899', match: i => i.category === 'Ранобэ' }
+  ];
+  const categories = catDefs.map(def => {
+    const sub = list.filter(def.match);
+    const done = sub.filter(isCompletedItem).length;
+    const total = sub.length;
+    return {
+      key: def.key,
+      label: def.label,
+      color: def.color,
+      done,
+      total,
+      pct: total ? Math.round((done / total) * 100) : 0
+    };
+  });
+  const totalCount = list.length;
+  const totalDone = list.filter(isCompletedItem).length;
+  const totalPct = totalCount ? Math.round((totalDone / totalCount) * 100) : 0;
+
+  const baseDate = new Date(nowMs);
+  const months = [];
+  const monthMap = new Map();
+  for (let offset = 5; offset >= 0; offset--) {
+    const d = new Date(baseDate.getFullYear(), baseDate.getMonth() - offset, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const bucket = {
+      key,
+      label: MON[d.getMonth()] || '',
+      year: d.getFullYear(),
+      added: 0,
+      completed: 0
+    };
+    months.push(bucket);
+    monthMap.set(key, bucket);
+  }
+  const toMonthKey = ts => {
+    const n = Number(ts);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    const d = new Date(n);
+    if (Number.isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+  list.forEach(it => {
+    const addTs = Number(it.addedAt) || (typeof born === 'function' ? born(it) : 0);
+    const addKey = toMonthKey(addTs);
+    if (addKey && monthMap.has(addKey)) monthMap.get(addKey).added++;
+    if (isCompletedItem(it)) {
+      const compTs = Number(it.completedAt) || Number(it.updatedAt) || addTs;
+      const compKey = toMonthKey(compTs);
+      if (compKey && monthMap.has(compKey)) monthMap.get(compKey).completed++;
+    }
+  });
+  const maxMonthVal = Math.max(1, ...months.map(m => Math.max(m.added, m.completed)));
+  return { categories, months, maxMonthVal, totalCount, totalDone, totalPct };
+}
+
+function buildProgressChartNode(visList) {
+  const data = computeProgressChartData(visList);
+  if (!data.totalCount) {
+    return el('div', 'meta', 'Добавь тайтлы в коллекцию, чтобы увидеть график прогресса.');
+  }
+  const wrap = el('div', 'progress-chart-box');
+
+  const catPanel = el('div', 'prog-panel');
+  const catHdr = el('div', 'prog-panel-title');
+  const catCountMeta = el('span', 'meta', `${data.totalDone} / ${data.totalCount} (${data.totalPct}%)`);
+  catCountMeta.style.margin = '0';
+  catHdr.append(el('span', null, 'Завершение по категориям'), catCountMeta);
+  const catList = el('div', 'prog-cat-list');
+
+  const rowsToRender = [
+    ...data.categories.filter(c => c.total > 0),
+    { key: 'all', label: 'Общий прогресс', color: '#10b981', done: data.totalDone, total: data.totalCount, pct: data.totalPct }
+  ];
+  rowsToRender.forEach(row => {
+    const rEl = el('div', 'prog-cat-row');
+    const meta = el('div', 'prog-cat-meta');
+    meta.append(el('span', null, row.label), el('b', null, `${row.done} / ${row.total} (${row.pct}%)`));
+    const track = el('div', 'prog-bar-track');
+    const fill = el('div', 'prog-bar-fill');
+    fill.style.width = `${row.pct}%`;
+    fill.style.background = row.color;
+    track.append(fill);
+    rEl.append(meta, track);
+    catList.append(rEl);
+  });
+  catPanel.append(catHdr, catList);
+
+  const actPanel = el('div', 'prog-panel');
+  const actHdr = el('div', 'prog-panel-title');
+  const actSub = el('span', 'meta', 'за 6 месяцев');
+  actSub.style.margin = '0';
+  actHdr.append(el('span', null, 'Динамика активности'), actSub);
+
+  const svgWrap = el('div', 'prog-svg-wrap');
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('class', 'prog-svg-chart');
+  svg.setAttribute('viewBox', '0 0 320 150');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'График активности за последние 6 месяцев');
+
+  const topPad = 18;
+  const chartBottom = 124;
+  const chartHeight = chartBottom - topPad;
+  [0, 0.5, 1].forEach(ratio => {
+    const y = Math.round(chartBottom - chartHeight * ratio) + 0.5;
+    const line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', '8');
+    line.setAttribute('x2', '312');
+    line.setAttribute('y1', String(y));
+    line.setAttribute('y2', String(y));
+    line.setAttribute('stroke', ratio === 0 ? 'rgba(148,163,184,0.35)' : 'rgba(148,163,184,0.14)');
+    line.setAttribute('stroke-width', '1');
+    svg.appendChild(line);
+  });
+
+  const colW = 300 / data.months.length;
+  data.months.forEach((m, idx) => {
+    const cx = 10 + colW * idx + colW / 2;
+    const barW = 13;
+    const gap = 4;
+    const addH = m.added ? Math.max(4, Math.round((m.added / data.maxMonthVal) * chartHeight)) : 2;
+    const compH = m.completed ? Math.max(4, Math.round((m.completed / data.maxMonthVal) * chartHeight)) : 2;
+
+    const g = document.createElementNS(ns, 'g');
+    const titleEl = document.createElementNS(ns, 'title');
+    titleEl.textContent = `${m.label} ${m.year}: добавлено ${m.added}, завершено ${m.completed}`;
+    g.appendChild(titleEl);
+
+    const rectAdd = document.createElementNS(ns, 'rect');
+    rectAdd.setAttribute('class', 'prog-svg-bar');
+    rectAdd.setAttribute('x', String(Math.round(cx - barW - gap / 2)));
+    rectAdd.setAttribute('y', String(chartBottom - addH));
+    rectAdd.setAttribute('width', String(barW));
+    rectAdd.setAttribute('height', String(addH));
+    rectAdd.setAttribute('rx', '3');
+    rectAdd.setAttribute('fill', '#7c5cff');
+    rectAdd.setAttribute('fill-opacity', m.added ? '0.82' : '0.18');
+    g.appendChild(rectAdd);
+
+    const rectComp = document.createElementNS(ns, 'rect');
+    rectComp.setAttribute('class', 'prog-svg-bar');
+    rectComp.setAttribute('x', String(Math.round(cx + gap / 2)));
+    rectComp.setAttribute('y', String(chartBottom - compH));
+    rectComp.setAttribute('width', String(barW));
+    rectComp.setAttribute('height', String(compH));
+    rectComp.setAttribute('rx', '3');
+    rectComp.setAttribute('fill', '#10b981');
+    rectComp.setAttribute('fill-opacity', m.completed ? '0.92' : '0.18');
+    g.appendChild(rectComp);
+
+    const topCount = Math.max(m.added, m.completed);
+    if (topCount > 0) {
+      const valTxt = document.createElementNS(ns, 'text');
+      valTxt.setAttribute('x', String(Math.round(cx)));
+      valTxt.setAttribute('y', String(Math.max(11, chartBottom - Math.max(addH, compH) - 4)));
+      valTxt.setAttribute('text-anchor', 'middle');
+      valTxt.setAttribute('font-size', '10');
+      valTxt.setAttribute('font-weight', '700');
+      valTxt.setAttribute('fill', 'currentColor');
+      valTxt.textContent = `${m.added}/${m.completed}`;
+      g.appendChild(valTxt);
+    }
+
+    const lbl = document.createElementNS(ns, 'text');
+    lbl.setAttribute('x', String(Math.round(cx)));
+    lbl.setAttribute('y', '142');
+    lbl.setAttribute('text-anchor', 'middle');
+    lbl.setAttribute('font-size', '10.5');
+    lbl.setAttribute('fill', '#94a3b8');
+    lbl.textContent = m.label;
+    g.appendChild(lbl);
+
+    svg.appendChild(g);
+  });
+
+  const legend = el('div', 'prog-chart-legend');
+  const legAdd = el('span');
+  const dotAdd = el('i');
+  dotAdd.style.background = '#7c5cff';
+  legAdd.append(dotAdd, document.createTextNode('Добавлено'));
+  const legComp = el('span');
+  const dotComp = el('i');
+  dotComp.style.background = '#10b981';
+  legComp.append(dotComp, document.createTextNode('Завершено'));
+  legend.append(legAdd, legComp);
+
+  svgWrap.append(svg, legend);
+  actPanel.append(actHdr, svgWrap);
+  wrap.append(catPanel, actPanel);
+  return wrap;
+}
+
 function buildStats(b) {
   const vis = getVisibleItems().filter(i => !i.archived);
   b.replaceChildren();
@@ -640,6 +840,11 @@ function buildStats(b) {
     makeDonutCard('По категориям', catEntries)
   );
   b.append(donutsGrid);
+
+  const progWrap = el('div', 'anix-sec-card');
+  progWrap.style.margin = '10px 0';
+  progWrap.append(el('h4', null, '📈 График прогресса'), buildProgressChartNode(vis));
+  b.append(progWrap);
 
   const addSection = (title, rows) => {
     if (!rows.length) return;
@@ -2298,6 +2503,7 @@ function cgCard(r) {
     showPreview(r, false);
   };
   card.onkeydown = e => { if (e.key === 'Enter') showPreview(r, false); };
+  card.style.setProperty('--card-i', String(cgGrid.children.length));
   cgGrid.append(card);
 }
 

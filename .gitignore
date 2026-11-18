@@ -6,6 +6,3 @@ coverage/
 *.log
 .env*
 !.env.example
-
-Бэкап/
-Старые без аи студио/

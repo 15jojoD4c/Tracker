@@ -305,7 +305,7 @@ function formatAddedDateRu(it) {
 }
 const FALL = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280"><rect width="200" height="280" fill="%23222534"/><text x="50%" y="50%" fill="%23777" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" dominant-baseline="middle">Нет постера</text></svg>';
 
-let user = null, items = [], loaded = false, cat = 'Всё', kind = 'Все', curId = null, unsub = null, posterValue = '', view = localStorage.getItem('view') || 'grid', ongOnly = false, xf = null, lastList = [], afTok = 0;
+let user = null, items = [], loaded = false, cat = 'Всё', kind = 'Все', curId = null, unsub = null, posterValue = '', view = (localStorage.getItem('view') === 'list' ? 'list' : 'grid'), ongOnly = false, xf = null, lastList = [], afTok = 0;
 let profTried = false;
 let prof = {name: '', bio: '', mood: '', realName: '', bday: '', avatar: '', cover: '', coverColor: 0, bgAll: false};
 let pf = null, pfTarget = '';
@@ -1591,7 +1591,7 @@ function render(appendMore = false) {
   }
   grid.className = 'grid' + (view === 'list' ? ' list' : '');
   if ($('viewBtn')) {
-    $('viewBtn').textContent = view === 'kanban' ? 'Вид: Канбан' : view === 'list' ? 'Вид: Список' : 'Вид: Сетка';
+    $('viewBtn').textContent = view === 'list' ? 'Вид: Список' : 'Вид: Сетка';
   }
   if ($('archiveToggleBtn')) {
     $('archiveToggleBtn').classList.toggle('on', $('statusFilter').value === 'Архив');
@@ -1646,13 +1646,16 @@ function render(appendMore = false) {
   const xb = $('xfBtn'); xb.style.display = xf ? '' : 'none';
   if (xf) xb.textContent = `${{author: 'Автор', studio: 'Студия', source: 'Источник'}[xf.k]}: ${xf.v} ✕`;
   renderStatusAndCategoryBanner();
-  if (KanbanManager.isKanbanActive) KanbanManager.renderBoard();
   if (!list.length) return grid.append(el('div', 'msg', 'Ничего не найдено по выбранным фильтрам.'));
 
   const startIdx = isAppend ? Math.max(0, currentRenderLimit - RENDER_PAGE_SIZE) : 0;
   const slice = list.slice(startIdx, currentRenderLimit);
   const frag = document.createDocumentFragment();
-  slice.forEach(i => frag.append(createCollectionCardNode(i)));
+  slice.forEach((i, idx) => {
+    const node = createCollectionCardNode(i);
+    node.style.setProperty('--card-i', String(idx));
+    frag.append(node);
+  });
   grid.append(frag);
 
   if (moreBtn) {
@@ -1748,13 +1751,8 @@ document.querySelectorAll('#animeKindFilters .kb').forEach(b => b.onclick = () =
 document.querySelectorAll('#videoKindFilters .kb').forEach(b => b.onclick = () => { videoSubKind = b.dataset.vk; document.querySelectorAll('#videoKindFilters .kb').forEach(x => x.classList.toggle('on', x === b)); render(); });
 
 $('viewBtn').onclick = () => {
-  const isMobile = window.innerWidth <= 600;
-  if (view === 'grid') view = 'list';
-  else if (view === 'list') view = isMobile ? 'grid' : 'kanban';
-  else view = 'grid';
-  localStorage.setItem('view', view);
-  KanbanManager.isKanbanActive = (view === 'kanban' && !isMobile);
-  KanbanManager.sync();
+  view = view === 'grid' ? 'list' : 'grid';
+  try { localStorage.setItem('view', view); } catch (e) {}
   render();
 };
 $('ongBtn').onclick = e => { ongOnly = !ongOnly; e.currentTarget.classList.toggle('on', ongOnly); render(); };

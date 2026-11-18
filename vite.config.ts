@@ -20,10 +20,24 @@ export default defineConfig(() => {
             return;
           }
           const distDir = path.resolve(__dirname, 'dist');
+          if (!fs.existsSync(distDir)) {
+            return;
+          }
           const srcAssets = path.resolve(__dirname, 'src/assets');
-          const distAssets = path.resolve(distDir, 'src/assets');
-          if (fs.existsSync(distDir) && fs.existsSync(srcAssets)) {
-            fs.cpSync(srcAssets, distAssets, {recursive: true, force: true});
+          const distSrcAssets = path.resolve(distDir, 'src/assets');
+          if (fs.existsSync(srcAssets)) {
+            fs.cpSync(srcAssets, distSrcAssets, {recursive: true, force: true});
+          }
+          const rootAssets = path.resolve(__dirname, 'assets');
+          const distRootAssets = path.resolve(distDir, 'assets');
+          if (fs.existsSync(rootAssets)) {
+            fs.cpSync(rootAssets, distRootAssets, {recursive: true, force: true});
+          }
+          for (const file of ['style.css', 'app_core.js', 'app_catalog.js', 'app.js']) {
+            const srcFile = path.resolve(__dirname, file);
+            if (fs.existsSync(srcFile)) {
+              fs.copyFileSync(srcFile, path.resolve(distDir, file));
+            }
           }
         },
       },

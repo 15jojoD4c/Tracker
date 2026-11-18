@@ -1959,109 +1959,6 @@ function renderReviewItemsTab() {
   box.append(listWrap);
 }
 
-// ---------- Канбан-доска (ИСПРАВЛЕНИЕ ОШИБКИ №1: перенос в «Любимое» ставит отметку-сердечко и не ломает статус!) ----------
-class KanbanManager {
-  static STATUSES = [
-    { key: 'В планах', label: '📋 В планах', color: '#64748b' },
-    { key: 'Смотрю/Читаю', label: '▶ Смотрю / Читаю', color: '#38bdf8' },
-    { key: 'Просмотрено/Прочитано', label: '✅ Завершено', color: '#1db57a' },
-    { key: 'Брошено', label: '🛑 Брошено', color: '#ef4444' }
-  ];
-  static isKanbanActive = (window.innerWidth > 600 && localStorage.getItem('view') === 'kanban');
-  static draggedId = null;
-
-  static init() {
-    window.addEventListener('resize', () => {
-      if (window.innerWidth <= 600 && this.isKanbanActive) {
-        this.isKanbanActive = false;
-        if (view === 'kanban') view = 'grid';
-        this.sync();
-        render();
-      }
-    });
-    this.sync();
-  }
-  static sync() {
-    if (window.innerWidth <= 600 && this.isKanbanActive) {
-      this.isKanbanActive = false;
-      if (view === 'kanban') view = 'grid';
-    }
-    const b = $('kanbanBoard'), g = $('itemsGrid'); if (!b || !g) return;
-    g.style.display = this.isKanbanActive ? 'none' : '';
-    b.style.display = this.isKanbanActive ? 'grid' : 'none';
-    if (this.isKanbanActive) this.renderBoard();
-  }
-  static renderBoard() {
-    const board = $('kanbanBoard'); if (!board || !this.isKanbanActive) return;
-    board.replaceChildren();
-    const vis = getVisibleItems();
-    const q = $('searchInput').value.toLowerCase().trim(), tg = $('tagFilter').value, lf = $('listFilter').value;
-    const pool = vis.filter(i => {
-      if (i.archived) return false;
-      const catMatch = cat === 'Всё' ? true : cat === 'Кино и сериалы' ? (KINO.includes(i.category) && (videoSubKind === 'Все' || i.category === videoSubKind)) : i.category === cat;
-      const kindMatch = (cat !== 'Манга' || kind === 'Все' || getMangaSubKind(i) === kind) && (cat !== 'Аниме' || animeSubKind === 'Все' || getAnimeSubKind(i) === animeSubKind);
-      return (!q || names(i).includes(q)) && catMatch && kindMatch && (!ongOnly || i.ongoing) && (!xf || xmatch(i)) &&
-        (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) &&
-        (lf === 'Все' || (i.lists || []).some(t => t.toLowerCase() === lf));
-    });
-    this.STATUSES.forEach(stCol => {
-      const col = el('div', 'kanban-col'), list = el('div', 'kanban-list');
-      const colItems = pool.filter(i => stCol.key === 'Смотрю/Читаю' ? (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю') : i.status === stCol.key);
-      const hdr = el('div', 'kanban-hdr'); const sp = el('span', null, stCol.label); sp.style.color = stCol.color; hdr.append(sp, el('span', 'meta', String(colItems.length)));
-      col.ondragover = e => { e.preventDefault(); col.classList.add('drag-over'); };
-      col.ondragleave = () => col.classList.remove('drag-over');
-      col.ondrop = e => { e.preventDefault(); col.classList.remove('drag-over'); const id = Number(e.dataTransfer?.getData('text/plain') || this.draggedId); if (id) this.move(id, stCol.key); };
-      colItems.forEach(it => {
-        const c = el('div', 'k-card' + (selMode && selHas(it.id) ? ' sel' : ''));
-        c.dataset.id = String(it.id);
-        c.draggable = !selMode;
-        c.ondragstart = e => { this.draggedId = it.id; e.dataTransfer?.setData('text/plain', String(it.id)); };
-        const im = el('img'); im.loading = 'lazy'; applyPosterImg(im, it.poster, it);
-        const inf = el('div'); inf.style.minWidth = '0';
-        const mRow = el('div', 'k-meta'); mRow.append(el('span', null, [it.year, catLabel(it), it.fav ? '❤' : ''].filter(Boolean).join(' • ')), el('span', null, it.rating ? '★ ' + it.rating : ''));
-        const qm = el('div', 'k-quick-move');
-        {
-          this.STATUSES.filter(s => s.key !== stCol.key).forEach(ts => {
-            const mb = el('button', 'k-move-btn', '→ ' + ts.label.split(' ')[0]); mb.type = 'button';
-            mb.onclick = ev => { ev.stopPropagation(); this.move(it.id, ts.key); }; qm.append(mb);
-          });
-        }
-        inf.append(el('div', 'k-title', it.title), mRow, qm); c.append(im, inf);
-        c.onclick = () => {
-          if (selMode) {
-            if (selHas(it.id)) selDelete(it.id);
-            else selAdd(it.id);
-            selPaint();
-            this.renderBoard();
-            return;
-          }
-          openDetail(it.id);
-        };
-        list.append(c);
-      });
-      col.append(hdr, list); board.append(col);
-    });
-  }
-  static move(id, newSt) {
-    const it = items.find(i => i.id === id); if (!it) return;
-    if (newSt === 'Любимое') {
-      it.fav = !it.fav;
-      if (it.fav && it.status !== 'Просмотрено/Прочитано' && it.status !== 'Пересматриваю') {
-        it.status = 'Просмотрено/Прочитано';
-        if (!it.completedAt) it.completedAt = Date.now();
-      }
-      cloudSave(it); refresh({ itemId: it.id });
-      toast(it.fav ? `«${it.title}» отмечено как ❤ Любимое` : `«${it.title}» убрано из Любимого`);
-      return;
-    }
-    const oldSt = it.status; if (oldSt === newSt) return;
-    it.status = newSt;
-    if (newSt === 'Просмотрено/Прочитано' && !it.completedAt) it.completedAt = Date.now();
-    cloudSave(it); refresh({ itemId: it.id });
-    toast(`«${it.title}» → ${getStatusLabelForCategory(newSt, it.category)}`, false, { label: 'Отменить', fn: () => { it.status = oldSt; cloudSave(it); refresh({ itemId: it.id }); } });
-  }
-}
-
 // Безопасная отрисовка баннера выборки (без XSS через название подборки!)
 function renderStatusAndCategoryBanner() {
   const banner = $('statusSummaryBanner'); if (!banner) return;
@@ -2307,6 +2204,20 @@ function renderAnixartProfileExtras() {
         ratedBox.append(card);
       });
     }
+  }
+  renderProgressChart(vis);
+}
+
+function renderProgressChart(visOverride) {
+  const box = $('profProgressChartBox');
+  const metaEl = $('profProgressSummaryMeta');
+  if (!box) return;
+  const vis = Array.isArray(visOverride) ? visOverride : getVisibleItems().filter(i => !i.archived);
+  box.replaceChildren();
+  if (typeof computeProgressChartData === 'function' && typeof buildProgressChartNode === 'function') {
+    const data = computeProgressChartData(vis);
+    if (metaEl) metaEl.textContent = data.totalCount ? `Завершено ${data.totalDone} из ${data.totalCount} (${data.totalPct}%)` : '';
+    box.append(buildProgressChartNode(vis));
   }
 }
 
@@ -4222,7 +4133,7 @@ function applyMainTabView(v, fromHistory = false) {
 
   // Разграничиваем Профиль и Коллекцию по образцу Anixart:
   // В «👤 Профиль» показываем только карточку профиля, статистику по типам, диаграмму, историю и оценки.
-  // В «📚 Моя коллекция» показываем папки, вкладки статусов, фильтры и список/сетку/канбан тайтлов.
+  // В «📚 Моя коллекция» показываем папки, вкладки статусов, фильтры и список/сетку тайтлов.
   const shellEl = document.querySelector('.hyb-profile-shell');
   const extrasEl = $('profAnixartExtrasSec');
   const listsBlock = $('myListsBlock');
@@ -4268,7 +4179,6 @@ function refresh(opts = {}) {
     renderAnixartHeroAndCategoryCards();
     renderAnixartProfileExtras();
     renderStatusAndCategoryBanner();
-    if (KanbanManager.isKanbanActive) KanbanManager.renderBoard();
     return;
   }
   if (opts && opts.onlyList) {
@@ -4331,8 +4241,6 @@ document.addEventListener('error', e => {
     handlePosterImgError(t, t.dataset.rawPoster || '', null);
   }
 }, true);
-
-KanbanManager.init();
 
 window.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {

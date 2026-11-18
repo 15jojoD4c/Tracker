@@ -11,6 +11,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Мой Медиа Трекер</title>
+<meta name="description" content="Трекер фильмов, сериалов, аниме, манги и ранобэ с каталогом и облачной синхронизацией">
+<meta property="og:title" content="Мой Медиа Трекер">
+<meta property="og:description" content="Трекер фильмов, сериалов, аниме, манги и ранобэ с каталогом и облачной синхронизацией">
+<meta property="og:type" content="website">
 <link rel="preload" href="app_core.js" as="script">
 <link rel="preload" href="app_catalog.js" as="script">
 <link rel="preload" href="app.js" as="script">
@@ -662,7 +666,7 @@
 </div>
 
 <script type="module">
-const importWithTimeout = (url, ms = 4500) => Promise.race([
+const importWithTimeout = (url, ms = 2500) => Promise.race([
   import(url),
   new Promise((_, rej) => setTimeout(() => rej(new Error("Firebase load timeout")), ms))
 ]);

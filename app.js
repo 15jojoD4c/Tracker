@@ -135,7 +135,7 @@ window.exportData = () => {
     items: myOwnItems.map(({userId, _docId, _knownStatusFromImport, lastLinkAttempt, ...r}) => r)
   };
   const a = document.createElement('a'), u = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'}));
-  a.href = u; a.download = `MediaTracker_FullBackup_${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(u);
+  a.href = u; a.download = `Kiroku_FullBackup_${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(u);
   try { localStorage.setItem('lastBackup', String(Date.now())); } catch (e) {}
 };
 
@@ -174,7 +174,7 @@ function updateLastImportBatchBarUI() {
   bar.style.display = 'flex';
   txt.textContent = `Последний импорт (${meta.source || 'Файл'}): ${batchItems.length} шт. от ${new Date(meta.ts || Date.now()).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'})}`;
   btn.onclick = async () => {
-    if (!(await uiConfirm(`Отменить импорт «${meta.source}» и удалить все добавленные в нём записи (${batchItems.length} шт.)?`, 'Отменить импорт', true))) return;
+    if (!(await uiConfirm(`Отменить последний импорт «${meta.source}»?\n\nЧто делает эта кнопка: из коллекции будут удалены только те записи (${batchItems.length} шт.), которые были добавлены в этом последнем импорте. Все остальные тайтлы останутся без изменений.`, 'Подтвердить', true))) return;
     await batchDeleteItemsWithUndo(batchItems, `Импорт «${meta.source}» отменён (${batchItems.length} шт.)`);
     setSavedImportMeta(null);
   };
@@ -1277,7 +1277,12 @@ async function findAndMergeDuplicatesModal() {
     }
   });
 }
-if ($('dedupMergeBtn')) $('dedupMergeBtn').onclick = findAndMergeDuplicatesModal;
+if ($('dedupMergeBtn')) {
+  $('dedupMergeBtn').onclick = async () => {
+    if (!(await uiConfirm('Найти и объединить дубликаты в коллекции?\n\nЧто делает эта кнопка: сканирует коллекцию на одинаковые тайтлы (по ID баз и названиям) и предлагает объединить их оценки, теги, списки и пересмотры в одну запись без потери данных.', 'Подтвердить'))) return;
+    await findAndMergeDuplicatesModal();
+  };
+}
 
 // ---------- КНОПКА «🔗 Связать коллекцию с каталогом» (Исправлен Этап 1 п.11) ----------
 function hasExternalCatalogId(it) {
@@ -1375,6 +1380,8 @@ function applyCatalogMatchToItem(it, match, allowFillMissingIds = true) {
   if (match.orig && !it.titleOrig) it.titleOrig = match.orig;
   if (match.alt && !it.alt) it.alt = match.alt;
   if (match.year && !it.year) it.year = String(match.year);
+  if (match.endYear && !it.endYear) it.endYear = String(match.endYear);
+  if (match.endDate && !it.endDate) it.endDate = String(match.endDate);
   if (match.ext && !it.extRating) { it.extRating = String(match.ext); it.extSrc = match.src || ''; }
   if (match.desc && (!it.description || (hasRu(match.desc) && !hasRu(it.description)))) it.description = match.desc;
   if (match.author && !it.author) it.author = match.author;
@@ -2273,26 +2280,6 @@ function renderAnixartProfileExtras() {
       typeGrid.append(card);
     });
   }
-  const ratedBox = $('anixRatedStripBox'), ratedMeta = $('anixRatedCountMeta');
-
-  if (ratedBox) {
-    ratedBox.replaceChildren();
-    const ratedList = vis.filter(i => num(i.rating) > 0).sort((a, b) => (b.updatedAt || b.id) - (a.updatedAt || a.id) || num(b.rating) - num(a.rating)).slice(0, 18);
-    if (ratedMeta) ratedMeta.textContent = ratedList.length ? `${vis.filter(i => num(i.rating) > 0).length} оценено` : '';
-    if (!ratedList.length) {
-      ratedBox.append(el('div', 'meta', 'Поставь личную оценку любому тайтлу (от 1 до 10 ★), и он появится на этой полке.'));
-    } else {
-      ratedList.forEach(i => {
-        const card = el('div', 'anix-r-card');
-        const im = el('img'); im.loading = 'lazy'; applyPosterImg(im, i.poster, i);
-        const t = el('div', 'r-title', i.title);
-        const stars = el('div', 'anix-r-stars', `★ ${i.rating} / 10`);
-        card.append(im, t, stars);
-        card.onclick = () => openDetail(i.id);
-        ratedBox.append(card);
-      });
-    }
-  }
 }
 
 
@@ -2402,7 +2389,7 @@ class CharacterSeiyuuManager {
       const mType = item.category === 'Аниме' ? 'ANIME' : 'MANGA';
       const isAnime = item.category === 'Аниме';
       const hasDirectId = Boolean(Number(item.aniId) > 0 || Number(item.mal) > 0);
-      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal status bannerImage format source duration episodes volumes chapters title{romaji english native} synonyms startDate{year month day} nextAiringEpisode{airingAt episode} trailer{id site} relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,RELEVANCE,ID],perPage:25){edges{role node{name{full native}image{large}}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
+      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal status bannerImage format source duration episodes volumes chapters title{romaji english native} synonyms startDate{year month day} endDate{year month day} nextAiringEpisode{airingAt episode} trailer{id site} relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,RELEVANCE,ID],perPage:25){edges{role node{name{full native}image{large}}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
       const vars = { t: mType };
       if (Number(item.aniId) > 0) vars.id = Number(item.aniId);
       else if (Number(item.mal) > 0) vars.mal = Number(item.mal);
@@ -2479,8 +2466,8 @@ class CharacterSeiyuuManager {
       let jikanChars = [];
       if (malId > 0) {
         const detailFields = isAnime
-          ? 'id malId status kind airedOn{year month day} nextEpisodeAt duration episodes episodesAired videos{url kind} related{relationKind relationText anime{id malId name russian kind score airedOn{year} poster{mainUrl}} manga{id malId name russian kind score airedOn{year} poster{mainUrl}}} characterRoles{rolesEn rolesRu character{id name russian poster{originalUrl mainUrl}}}'
-          : 'id malId status kind airedOn{year month day} chapters volumes related{relationKind relationText anime{id malId name russian kind score airedOn{year} poster{mainUrl}} manga{id malId name russian kind score airedOn{year} poster{mainUrl}}} characterRoles{rolesEn rolesRu character{id name russian poster{originalUrl mainUrl}}}';
+          ? 'id malId status kind airedOn{year month day} releasedOn{year month day} nextEpisodeAt duration episodes episodesAired videos{url kind} related{relationKind relationText anime{id malId name russian kind score airedOn{year} poster{mainUrl}} manga{id malId name russian kind score airedOn{year} poster{mainUrl}}} characterRoles{rolesEn rolesRu character{id name russian poster{originalUrl mainUrl}}}'
+          : 'id malId status kind airedOn{year month day} releasedOn{year month day} chapters volumes related{relationKind relationText anime{id malId name russian kind score airedOn{year} poster{mainUrl}} manga{id malId name russian kind score airedOn{year} poster{mainUrl}}} characterRoles{rolesEn rolesRu character{id name russian poster{originalUrl mainUrl}}}';
         const shProm = shikiGraphQL(`query($ids:String){${field}(ids:$ids,limit:1){${detailFields}}}`, { ids: String(malId) })
           .then(d => d?.[field]?.[0] || null)
           .catch(() => null);
@@ -2566,6 +2553,7 @@ class CharacterSeiyuuManager {
         idMal: Number(shMedia.malId || malId),
         status: shMedia.status === 'ongoing' ? 'RELEASING' : shMedia.status === 'anons' ? 'NOT_YET_RELEASED' : 'FINISHED',
         startDate: shMedia.airedOn || null,
+        endDate: shMedia.releasedOn || null,
         nextAiringEpisode: shMedia.nextEpisodeAt ? {
           airingAt: Math.floor(new Date(shMedia.nextEpisodeAt).getTime() / 1000),
           episode: (Number(shMedia.episodesAired) || 0) + 1
@@ -2635,6 +2623,7 @@ class CharacterSeiyuuManager {
           bannerImage: d?.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + d.backdrop_path : '',
           isOngoingTmdb: d?.status === 'Returning Series' || d?.status === 'In Production',
           nextEpAirDate: d?.next_episode_to_air?.air_date || d?.last_air_date || d?.first_air_date || '',
+          endDateStr: d?.last_air_date || '',
           nextEpNum: d?.next_episode_to_air?.episode_number || 0,
           trailer: ytKey ? { site: 'youtube', id: ytKey } : null,
           author: [...new Set([...by, ...dir])].slice(0, 2).join(', '),
@@ -2753,12 +2742,41 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   const actRow = el('div', 'row'); actRow.style.marginTop = '12px';
 
   const addSpec = (lbl, val) => {
-    if (!val) return;
+    if (!val) return null;
     const b = el('div', 'tp-spec-box');
     b.append(el('span', null, lbl), el('b', null, String(val)));
     specsGrid.append(b);
+    return b;
   };
-  addSpec('Год выпуска', activeItem.year || 'Не указан');
+  const formatReleasePeriodText = (item, meta = null) => {
+    const startYr = item.year || (meta?.startDate?.year ? String(meta.startDate.year) : '');
+    const isOng = Boolean(item.ongoing || meta?.status === 'RELEASING' || meta?.isOngoingTmdb);
+    if (isOng) {
+      return startYr ? `${startYr} — выходит (онгоинг)` : 'выходит (онгоинг)';
+    }
+    let endFull = item.endDate || '';
+    let endYr = item.endYear || '';
+    if (!endFull && meta?.endDate?.year) {
+      endYr = String(meta.endDate.year);
+      endFull = [meta.endDate.day, meta.endDate.month, meta.endDate.year].filter(Boolean).map(n => String(n).padStart(2, '0')).join('.');
+    } else if (!endFull && meta?.endDateStr) {
+      const p = String(meta.endDateStr).slice(0, 10).split('-');
+      if (p.length === 3) {
+        endYr = p[0];
+        endFull = `${p[2]}.${p[1]}.${p[0]}`;
+      } else {
+        endFull = String(meta.endDateStr);
+      }
+    }
+    if (endFull && endFull !== startYr) {
+      return startYr ? `${startYr} — ${endFull}` : endFull;
+    }
+    if (endYr && endYr !== startYr) {
+      return startYr ? `${startYr} — ${endYr}` : endYr;
+    }
+    return startYr || 'Не указан';
+  };
+  const releaseSpecBox = addSpec('Годы / Дата выхода', formatReleasePeriodText(activeItem, null));
   addSpec('Тип произведения', FORMAT_RU[activeItem.format] || catLabel(activeItem));
   addSpec('Первоисточник', activeItem.source || 'Оригинал / Не указан');
   const addClickableSpec = (lbl, rawVal, kindType) => {
@@ -2806,7 +2824,8 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
       });
     };
     actRow.append(stB);
-    if (curMatch) {
+    // Кнопка «✏ Редактировать» отображается ТОЛЬКО у тайтлов, созданных вручную (без привязки к внешнему каталогу)
+    if (curMatch && !hasExternalCatalogId(curMatch)) {
       const edB = el('button', 'btn btn-s', '✏ Редактировать');
       edB.type = 'button';
       edB.onclick = () => openAdd(curMatch);
@@ -2847,6 +2866,10 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   await CharacterSeiyuuManager.render(charsSec, activeItem);
   const cachedData = await CharacterSeiyuuManager.fetchChars(activeItem);
   const mediaMeta = cachedData?.mediaMeta;
+  if (releaseSpecBox && mediaMeta) {
+    const bEl = releaseSpecBox.querySelector('b');
+    if (bEl) bEl.textContent = formatReleasePeriodText(activeItem, mediaMeta);
+  }
   if (mediaMeta?.castNames && !activeItem.cast) {
     activeItem.cast = mediaMeta.castNames;
     addSpec('В главных ролях', mediaMeta.castNames);
@@ -3143,45 +3166,91 @@ async function purgeUserLocalCaches(uid) {
   ]);
 }
 
-// ---------- Задержка закрытия выпадающих меню при уводе курсора (450 мс) ----------
+// ---------- Единый контроллер hover-списков (.cat-dd-wrap и др.) с задержкой закрытия 400 мс и поддержкой клика на смартфонах ----------
 {
   const hoverTimers = new WeakMap();
-  document.querySelectorAll('.cat-dd-wrap, .pick-menu-wrap, .hyb-more-wrap, .toolbar-more-wrap').forEach(wrap => {
+  document.querySelectorAll('.pick-menu-wrap, .hyb-more-wrap, .toolbar-more-wrap').forEach(wrap => {
     wrap.addEventListener('mouseenter', () => {
       if (hoverTimers.has(wrap)) {
         clearTimeout(hoverTimers.get(wrap));
         hoverTimers.delete(wrap);
       }
       wrap.classList.add('hover-hold');
-      if (wrap.classList.contains('cat-dd-wrap')) wrap.classList.add('open');
     });
     wrap.addEventListener('mouseleave', () => {
       const t = setTimeout(() => {
         wrap.classList.remove('hover-hold');
-        if (wrap.classList.contains('cat-dd-wrap') && !wrap.dataset.pinned) {
-          wrap.classList.remove('open');
-        }
-      }, 450);
+      }, 420);
       hoverTimers.set(wrap, t);
     });
   });
-  // Делегированный обработчик для динамически пересоздаваемого #cgCatDropdownWrap
-  let cgHoverTimer = 0;
+
+  // Делегированный обработчик для ВСЕХ .cat-dd-wrap (включая #colCatDropdownWrap, #animeKindFilters, #videoKindFilters, #kindFilters, #cgCatDropdownWrap, #cgSubKindDropdownWrap)
   document.addEventListener('mouseover', e => {
-    const cgWrap = e.target.closest('#cgCatDropdownWrap, #colCatDropdownWrap');
-    if (cgWrap) {
-      clearTimeout(cgHoverTimer);
-      cgWrap.classList.add('open', 'hover-hold');
+    const ddWrap = e.target.closest('.cat-dd-wrap');
+    if (ddWrap) {
+      if (hoverTimers.has(ddWrap)) {
+        clearTimeout(hoverTimers.get(ddWrap));
+        hoverTimers.delete(ddWrap);
+      }
+      document.querySelectorAll('.cat-dd-wrap.open').forEach(other => {
+        if (other !== ddWrap && !other.dataset.pinned) {
+          other.classList.remove('open', 'hover-hold');
+        }
+      });
+      ddWrap.classList.add('open', 'hover-hold');
     }
   });
+
   document.addEventListener('mouseout', e => {
-    const cgWrap = e.target.closest('#cgCatDropdownWrap, #colCatDropdownWrap');
-    if (cgWrap && !cgWrap.contains(e.relatedTarget)) {
-      clearTimeout(cgHoverTimer);
-      cgHoverTimer = setTimeout(() => {
-        cgWrap.classList.remove('hover-hold');
-        if (!cgWrap.dataset.pinned) cgWrap.classList.remove('open');
-      }, 450);
+    const ddWrap = e.target.closest('.cat-dd-wrap');
+    if (ddWrap && !ddWrap.contains(e.relatedTarget)) {
+      if (hoverTimers.has(ddWrap)) clearTimeout(hoverTimers.get(ddWrap));
+      const t = setTimeout(() => {
+        ddWrap.classList.remove('hover-hold');
+        if (!ddWrap.dataset.pinned) ddWrap.classList.remove('open');
+      }, 400);
+      hoverTimers.set(ddWrap, t);
+    }
+  });
+
+  document.addEventListener('click', e => {
+    const ddBtn = e.target.closest('.cat-dd-btn');
+    if (ddBtn) {
+      const ddWrap = ddBtn.closest('.cat-dd-wrap');
+      if (ddWrap && !['cgCatDropdownWrap', 'cgSubKindDropdownWrap', 'colCatDropdownWrap'].includes(ddWrap.id)) {
+        e.stopPropagation();
+        const isPinned = ddWrap.dataset.pinned === '1';
+        document.querySelectorAll('.cat-dd-wrap').forEach(other => {
+          if (other !== ddWrap) {
+            delete other.dataset.pinned;
+            other.classList.remove('open', 'hover-hold');
+          }
+        });
+        if (isPinned) {
+          delete ddWrap.dataset.pinned;
+          ddWrap.classList.remove('open', 'hover-hold');
+        } else {
+          ddWrap.dataset.pinned = '1';
+          ddWrap.classList.add('open');
+        }
+        return;
+      }
+    }
+    document.querySelectorAll('.cat-dd-wrap').forEach(w => {
+      if (!w.contains(e.target)) {
+        delete w.dataset.pinned;
+        w.classList.remove('open', 'hover-hold');
+      }
+    });
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.cat-dd-wrap').forEach(w => {
+        delete w.dataset.pinned;
+        w.classList.remove('open', 'hover-hold');
+      });
     }
   });
 }
@@ -3393,7 +3462,7 @@ async function downloadProfilePngBusinessCard() {
     });
 
     const dataUrl = canvas.toDataURL('image/png');
-    const fileName = `MediaTracker_Card_${nick.replace(/[^a-zA-Zа-яА-ЯёЁ0-9_-]/g, '_') || 'Profile'}.png`;
+    const fileName = `Kiroku_Card_${nick.replace(/[^a-zA-Zа-яА-ЯёЁ0-9_-]/g, '_') || 'Profile'}.png`;
     const shouldDownload = await dlgOpen(() => {
       $('dlgTitle').textContent = '🪪 Предпросмотр PNG-визитки профиля';
       $('dlgText').textContent = 'Так выглядит твоя визитка. Нажми на картинку, чтобы увеличить, или кнопку «Скачать PNG», чтобы сохранить файл:';
@@ -3503,8 +3572,8 @@ document.addEventListener('click', e => {
 if ($('deleteMyAccountBtn')) {
   $('deleteMyAccountBtn').onclick = async () => {
     if (!user) return;
+    if (!(await uiConfirm('Удалить профиль и коллекцию?\n\nЧто делает эта кнопка: безвозвратно удаляет все твои тайтлы и настройки профиля из облака и этого браузера (для облачного профиля потребуется подтверждение личности).', 'Подтвердить', true))) return;
     if (user.isLocal) {
-      if (!(await uiConfirm('Точно удалить локальный профиль и все записи с этого устройства?', 'Удалить локальные данные', true))) return;
       await purgeUserLocalCaches('local_user');
       try { localStorage.removeItem('localItems'); localStorage.removeItem('prof'); } catch (e) {}
       await idbVault.del('localItems');
@@ -3679,7 +3748,12 @@ async function runCloudDiagnostics() {
   box.replaceChildren(tbl);
 }
 if ($('cloudDiagBtn')) $('cloudDiagBtn').onclick = runCloudDiagnostics;
-if ($('manualLocalMigrateBtn')) $('manualLocalMigrateBtn').onclick = () => checkMigrateLocalItemsToCloud(true);
+if ($('manualLocalMigrateBtn')) {
+  $('manualLocalMigrateBtn').onclick = async () => {
+    if (!(await uiConfirm('Перенести локальную коллекцию в облако?\n\nЧто делает эта кнопка: проверяет записи, созданные в локальном режиме этого браузера, и переносит недостающие тайтлы в твой облачный аккаунт без удаления текущих данных.', 'Подтвердить'))) return;
+    await checkMigrateLocalItemsToCloud(true);
+  };
+}
 if ($('runSchemaMigrationBtn')) $('runSchemaMigrationBtn').onclick = () => migrateOldDocsToKindSchema(true);
 
 // ---------- В1. Индивидуальные значки за аниме (до 3 надетых одновременно + неоновая рамка для оценки 10!), В2. Битва тайтлов с сохранением Топа, В3. Капсула времени по дате просмотра, В4. Импорт Shikimori/AniList/MAL (аниме + манга + 1000+ записей + русские названия) ----------
@@ -4358,6 +4432,7 @@ window.addEventListener('visibilitychange', () => {
 
 if ($('restoreSafetyBackupBtn')) {
   $('restoreSafetyBackupBtn').onclick = async () => {
+    if (!(await uiConfirm('Восстановить коллекцию из локальной страховочной копии браузера?\n\nЧто делает эта кнопка: загружает автоматически сохранённую резервную копию из памяти браузера (IndexedDB) в окно предпросмотра импорта и добавляет недостающие тайтлы без удаления текущих записей.', 'Подтвердить'))) return;
     const safetyKey = getUidStorageKey('safetyBackup');
     const localKey = getUidStorageKey('items');
     const pool = (await idbVault.get(safetyKey)) || (await idbVault.get(localKey)) || loadLocalItems();

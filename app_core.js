@@ -164,6 +164,7 @@ function handlePosterImgError(imgEl, rawPosterUrl, itemRef) {
         imgEl.dataset.posterFailed = '1';
         imgEl.onerror = null;
         imgEl.src = FALL;
+        imgEl.classList.add('ld');
       }
     });
     return;
@@ -171,6 +172,7 @@ function handlePosterImgError(imgEl, rawPosterUrl, itemRef) {
   imgEl.dataset.posterFailed = '1';
   imgEl.onerror = null;
   imgEl.src = FALL;
+  imgEl.classList.add('ld');
 }
 
 function applyPosterImg(imgEl, rawPosterUrl, itemRef) {
@@ -180,6 +182,7 @@ function applyPosterImg(imgEl, rawPosterUrl, itemRef) {
   delete imgEl.dataset.posterJikanTried;
   delete imgEl.dataset.posterFailed;
   imgEl.referrerPolicy = 'no-referrer';
+  imgEl.onload = () => imgEl.classList.add('ld');
   const candidates = getPosterFallbackCandidates(rawPosterUrl, itemRef);
   const raw = candidates[0] || '';
   if (raw) imgEl.dataset.rawPoster = raw;
@@ -189,7 +192,11 @@ function applyPosterImg(imgEl, rawPosterUrl, itemRef) {
   if (itemRef?.mal) imgEl.dataset.malId = String(itemRef.mal);
   if (itemRef?.category) imgEl.dataset.itemCat = String(itemRef.category);
   imgEl.onerror = () => handlePosterImgError(imgEl, raw, itemRef);
-  imgEl.src = safePosterUrl(raw);
+  const targetSrc = safePosterUrl(raw);
+  imgEl.src = targetSrc;
+  if (targetSrc === FALL || (imgEl.complete && imgEl.naturalWidth > 0)) {
+    imgEl.classList.add('ld');
+  }
   if (!raw && Number(itemRef?.mal) > 0 && ['Аниме', 'Манга', 'Ранобэ'].includes(itemRef?.category)) {
     _fetchJikanPoster(itemRef.mal, itemRef.category).then(jUrl => {
       if (jUrl && isValidPosterUrl(jUrl) && (!imgEl.src || imgEl.src === FALL)) {
@@ -468,6 +475,7 @@ const flushLocalItemsNow = (forceEmpty = false) => {
     if (existingLocal.length > 0) return;
   }
 
+  // IndexedDB — основное хранилище без лимита 5 МБ (надёжно держит 5 000–10 000+ тайтлов)
   idbVault.set(uidKey, slimItems);
   if (user && user.isLocal) idbVault.set('localItems', slimItems);
 
@@ -476,7 +484,11 @@ const flushLocalItemsNow = (forceEmpty = false) => {
     idbVault.get(safetyKey).then(prevSafety => {
       if (allowSafetyShrink || !Array.isArray(prevSafety) || slimItems.length >= prevSafety.length) {
         idbVault.set(safetyKey, slimItems);
-        try { localStorage.setItem(safetyKey, JSON.stringify(slimItems)); } catch (e) {}
+        if (slimItems.length <= 800) {
+          try { localStorage.setItem(safetyKey, JSON.stringify(slimItems)); } catch (e) {}
+        } else {
+          try { localStorage.removeItem(safetyKey); } catch (e) {}
+        }
       }
     });
   } else if (forceEmpty) {
@@ -485,16 +497,22 @@ const flushLocalItemsNow = (forceEmpty = false) => {
   }
 
   try {
-    const json = JSON.stringify(slimItems);
-    localStorage.setItem(uidKey, json);
-    if (user && user.isLocal) localStorage.setItem('localItems', json);
-  } catch (e) {
-    try {
-      localStorage.removeItem('ruCache');
-      const compactItems = slimItems.map(x => ({ ...x, description: (x.description || '').slice(0, 180) }));
+    localStorage.setItem(uidKey + '_meta', JSON.stringify({ count: slimItems.length, updatedAt: Date.now() }));
+    if (slimItems.length <= 1500) {
+      const json = JSON.stringify(slimItems);
+      localStorage.setItem(uidKey, json);
+      if (user && user.isLocal) localStorage.setItem('localItems', json);
+    } else {
+      // При огромной коллекции (1500–10000+ тайтлов) основная копия живёт в IndexedDB, не переполняя 5 МБ localStorage
+      const compactItems = slimItems.map(x => ({ ...x, description: (x.description || '').slice(0, 120) }));
       const compactJson = JSON.stringify(compactItems);
       localStorage.setItem(uidKey, compactJson);
       if (user && user.isLocal) localStorage.setItem('localItems', compactJson);
+    }
+  } catch (e) {
+    try {
+      localStorage.removeItem('ruCache');
+      localStorage.removeItem(safetyKey);
     } catch (e2) {}
   }
 };
@@ -522,6 +540,19 @@ const loadLocalItems = (forUid) => {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter(isTitleDoc).map(fix) : [];
   } catch (e) { return []; }
+};
+
+const loadLocalItemsAsync = async (forUid) => {
+  const eff = forUid || (user && user.uid) || 'local_user';
+  const uidKey = 'items_' + eff;
+  const lsItems = loadLocalItems(eff);
+  try {
+    const idbItems = (await idbVault.get(uidKey)) || (eff === 'local_user' ? await idbVault.get('localItems') : null);
+    if (Array.isArray(idbItems) && idbItems.length >= lsItems.length) {
+      return idbItems.filter(isTitleDoc).map(fix);
+    }
+  } catch (e) {}
+  return lsItems;
 };
 
 let _profLocalTimer = 0;
@@ -555,16 +586,16 @@ let pend = 0, syncBad = false, cloudAccessError = '';
 const updateAccountBadge = () => {
   const b = $('accountBadge');
   if (!b) return;
-  if (!user) { b.textContent = ''; return; }
-  b.textContent = user.isLocal
-    ? '💻 Локальный режим'
-    : `👤 ${user.email || prof.name || user.uid.slice(0, 8)}`;
+  // Приватность в шапке: никогда не показываем email-адрес пользователя в верхней панели
+  b.textContent = '';
+  b.style.display = 'none';
 };
 const setSync = () => {
   updateAccountBadge();
   const e = $('syncState');
   if (!e) return;
   if (user && user.isLocal) { e.className = 'sync'; e.textContent = '💾 Локальный режим'; return; }
+  if (window.__FIREBASE_OFFLINE_FALLBACK) { e.className = 'sync err'; e.textContent = '⚠ Офлайн-режим (только локально)'; return; }
   if (!navigator.onLine) { e.className = 'sync err'; e.textContent = '⚠ Нет подключения'; }
   else if (cloudAccessError) { e.className = 'sync err'; e.textContent = '⚠ Нет доступа к облаку: ' + cloudAccessError; }
   else if (pend) { e.className = 'sync sav'; e.textContent = '⏳ Сохранение...'; }
@@ -606,6 +637,7 @@ const prepareTitleForCloud = (it, uid) => {
   delete cleanCopy._knownStatusFromImport;
   delete cleanCopy.lastLinkAttempt;
   delete cleanCopy._normCache;
+  delete cleanCopy.dirty;
   return {
     docId,
     payload: stripUndefinedDeep({
@@ -712,8 +744,18 @@ const cloudSave = it => {
   if (!it) return Promise.resolve();
   it.updatedAt = Date.now();
   fix(it);
+  if (!user || user.isLocal) {
+    saveLocalItems();
+    setSync();
+    return Promise.resolve();
+  }
+  if (window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine || !auth.currentUser) {
+    it.dirty = true;
+    saveLocalItems();
+    setSync();
+    return Promise.resolve();
+  }
   saveLocalItems();
-  if (!user || user.isLocal || !auth.currentUser) { setSync(); return Promise.resolve(); }
   const docId = getCloudDocId(it);
   _localPendingWrites.set(docId, it.updatedAt);
 
@@ -731,7 +773,17 @@ const cloudSave = it => {
       const nextChain = prevChain
         .catch(() => {})
         .then(() => track(setDoc(doc(db, 'items', docId), payload)))
-        .catch(e => toast('Не удалось сохранить в облако: ' + e.message, true))
+        .then(() => {
+          if (latestItem.dirty) {
+            delete latestItem.dirty;
+            saveLocalItems();
+          }
+        })
+        .catch(e => {
+          latestItem.dirty = true;
+          saveLocalItems();
+          toast('Не удалось сохранить в облако: ' + e.message, true);
+        })
         .finally(() => {
           if (_cloudSaveChains.get(docId) === nextChain) _cloudSaveChains.delete(docId);
           resolve();
@@ -742,16 +794,20 @@ const cloudSave = it => {
   });
 };
 
-function startLocalMode(msg) {
+async function startLocalMode(msg) {
   if (unsub) { unsub(); unsub = null; }
   if (typeof resetSessionMemoryState === 'function') resetSessionMemoryState();
   try { localStorage.setItem('useLocalMode', '1'); } catch (e) {}
   resetProfObjectToDefault();
   try { Object.assign(prof, JSON.parse(localStorage.getItem('prof_local_user') || localStorage.getItem('prof') || '{}')); } catch (e) {}
+  const idbProf = (await idbVault.get('prof_local_user')) || (await idbVault.get('prof'));
+  if (idbProf && typeof idbProf === 'object') {
+    Object.assign(prof, { ...idbProf, avatar: prof.avatar || idbProf.avatar || '', cover: prof.cover || idbProf.cover || '' });
+  }
   user = { uid: 'local_user', isLocal: true, displayName: prof.name || 'Моя коллекция', email: '', photoURL: prof.avatar || '', metadata: { creationTime: new Date().toISOString() } };
   $('authScreen').style.display = 'none'; $('appScreen').style.display = 'block';
   $('hdrAvatar').src = user.photoURL || FALL; $('profName').textContent = user.displayName; $('avatar').src = user.photoURL || FALL;
-  items = loadLocalItems('local_user'); loaded = true; setSync(); refresh(); profPaint();
+  items = await loadLocalItemsAsync('local_user'); loaded = true; setSync(); refresh(); profPaint();
   if (!cgGrid.children.length) cgLoad(true); homeTab();
   if (msg) toast(msg);
 }
@@ -769,7 +825,7 @@ async function checkMigrateLocalItemsToCloud(manual = false) {
   if (!manual && (localStorage.getItem(declineKey) === '1' || localStorage.getItem(doneKey) === '1')) return;
 
   try {
-    const localArr = loadLocalItems('local_user');
+    const localArr = await loadLocalItemsAsync('local_user');
     if (!localArr.length) {
       if (manual) toast('Локальная копия на этом устройстве пуста.');
       return;
@@ -1062,7 +1118,23 @@ async function activateCloudUserSession(uObj) {
         try { localStorage.setItem('cloudHadSynced_' + effUid, '1'); } catch (e) {}
       }
 
-      // ЖЕЛЕЗОБЕТОННАЯ ЗАЩИТА КОЛЛЕКЦИИ (~500 аниме):
+      // Синхронизация локальных изменений (dirty: true), сделанных в офлайне или до подключения к Firestore
+      const dirtyLocalItems = items.filter(x => x && x.dirty);
+      if (dirtyLocalItems.length > 0 && !window.__FIREBASE_OFFLINE_FALLBACK && auth.currentUser) {
+        dirtyLocalItems.forEach(dIt => {
+          delete dIt.dirty;
+          const oIdx = ownList.findIndex(o => String(o.id) === String(dIt.id));
+          if (oIdx > -1) {
+            if ((dIt.updatedAt || 0) >= (ownList[oIdx].updatedAt || 0)) ownList[oIdx] = dIt;
+          } else {
+            ownList.push(dIt);
+          }
+          const { docId, payload } = prepareTitleForCloud(dIt, effUid);
+          setDoc(doc(db, 'items', docId), payload).catch(() => { dIt.dirty = true; });
+        });
+      }
+
+      // ЖЕЛЕЗОБЕТОННАЯ ЗАЩИТА КОЛЛЕКЦИИ (5000–10000+ тайтлов):
       // Никогда не затираем существующую локальную коллекцию пустым или неполным кэш-ответом облака!
       const prevCount = items.length;
       if (!window._explicitEmptyAllowed && prevCount === 0 && ownList.length === 0) {
@@ -1551,9 +1623,11 @@ function createCollectionCardNode(i) {
   applyPosterImg(img, i.poster, i);
   const ov = el('div', 'ov'); ov.append(el('p', null, i.description || 'Описание отсутствует.'));
   pc.append(img, ov, stEl);
-  if (i.ongoing) pc.append(el('div', 'ong', 'ОНГОИНГ'));
-  if (i.fav) { const hb = el('div', 'fav-heart-badge', '❤'); hb.title = 'В любимом'; pc.append(hb); }
-  if (i.pin) { const pb = el('div', 'pin-badge', '📌'); pb.title = 'Закреплено'; pc.append(pb); }
+  const rightBadges = el('div', 'pc-badges-right');
+  if (i.ongoing) rightBadges.append(el('div', 'ong', 'ОНГОИНГ'));
+  if (i.fav) { const hb = el('div', 'fav-heart-badge', '❤'); hb.title = 'В любимом'; rightBadges.append(hb); }
+  if (i.pin) { const pb = el('div', 'pin-badge', '📌'); pb.title = 'Закреплено'; rightBadges.append(pb); }
+  if (rightBadges.children.length) pc.append(rightBadges);
   if (i.rating) pc.append(el('div', 'mine', '★ ' + i.rating));
 
   const info = el('div', 'ci'), row = el('div', 'cm');
@@ -1564,7 +1638,7 @@ function createCollectionCardNode(i) {
     el('span', null, [i.year, fmtStr, epsStr].filter(Boolean).join(' • ')),
     el('span', 'star', scoreVal)
   );
-  const descSnip = el('div', 'list-desc-snip', i.description || i.myNote || 'Описание отсутствует.');
+  const descSnip = el('div', 'list-desc-snip', i.description || 'Описание отсутствует.');
   const bd = el('div', 'bd2'), st2 = el('div', 'status', stLabel); st2.dataset.s = i.status; bd.append(st2);
   if (i.fav) bd.append(el('span', 'chip', '❤ Любимое'));
   if (num(i.rewatchCount) > 0) bd.append(el('span', 'chip', `🔁 ×${i.rewatchCount}`));
@@ -1792,19 +1866,40 @@ document.querySelectorAll('#catFilters .fb').forEach(b => {
     if (wrap) { delete wrap.dataset.pinned; wrap.classList.remove('open', 'hover-hold'); }
     document.querySelectorAll('#catFilters .fb').forEach(x => x.classList.remove('on')); b.classList.add('on');
     cat = b.dataset.c; kind = 'Все'; animeSubKind = 'Все'; videoSubKind = 'Все';
-    $('kindFilters').style.display = cat === 'Манга' ? 'flex' : 'none';
-    if ($('animeKindFilters')) $('animeKindFilters').style.display = cat === 'Аниме' ? 'flex' : 'none';
-    if ($('videoKindFilters')) $('videoKindFilters').style.display = cat === 'Кино и сериалы' ? 'flex' : 'none';
+    $('kindFilters').style.display = cat === 'Манга' ? 'inline-flex' : 'none';
+    if ($('animeKindFilters')) $('animeKindFilters').style.display = cat === 'Аниме' ? 'inline-flex' : 'none';
+    if ($('videoKindFilters')) $('videoKindFilters').style.display = cat === 'Кино и сериалы' ? 'inline-flex' : 'none';
     document.querySelectorAll('#kindFilters .kb').forEach(x => x.classList.toggle('on', x.dataset.k === 'Все'));
     document.querySelectorAll('#animeKindFilters .kb').forEach(x => x.classList.toggle('on', x.dataset.ak === 'Все'));
     document.querySelectorAll('#videoKindFilters .kb').forEach(x => x.classList.toggle('on', x.dataset.vk === 'Все'));
+    if ($('colKindDropdownBtn')) $('colKindDropdownBtn').textContent = 'Вид: Все виды ▾';
+    if ($('colAnimeKindDropdownBtn')) $('colAnimeKindDropdownBtn').textContent = 'Вид: Все аниме ▾';
+    if ($('colVideoKindDropdownBtn')) $('colVideoKindDropdownBtn').textContent = 'Вид: Все ▾';
     catCounts();
     render();
   };
 });
-document.querySelectorAll('#kindFilters .kb').forEach(b => b.onclick = () => { kind = b.dataset.k; document.querySelectorAll('#kindFilters .kb').forEach(x => x.classList.toggle('on', x === b)); render(); });
-document.querySelectorAll('#animeKindFilters .kb').forEach(b => b.onclick = () => { animeSubKind = b.dataset.ak; document.querySelectorAll('#animeKindFilters .kb').forEach(x => x.classList.toggle('on', x === b)); render(); });
-document.querySelectorAll('#videoKindFilters .kb').forEach(b => b.onclick = () => { videoSubKind = b.dataset.vk; document.querySelectorAll('#videoKindFilters .kb').forEach(x => x.classList.toggle('on', x === b)); render(); });
+document.querySelectorAll('#kindFilters .kb').forEach(b => b.onclick = () => {
+  kind = b.dataset.k;
+  document.querySelectorAll('#kindFilters .kb').forEach(x => x.classList.toggle('on', x === b));
+  if ($('colKindDropdownBtn')) $('colKindDropdownBtn').textContent = `Вид: ${b.textContent.replace(/^Вид:\s*/i, '')} ▾`;
+  const w = $('kindFilters'); if (w) { delete w.dataset.pinned; w.classList.remove('open', 'hover-hold'); }
+  render();
+});
+document.querySelectorAll('#animeKindFilters .kb').forEach(b => b.onclick = () => {
+  animeSubKind = b.dataset.ak;
+  document.querySelectorAll('#animeKindFilters .kb').forEach(x => x.classList.toggle('on', x === b));
+  if ($('colAnimeKindDropdownBtn')) $('colAnimeKindDropdownBtn').textContent = `Вид: ${b.textContent.replace(/^Вид:\s*/i, '')} ▾`;
+  const w = $('animeKindFilters'); if (w) { delete w.dataset.pinned; w.classList.remove('open', 'hover-hold'); }
+  render();
+});
+document.querySelectorAll('#videoKindFilters .kb').forEach(b => b.onclick = () => {
+  videoSubKind = b.dataset.vk;
+  document.querySelectorAll('#videoKindFilters .kb').forEach(x => x.classList.toggle('on', x === b));
+  if ($('colVideoKindDropdownBtn')) $('colVideoKindDropdownBtn').textContent = `Вид: ${b.textContent.replace(/^Вид:\s*/i, '')} ▾`;
+  const w = $('videoKindFilters'); if (w) { delete w.dataset.pinned; w.classList.remove('open', 'hover-hold'); }
+  render();
+});
 
 $('viewBtn').onclick = () => {
   view = view === 'grid' ? 'list' : 'grid';
@@ -2541,6 +2636,11 @@ let uiT = 0; const uiSync = () => { clearTimeout(uiT); uiT = setTimeout(profClou
 function setTheme(t, quiet) {
   document.documentElement.dataset.theme = t;
   try { localStorage.setItem('theme', t); } catch (e) {}
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) {
+    const themeColors = { white: '#f4f5f8', black: '#000000', neon: '#090812', mocha: '#14110f', '': '#0f1115' };
+    metaTheme.setAttribute('content', themeColors[t] || '#0f1115');
+  }
   [...$('accTh').children].forEach(b => b.classList.toggle('on', b.dataset.t === t));
   if (!quiet) { prof.theme = t; profSaveLocal(); uiSync(); }
 }
@@ -2561,14 +2661,10 @@ const GRAD = ['linear-gradient(135deg,#6d28d9,#be185d)', 'linear-gradient(135deg
 
 function rtApply() {
   document.body.classList.remove('rt-ext', 'rt-mine', 'rt-none');
-  if (prof.rt) document.body.classList.add('rt-' + prof.rt);
-  if ($('accRt')) $('accRt').value = prof.rt || '';
 }
-if ($('accRt')) $('accRt').onchange = () => { prof.rt = $('accRt').value; profCloud(); rtApply(); };
 if ($('accThemeModalBtn')) {
   $('accThemeModalBtn').onclick = () => {
     $('accMenu')?.classList.remove('open');
-    rtApply();
     $('themeModal').style.display = 'flex';
   };
 }
@@ -3069,9 +3165,19 @@ function renderMyListsFolderBlock() {
   });
 }
 
-// ---- Подписи полей формы (без поля inputRecBy — Этап 3 п.5)
-const LBL = {inputCategory: 'Категория', inputStatus: 'Статус просмотра', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputCompletedAt: 'Дата просмотра / завершения', inputRewatchCount: 'Счётчик пересмотров (раз)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (через запятую)', inputEps: 'Серий или глав', inputVols: 'Томов (для манги и ранобэ)', inputDur: 'Минут на серию или фильм', inputMyNote: 'Личная заметка / мой отзыв', inputDescription: 'Синопсис / описание'};
+// ---- Подписи полей формы (без поля inputRecBy и inputMyNote)
+const LBL = {inputCategory: 'Категория', inputStatus: 'Статус просмотра', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputCompletedAt: 'Дата просмотра / завершения', inputRewatchCount: 'Счётчик пересмотров (раз)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (через запятую)', inputEps: 'Серий или глав', inputVols: 'Томов (для манги и ранобэ)', inputDur: 'Минут на серию или фильм', inputDescription: 'Синопсис / описание'};
 Object.entries(LBL).forEach(([id, t]) => { const e = $(id); if (!e) return; const w = el('div', 'fld'); e.replaceWith(w); w.append(el('label', null, t), e); });
+
+if ($('toggleOtherTitlesBtn')) {
+  $('toggleOtherTitlesBtn').onclick = () => {
+    const box = $('otherTitlesBox');
+    if (!box) return;
+    const isHidden = box.style.display === 'none';
+    box.style.display = isHidden ? 'flex' : 'none';
+    $('toggleOtherTitlesBtn').textContent = (isHidden ? '▾ ' : '▸ ') + 'Другие названия (Английское, Оригинальное, Синонимы)';
+  };
+}
 
 const stars = el('div', 'stars');
 const starPaint = () => [...stars.children].forEach((b, k) => b.classList.toggle('on', k < +$('inputRating').value));
@@ -3166,7 +3272,14 @@ function openAdd(item) {
   $('inputEps').value = i.eps || '';
   $('inputVols').value = i.vols || '';
   $('inputDur').value = i.dur || '';
-  $('inputMyNote').value = i.myNote || '';
+  if ($('otherTitlesBox') && $('toggleOtherTitlesBtn')) {
+    const hasExtraNames = Boolean((i.titleEn || '').trim() || (i.titleOrig || '').trim() || (i.alt || '').trim());
+    $('otherTitlesBox').style.display = hasExtraNames ? 'flex' : 'none';
+    $('toggleOtherTitlesBtn').textContent = (hasExtraNames ? '▾ ' : '▸ ') + 'Другие названия (Английское, Оригинальное, Синонимы)';
+  }
+  ['spoilerVolume', 'spoilerDates', 'spoilerCreators'].forEach(spId => {
+    if ($(spId)) $(spId).open = false;
+  });
   setAddFormManualMode(true, false);
 
   const c = i.criteria || null;
@@ -3296,7 +3409,6 @@ $('saveItemBtn').onclick = async () => {
       eps: +$('inputEps').value || 0,
       vols: +$('inputVols').value || 0,
       dur: +$('inputDur').value || 0,
-      myNote: $('inputMyNote').value.trim(),
       aniId: picked.aniId || 0,
       mal: picked.mal || 0,
       tmdb: picked.tmdb || '',
@@ -3435,9 +3547,6 @@ function openDetail(id) {
     tg.append(wrap);
   });
 
-  const mn = $('detailMyNote');
-  mn.style.display = i.myNote ? '' : 'none';
-  mn.textContent = i.myNote ? ('💬 Личная заметка: ' + i.myNote) : '';
   $('detailDescription').textContent = i.description || 'Описание отсутствует.';
   if (i.description && !hasRu(i.description)) {
     ruTranslate(i.description).then(tr => {
@@ -3518,10 +3627,21 @@ function openDetail(id) {
   }
 
   $('deleteItemBtn').style.display = '';
-  $('editItemBtn').style.display = '';
+  const isManualItem = typeof hasExternalCatalogId === 'function' ? !hasExternalCatalogId(i) : (!i.aniId && !i.mal && !i.tmdb && !i.shikiId && !i.mdId);
+  $('editItemBtn').style.display = isManualItem ? '' : 'none';
 
   detailExtra(id);
-  CharacterSeiyuuManager.render($('detailCharsSec'), i);
+  const charsSec = $('detailCharsSec');
+  if (charsSec) {
+    charsSec.style.display = 'block';
+    const hintBtn = el('button', 'chars-fullpage-hint');
+    hintBtn.type = 'button';
+    hintBtn.innerHTML = '<span>👤 Персонажи, сэйю, трейлер и франшиза доступны на полной странице тайтла</span><span>Открыть →</span>';
+    hintBtn.onclick = () => {
+      if (typeof openFullTitlePage === 'function') openFullTitlePage(i);
+    };
+    charsSec.replaceChildren(hintBtn);
+  }
   $('detailModal').style.display = 'flex';
 }
 

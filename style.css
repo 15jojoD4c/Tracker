@@ -1,5 +1,5 @@
 *{box-sizing:border-box}
-:root{color-scheme:dark;--bg:#0f1115;--card:#161920;--inp:#1c2029;--bd:rgba(255,255,255,.09);--ac:#5c6ac4;--ach:#7c89e8;--mu:#8b92a5;--rad:10px;--rad-sm:8px;--rad-lg:14px}
+:root{color-scheme:dark;--bg:#0f1115;--card:#161920;--inp:#1c2029;--bd:rgba(255,255,255,.09);--ac:#5c6ac4;--ach:#7c89e8;--mu:#8b92a5;--tx:#f1f3f9;--rad:10px;--rad-sm:8px;--rad-lg:14px}
 html{scrollbar-color:rgba(255,255,255,.18) transparent}
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:4px}
@@ -89,10 +89,9 @@ body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:8px;botto
 .status[data-s="Пересматриваю"]{background:#4338ca}
 .status[data-s="Брошено"]{background:#991b1b}
 .anon-badge{display:inline-block;background:#0369a1;color:#fff;font-size:10px;font-weight:700;padding:3px 7px;border-radius:var(--rad-sm)}
-.pc .anon-badge{position:absolute;top:8px;right:8px;z-index:2}
-.pc .status{position:absolute;top:8px;left:8px;z-index:2}
-.fav-heart-badge{position:absolute;top:8px;right:8px;z-index:2;background:#be123c;color:#fff;width:24px;height:24px;border-radius:var(--rad-sm);display:grid;place-items:center;font-size:12px}
-.pc .ong + .fav-heart-badge{top:34px}
+.pc .pc-badges-right{position:absolute;top:8px;right:8px;z-index:2;display:flex;flex-direction:column;gap:4px;align-items:flex-end;pointer-events:none;max-width:48%}
+.pc .status{position:absolute;top:8px;left:8px;z-index:2;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fav-heart-badge{background:#be123c;color:#fff;width:24px;height:24px;border-radius:var(--rad-sm);display:grid;place-items:center;font-size:12px}
 .mine{position:absolute;right:8px;bottom:8px;z-index:2;background:rgba(15,17,21,.9);border:1px solid var(--bd);padding:2px 7px;border-radius:var(--rad-sm);font-size:11.5px;font-weight:700;transition:opacity .2s}
 .card:hover .mine{opacity:0}
 .title{font-size:13.5px;font-weight:600;margin:8px 0 4px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#f1f3f9}
@@ -201,7 +200,6 @@ body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:8px;botto
 #importFile,#malXmlFile{display:none}
 
 .ong{display:inline-block;background:#d97706;color:#fff;font-size:10px;font-weight:700;padding:3px 7px;border-radius:var(--rad-sm);letter-spacing:.02em}
-.pc .ong{position:absolute;top:8px;right:8px;z-index:2}
 .bd2{display:none}
 .credits{display:flex;flex-direction:column;gap:6px}
 .cr{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -212,7 +210,7 @@ body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:8px;botto
 .list .card{display:grid;grid-template-columns:64px 1fr auto;gap:14px;align-items:center;background:var(--card);border:1px solid var(--bd);border-radius:var(--rad);padding:8px 12px;transition:border-color .15s;position:relative}
 .list .card:hover{border-color:var(--ac)}
 .list .pc{border-radius:var(--rad-sm);aspect-ratio:2/3;width:64px}
-.list .pc .status,.list .pc .ong,.list .pc .anon-badge,.list .ov,.list .fav-heart-badge,.list .pc .qa,.list .pc::before{display:none!important}
+.list .pc .status,.list .pc .ong,.list .pc .anon-badge,.list .ov,.list .fav-heart-badge,.list .pin-badge,.list .pc .pc-badges-right,.list .pc .qa,.list .pc::before{display:none!important}
 .list .card:hover .pc{box-shadow:none;transform:none}
 .list .card:hover .pc img{transform:none}
 .list .mine,.list .card:hover .mine{display:none}
@@ -299,8 +297,7 @@ body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:8px;botto
 .fld{display:flex;flex-direction:column;gap:4px;min-width:0}
 .fld>label{font-size:12px;color:var(--mu);font-weight:500}
 
-.pin-badge{position:absolute;top:8px;right:8px;z-index:2;background:#d97706;color:#fff;width:22px;height:22px;border-radius:var(--rad-sm);display:grid;place-items:center;font-size:11px}
-.pc .ong + .pin-badge{top:34px}
+.pin-badge{background:#d97706;color:#fff;width:22px;height:22px;border-radius:var(--rad-sm);display:grid;place-items:center;font-size:11px}
 body.cs-sharp .pc,body.cs-sharp .card{border-radius:2px}
 body.cs-minimal .ci .tg,body.cs-minimal .ci .cm{display:none}
 .my-note{background:var(--inp);border-left:3px solid var(--ac);padding:10px 12px;border-radius:var(--rad-sm);font-size:13px;line-height:1.5;white-space:pre-wrap}
@@ -340,7 +337,7 @@ body.rt-none .mine,body.rt-none .star{display:none}
 #cgFilters:not(.fopen) .cg-tags-panel{display:none!important}
 
 /* Панель жанров и тегов */
-.cg-tags-panel{width:100%;background:var(--inp);border:1px solid var(--bd);border-radius:var(--rad);padding:10px;margin-top:8px;display:flex;flex-direction:column;gap:8px;max-height:250px;overflow-y:auto}
+.cg-tags-panel{width:100%;background:var(--inp);border:1px solid var(--bd);border-radius:var(--rad);padding:10px;margin-top:8px;display:flex;flex-direction:column;gap:8px;max-height:360px;overflow-y:auto}
 .cg-tag-group-title{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--mu);margin-bottom:2px}
 .cg-tag-chips{display:flex;flex-wrap:wrap;gap:5px}
 .cg-tchip{background:var(--card);border:1px solid var(--bd);color:#c8cdd8;padding:4px 9px;border-radius:var(--rad-sm);font-size:12px;cursor:pointer;transition:.12s;font-family:inherit;user-select:none}
@@ -518,7 +515,7 @@ html[data-theme=black]{--bg:#000;--card:#0a0a0c;--inp:#121216;--bd:rgba(255,255,
 html[data-theme=black] header{background:rgba(0,0,0,.92)}
 html[data-theme=black] .mc{background:#0c0c0f}
 
-html[data-theme=white]{color-scheme:light;--bg:#f4f5f8;--card:#ffffff;--inp:#eef0f5;--bd:rgba(0,0,0,.12);--mu:#5d6478;scrollbar-color:rgba(0,0,0,.22) transparent}
+html[data-theme=white]{color-scheme:light;--bg:#f4f5f8;--card:#ffffff;--inp:#eef0f5;--bd:rgba(0,0,0,.12);--mu:#5d6478;--tx:#14161f;scrollbar-color:rgba(0,0,0,.22) transparent}
 html[data-theme=white] body{color:#14161f}
 html[data-theme=white] header{background:rgba(255,255,255,.94);border-bottom-color:rgba(0,0,0,.1)}
 html[data-theme=white] :is(input,select,textarea){color:#14161f}
@@ -618,6 +615,9 @@ html[data-theme=white] body.bgimg::before{background:linear-gradient(rgba(255,25
   html[data-grid-size="sm"] .grid:not(.list){grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 8px}
   html[data-grid-size="sm"] .grid:not(.list) .title{font-size:12px}
   html[data-grid-size="sm"] .grid:not(.list) .cm,html[data-grid-size="sm"] .grid:not(.list) .tg{font-size:10.5px}
+  html[data-grid-size="sm"] .grid:not(.list) .pc .status{font-size:9.5px;padding:2px 5px}
+  html[data-grid-size="sm"] .grid:not(.list) .pc .ong,html[data-grid-size="sm"] .grid:not(.list) .pc .anon-badge{font-size:9px;padding:2px 5px}
+  .cat-dd-menu,.toolbar-more-pop,.pick-menu-pop,.hyb-more-pop{max-width:calc(100vw - 24px)}
   html[data-grid-size="md"] .grid:not(.list){grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 10px}
   html[data-grid-size="lg"] .grid:not(.list){grid-template-columns:repeat(1,minmax(0,1fr));gap:16px 10px}
   .hyb-banner{height:115px!important;padding:10px!important}
@@ -809,7 +809,7 @@ html[data-theme=white] :is(.sr-val, .stats-kpi-box b) {
 
 /* === Фикс мобильного backdrop-filter и белой темы для нижней панели и системных блоков === */
 @media(max-width:768px){
-  .menu, .cat-dd-menu, .pick-menu-pop, .hyb-more-pop, .toolbar-more-pop {
+  .menu, .cat-dd-menu, .pick-menu-pop, .hyb-more-pop, .toolbar-more-pop, .qa-float-menu, .cat-dd-btn, .btn-s, .fb, .kb, .tb, .tabs {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
@@ -919,8 +919,39 @@ html[data-theme=white] .cg-chip-reset-all {
 .cg-adult-hint p {
   margin: 0;
   font-size: 13.5px;
-  color: var(--mut);
+  color: var(--mu);
   max-width: 520px;
   line-height: 1.5;
 }
+
+/* Спойлеры и компактная форма добавления тайтла */
+.other-titles-toggle{width:100%;justify-content:flex-start;font-size:12.5px;padding:7px 12px;color:var(--mu);border-style:dashed;text-align:left}
+.other-titles-toggle:hover{color:var(--tx);border-color:var(--ac)}
+.other-titles-box{display:flex;flex-direction:column;gap:8px;padding:8px 10px;background:rgba(255,255,255,.025);border:1px solid var(--bd);border-radius:10px}
+html[data-theme=white] .other-titles-box{background:rgba(0,0,0,.02)}
+.form-spoiler{border:1px solid var(--bd);border-radius:10px;background:rgba(255,255,255,.02);overflow:hidden}
+html[data-theme=white] .form-spoiler{background:rgba(0,0,0,.02)}
+.form-spoiler summary{padding:9px 12px;font-size:13px;font-weight:700;color:var(--tx);cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;justify-content:space-between}
+.form-spoiler summary::-webkit-details-marker{display:none}
+.form-spoiler summary::after{content:'▾';font-size:12px;color:var(--mu);transition:transform .2s}
+.form-spoiler[open] summary::after{transform:rotate(180deg)}
+.form-spoiler[open] summary{border-bottom:1px solid var(--bd);background:rgba(92,106,196,.08)}
+.form-spoiler-body{padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+
+/* Многоуровневая компактная панель «Жанры и теги» в каталоге */
+.cg-tags-selected-strip{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;background:rgba(92,106,196,.08);border:1px solid rgba(92,106,196,.25);border-radius:10px}
+.cg-tag-acc-list{display:flex;flex-direction:column;gap:8px}
+.cg-tag-acc-item{border:1px solid var(--bd);border-radius:10px;background:rgba(255,255,255,.02);overflow:hidden}
+html[data-theme=white] .cg-tag-acc-item{background:rgba(0,0,0,.02)}
+.cg-tag-acc-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;background:transparent;border:0;color:var(--tx);font-size:13px;font-weight:700;cursor:pointer;text-align:left;transition:.15s;font-family:inherit}
+.cg-tag-acc-btn:hover{background:rgba(92,106,196,.08)}
+.cg-tag-acc-item.open .cg-tag-acc-btn{background:rgba(92,106,196,.12);border-bottom:1px solid var(--bd);color:var(--ach)}
+.cg-tag-acc-body{display:none;padding:10px 12px;flex-wrap:wrap;gap:6px}
+.cg-tag-acc-item.open .cg-tag-acc-body{display:flex}
+
+/* Баннер-подсказка персонажей и сэйю в малом окне тайтла */
+.chars-fullpage-hint{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:rgba(92,106,196,.1);border:1px solid rgba(92,106,196,.28);border-radius:10px;color:var(--ach);font-size:13px;font-weight:600;cursor:pointer;transition:.15s;text-align:left;width:100%;font-family:inherit}
+.chars-fullpage-hint:hover{background:rgba(92,106,196,.18);border-color:var(--ac);transform:translateY(-1px)}
+html[data-theme=white] .chars-fullpage-hint{color:#3f4eae}
+
 

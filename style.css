@@ -97,7 +97,7 @@ body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:8px;botto
 .card:hover .mine{opacity:0}
 .title{font-size:13.5px;font-weight:600;margin:8px 0 4px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#f1f3f9}
 .cm{display:flex;justify-content:space-between;gap:6px;font-size:12px;color:var(--mu)}
-.star{display:inline-block;color:#e2e6f0;font-weight:600}
+.star{display:inline-block;color:#e2e6f0;font-weight:600;white-space:nowrap;flex-shrink:0}
 .star::first-letter{color:#f59e0b}
 .tg{font-size:11.5px;color:var(--mu);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .meta{font-size:12px;color:var(--mu);margin-bottom:6px}
@@ -870,3 +870,57 @@ html[data-theme=white] .toast.bad {
 html[data-theme=white] .qa-folder-item.on {
   color: #14161f !important;
 }
+
+/* === Быстрый поиск тегов в панели фильтров, чип сброса и подсказка 18+ === */
+.cg-tags-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--bd);
+}
+.cg-tags-search {
+  flex: 1;
+  min-width: 160px;
+  max-width: 340px;
+  padding: 6px 10px !important;
+  font-size: 12.5px !important;
+  border-radius: var(--rad-sm) !important;
+  background: var(--inp) !important;
+  border: 1px solid var(--bd) !important;
+  color: var(--tx) !important;
+}
+.cg-tchip.hidden-chip {
+  display: none !important;
+}
+.cg-chip-reset-all {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border-color: rgba(239, 68, 68, 0.35) !important;
+  color: #fca5a5 !important;
+}
+html[data-theme=white] .cg-chip-reset-all {
+  color: #b91c1c !important;
+}
+.cg-adult-hint {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 26px 20px;
+  border-radius: 16px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  color: var(--tx);
+  margin: 12px 0;
+}
+.cg-adult-hint p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--mut);
+  max-width: 520px;
+  line-height: 1.5;
+}
+

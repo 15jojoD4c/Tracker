@@ -42,6 +42,23 @@ function cleanYoutubeId(raw) {
   return idMatch ? idMatch[1] : '';
 }
 
+function getPosterFallbackCandidates(rawPosterUrl, itemRef) {
+  const list = [];
+  const push = u => {
+    if (!isValidPosterUrl(u)) return;
+    const s = String(u).trim();
+    if (!list.includes(s)) list.push(s);
+  };
+  push(rawPosterUrl);
+  if (itemRef && typeof itemRef === 'object') {
+    push(itemRef.poster);
+    if (Array.isArray(itemRef.posterFallbacks)) {
+      itemRef.posterFallbacks.forEach(push);
+    }
+  }
+  return list.slice(0, 6);
+}
+
 async function _fetchJikanPoster(malId, category) {
   const idNum = Number(malId);
   if (!idNum || idNum <= 0) return '';
@@ -49,86 +66,101 @@ async function _fetchJikanPoster(malId, category) {
   const cacheKey = ep + '_' + idNum;
   if (_jikanPosterCache.has(cacheKey)) return _jikanPosterCache.get(cacheKey);
   const p = (async () => {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 4500);
     try {
-      const resp = await fetch(`https://api.jikan.moe/v4/${ep}/${idNum}`, { signal: ctrl.signal });
-      if (!resp.ok) return '';
-      const j = await resp.json();
+      const j = await _jikanJson(`https://api.jikan.moe/v4/${ep}/${idNum}`, 6000);
       const u = j?.data?.images?.jpg?.large_image_url || j?.data?.images?.jpg?.image_url || j?.data?.images?.webp?.large_image_url || '';
       return isValidPosterUrl(u) ? u : '';
     } catch (e) {
       return '';
-    } finally {
-      clearTimeout(timer);
     }
   })();
   _jikanPosterCache.set(cacheKey, p);
   return p;
 }
 
-// Проксирование постеров Shikimori и TMDB через wsrv.nl для стабильной загрузки в РФ без VPN
+// Проксирование постеров Shikimori, TMDB и MangaDex через wsrv.nl для стабильной загрузки в РФ без VPN и обхода hotlink-защиты
 function safePosterUrl(u) {
   if (!isValidPosterUrl(u)) return FALL;
   const s = u.trim();
   if (s.startsWith('data:image/')) return s;
   if (!/^https?:\/\//i.test(s)) return FALL;
-  if (/^https?:\/\/((?:desu\.)?shikimori\.(?:one|io|me|org)|image\.tmdb\.org)\//i.test(s)) {
+  if (/^https?:\/\/((?:desu\.)?shikimori\.(?:one|io|me|org)|image\.tmdb\.org|uploads\.mangadex\.org)\//i.test(s)) {
     return 'https://wsrv.nl/?url=' + encodeURIComponent(s);
   }
   return s;
 }
 
-// Индивидуальный 5-шаговый фоллбэк постера для каждого <img> без глобального отключения прокси:
-// 1) wsrv.nl -> 2) i0.wp.com -> 3) прямой URL -> 4) Jikan v4 (cdn.myanimelist.net) -> 5) FALL
+// Многоступенчатый индивидуальный фоллбэк постера для каждого <img>:
+// Для каждого URL из [poster, ...posterFallbacks]: 1) wsrv.nl -> 2) i0.wp.com -> 3) прямой URL
+// При исчерпании всех CDN-кандидатов -> 4) Jikan v4 (cdn.myanimelist.net) -> 5) FALL
 function handlePosterImgError(imgEl, rawPosterUrl, itemRef) {
   if (!imgEl || imgEl.dataset.posterFailed === '1') return;
-  let raw = isValidPosterUrl(rawPosterUrl) ? String(rawPosterUrl).trim() : (imgEl.dataset.rawPoster || '');
-  if (!raw && imgEl.src) {
+  let candidates = [];
+  try {
+    const parsed = JSON.parse(imgEl.dataset.fallbackPosters || '[]');
+    if (Array.isArray(parsed)) candidates = parsed.filter(isValidPosterUrl);
+  } catch (e) {}
+  for (const extra of getPosterFallbackCandidates(rawPosterUrl, itemRef)) {
+    if (!candidates.includes(extra)) candidates.push(extra);
+  }
+  if (!candidates.length && imgEl.src) {
     if (imgEl.src.includes('wsrv.nl/?url=')) {
       try {
         const extracted = new URL(imgEl.src).searchParams.get('url');
-        if (isValidPosterUrl(extracted)) raw = extracted;
+        if (isValidPosterUrl(extracted)) candidates.push(extracted);
       } catch (e) {}
     } else if (!imgEl.src.startsWith('data:') && isValidPosterUrl(imgEl.src)) {
-      raw = imgEl.src;
+      candidates.push(imgEl.src);
     }
   }
-  if (raw && !imgEl.dataset.rawPoster) imgEl.dataset.rawPoster = raw;
+  if (candidates.length) {
+    imgEl.dataset.fallbackPosters = JSON.stringify(candidates);
+  }
 
+  let candIdx = Number(imgEl.dataset.posterCandIdx || 0);
   let step = Number(imgEl.dataset.posterStep || 0);
   if (step === 0 && imgEl.src && imgEl.src.includes('wsrv.nl')) step = 1;
   else if (step === 0 && imgEl.src && imgEl.src.includes('i0.wp.com/')) step = 2;
-  else if (step === 0 && raw && imgEl.src === raw) step = 0;
 
-  if (step < 1 && raw && /^https?:\/\//i.test(raw) && !imgEl.src.includes('wsrv.nl')) {
-    imgEl.dataset.posterStep = '1';
-    imgEl.src = 'https://wsrv.nl/?url=' + encodeURIComponent(raw);
-    return;
+  while (candIdx < candidates.length) {
+    const raw = candidates[candIdx];
+    imgEl.dataset.rawPoster = raw;
+    imgEl.dataset.posterCandIdx = String(candIdx);
+    if (step < 1 && /^https?:\/\//i.test(raw) && !imgEl.src.includes('wsrv.nl')) {
+      imgEl.dataset.posterStep = '1';
+      imgEl.src = 'https://wsrv.nl/?url=' + encodeURIComponent(raw);
+      return;
+    }
+    if (step < 2 && /^https?:\/\//i.test(raw)) {
+      imgEl.dataset.posterStep = '2';
+      imgEl.src = 'https://i0.wp.com/' + raw.replace(/^https?:\/\//i, '');
+      return;
+    }
+    if (step < 3 && /^https?:\/\//i.test(raw) && imgEl.src !== raw) {
+      imgEl.dataset.posterStep = '3';
+      imgEl.src = raw;
+      return;
+    }
+    candIdx++;
+    step = 0;
   }
-  if (step < 2 && raw && /^https?:\/\//i.test(raw)) {
-    imgEl.dataset.posterStep = '2';
-    imgEl.src = 'https://i0.wp.com/' + raw.replace(/^https?:\/\//i, '');
-    return;
-  }
-  if (step < 3 && raw && /^https?:\/\//i.test(raw)) {
-    imgEl.dataset.posterStep = '3';
-    imgEl.src = raw;
-    return;
-  }
+
   const malId = Number(itemRef?.mal || imgEl.dataset.malId || 0);
   const itemCat = itemRef?.category || imgEl.dataset.itemCat || 'Аниме';
-  if (step < 4 && malId > 0 && ['Аниме', 'Манга', 'Ранобэ'].includes(itemCat)) {
-    imgEl.dataset.posterStep = '4';
+  if (imgEl.dataset.posterJikanTried !== '1' && malId > 0 && ['Аниме', 'Манга', 'Ранобэ'].includes(itemCat)) {
+    imgEl.dataset.posterJikanTried = '1';
     _fetchJikanPoster(malId, itemCat).then(jUrl => {
-      if (jUrl && isValidPosterUrl(jUrl)) {
-        if (itemRef && typeof itemRef === 'object' && !isValidPosterUrl(itemRef.poster)) {
-          itemRef.poster = jUrl;
+      if (jUrl && isValidPosterUrl(jUrl) && !candidates.includes(jUrl)) {
+        if (itemRef && typeof itemRef === 'object') {
+          if (!isValidPosterUrl(itemRef.poster)) itemRef.poster = jUrl;
+          itemRef.posterFallbacks = [...new Set([...(itemRef.posterFallbacks || []), jUrl])].slice(0, 6);
         }
         imgEl.dataset.rawPoster = jUrl;
+        imgEl.dataset.posterCandIdx = String(candidates.length);
+        imgEl.dataset.posterStep = '3';
+        imgEl.dataset.fallbackPosters = JSON.stringify([...candidates, jUrl]);
         imgEl.src = jUrl;
       } else {
-        imgEl.dataset.posterStep = '5';
         imgEl.dataset.posterFailed = '1';
         imgEl.onerror = null;
         imgEl.src = FALL;
@@ -136,7 +168,6 @@ function handlePosterImgError(imgEl, rawPosterUrl, itemRef) {
     });
     return;
   }
-  imgEl.dataset.posterStep = '5';
   imgEl.dataset.posterFailed = '1';
   imgEl.onerror = null;
   imgEl.src = FALL;
@@ -145,10 +176,16 @@ function handlePosterImgError(imgEl, rawPosterUrl, itemRef) {
 function applyPosterImg(imgEl, rawPosterUrl, itemRef) {
   if (!imgEl) return;
   delete imgEl.dataset.posterStep;
+  delete imgEl.dataset.posterCandIdx;
+  delete imgEl.dataset.posterJikanTried;
   delete imgEl.dataset.posterFailed;
-  const raw = isValidPosterUrl(rawPosterUrl) ? String(rawPosterUrl).trim() : '';
+  imgEl.referrerPolicy = 'no-referrer';
+  const candidates = getPosterFallbackCandidates(rawPosterUrl, itemRef);
+  const raw = candidates[0] || '';
   if (raw) imgEl.dataset.rawPoster = raw;
   else delete imgEl.dataset.rawPoster;
+  if (candidates.length) imgEl.dataset.fallbackPosters = JSON.stringify(candidates);
+  else delete imgEl.dataset.fallbackPosters;
   if (itemRef?.mal) imgEl.dataset.malId = String(itemRef.mal);
   if (itemRef?.category) imgEl.dataset.itemCat = String(itemRef.category);
   imgEl.onerror = () => handlePosterImgError(imgEl, raw, itemRef);
@@ -158,6 +195,7 @@ function applyPosterImg(imgEl, rawPosterUrl, itemRef) {
       if (jUrl && isValidPosterUrl(jUrl) && (!imgEl.src || imgEl.src === FALL)) {
         if (typeof itemRef === 'object') itemRef.poster = jUrl;
         imgEl.dataset.rawPoster = jUrl;
+        imgEl.dataset.fallbackPosters = JSON.stringify([jUrl]);
         imgEl.src = jUrl;
       }
     });
@@ -250,6 +288,10 @@ const fix = i => {
   }
   i.kind = 'title';
   i.needsReview = Boolean(i.needsReview ?? false);
+  if (Array.isArray(i.posterFallbacks)) {
+    i.posterFallbacks = [...new Set(i.posterFallbacks.filter(isValidPosterUrl))].slice(0, 6);
+    if (!i.posterFallbacks.length) delete i.posterFallbacks;
+  }
   return i;
 };
 const getMangaSubKind = i => {
@@ -1299,9 +1341,13 @@ const same = (a, b) => {
   if (!sameCat(a.category, b.category)) return false;
   if (Number(a.aniId) > 0 && Number(b.aniId) > 0 && Number(a.aniId) === Number(b.aniId)) return true;
   if (Number(a.mal) > 0 && Number(b.mal) > 0 && Number(a.mal) === Number(b.mal)) return true;
+  if (Number(a.shikiId) > 0 && Number(b.shikiId) > 0 && Number(a.shikiId) === Number(b.shikiId)) return true;
+  if (a.mdId && b.mdId && String(a.mdId) === String(b.mdId)) return true;
 
   if (Number(a.aniId) > 0 && Number(b.aniId) > 0 && Number(a.aniId) !== Number(b.aniId)) return false;
   if (Number(a.mal) > 0 && Number(b.mal) > 0 && Number(a.mal) !== Number(b.mal)) return false;
+  if (Number(a.shikiId) > 0 && Number(b.shikiId) > 0 && Number(a.shikiId) !== Number(b.shikiId)) return false;
+  if (a.mdId && b.mdId && String(a.mdId) !== String(b.mdId)) return false;
   if (a.tmdb && b.tmdb && String(a.tmdb) !== String(b.tmdb)) return false;
   if (a.imdbId && b.imdbId && String(a.imdbId) !== String(b.imdbId)) return false;
 
@@ -1325,13 +1371,15 @@ const same = (a, b) => {
 };
 
 function createFastDuplicateIndex(pool = []) {
-  const byTmdb = new Map(), byImdb = new Map(), byAni = new Map(), byMal = new Map(), byTitle = new Map();
+  const byTmdb = new Map(), byImdb = new Map(), byAni = new Map(), byMal = new Map(), byShiki = new Map(), byMd = new Map(), byTitle = new Map();
   const add = it => {
     if (!it) return;
     if (it.tmdb) byTmdb.set(String(it.tmdb), it);
     if (it.imdbId) byImdb.set(String(it.imdbId), it);
     if (Number(it.aniId) > 0) byAni.set(Number(it.aniId), it);
     if (Number(it.mal) > 0) byMal.set(Number(it.mal), it);
+    if (Number(it.shikiId) > 0) byShiki.set(Number(it.shikiId), it);
+    if (it.mdId) byMd.set(String(it.mdId), it);
     for (const nt of getCachedItemNormMeta(it).primary) {
       let arr = byTitle.get(nt);
       if (!arr) { arr = []; byTitle.set(nt, arr); }
@@ -1351,6 +1399,14 @@ function createFastDuplicateIndex(pool = []) {
       }
       if (Number(cand.mal) > 0 && byMal.has(Number(cand.mal))) {
         const h = byMal.get(Number(cand.mal));
+        if (sameCat(h.category, cand.category)) return h;
+      }
+      if (Number(cand.shikiId) > 0 && byShiki.has(Number(cand.shikiId))) {
+        const h = byShiki.get(Number(cand.shikiId));
+        if (sameCat(h.category, cand.category)) return h;
+      }
+      if (cand.mdId && byMd.has(String(cand.mdId))) {
+        const h = byMd.get(String(cand.mdId));
         if (sameCat(h.category, cand.category)) return h;
       }
       const checked = new Set();
@@ -1927,19 +1983,19 @@ const hasRu = t => /[а-яё]/i.test(t || ''), ruN = t => (t || '').toLowerCase(
 const ruClean = t => (t || '').replace(/\[(character|person|anime|manga|ranobe|url|user)[^\]]*\]([^\[]*)\[\/\1\]/gi, '$2').replace(/\[\/?[a-z_]+(?:=[^\]]*)?\]/gi, '').replace(/\n{3,}/g, '\n\n').trim();
 const ruJson = async (u, ms = 7000) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); try { const r = await fetch(u, {signal: c.signal}); if (!r.ok) { const err = new Error('HTTP ' + r.status); err.status = r.status; throw err; } return await r.json(); } finally { clearTimeout(t); } };
 
-// Троттлинг-очередь для Shikimori (макс. 3 одновременных запроса, интервал >= 220 мс, 1 авто-повтор при 429)
+// Троттлинг-очередь для Shikimori (макс. 2 одновременных запроса, интервал >= 260 мс, 1 авто-повтор при 429)
 const shikiOk = () => true;
 const _shikiQueue = [];
 let _shikiActive = 0;
 let _shikiLastRunAt = 0;
 function _drainShikiQueue() {
-  while (_shikiActive < 3 && _shikiQueue.length > 0) {
+  while (_shikiActive < 2 && _shikiQueue.length > 0) {
     const job = _shikiQueue.shift();
     _shikiActive++;
     (async () => {
       try {
         const now = Date.now();
-        const waitMs = Math.max(0, (_shikiLastRunAt + 220) - now);
+        const waitMs = Math.max(0, (_shikiLastRunAt + 260) - now);
         _shikiLastRunAt = now + waitMs;
         if (waitMs > 0) await ruWait(waitMs);
         const res = await job.fn();
@@ -1960,22 +2016,172 @@ function _enqueueShiki(fn) {
   });
 }
 
+// Троттлинг-очередь и кэш для Jikan v4 (строго <= 3 запросов/сек: интервал >= 380 мс, авто-повтор при 429)
+const _jikanQueue = [];
+let _jikanActive = 0;
+let _jikanLastRunAt = 0;
+const _jikanRespCache = new Map();
+const _jikanInflight = new Map();
+function _drainJikanQueue() {
+  while (_jikanActive < 2 && _jikanQueue.length > 0) {
+    const job = _jikanQueue.shift();
+    _jikanActive++;
+    (async () => {
+      try {
+        const now = Date.now();
+        const waitMs = Math.max(0, (_jikanLastRunAt + 380) - now);
+        _jikanLastRunAt = now + waitMs;
+        if (waitMs > 0) await ruWait(waitMs);
+        const res = await job.fn();
+        job.resolve(res);
+      } catch (err) {
+        job.reject(err);
+      } finally {
+        _jikanActive--;
+        _drainJikanQueue();
+      }
+    })();
+  }
+}
+function _enqueueJikan(fn) {
+  return new Promise((resolve, reject) => {
+    _jikanQueue.push({ fn, resolve, reject });
+    _drainJikanQueue();
+  });
+}
+async function _jikanJson(url, ms = 6500) {
+  const cached = _jikanRespCache.get(url);
+  if (cached && (Date.now() - cached.t) < 300000) return cached.data;
+  if (_jikanInflight.has(url)) return _jikanInflight.get(url);
+  const prom = _enqueueJikan(async () => {
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const data = await ruJson(url, ms);
+        _jikanRespCache.set(url, { t: Date.now(), data });
+        if (_jikanRespCache.size > 150) _jikanRespCache.delete(_jikanRespCache.keys().next().value);
+        return data;
+      } catch (e) {
+        lastErr = e;
+        if (attempt === 0 && (e?.status === 429 || /429/.test(e?.message || ''))) {
+          await ruWait(1250);
+          continue;
+        }
+        break;
+      }
+    }
+    throw lastErr || new Error('Jikan request failed');
+  }).finally(() => {
+    _jikanInflight.delete(url);
+  });
+  _jikanInflight.set(url, prom);
+  return prom;
+}
+
+// Троттлинг-очередь, кэш и прокси-фоллбэк для MangaDex API (работает без ключей и с обходом блокировок в РФ)
+const _mangadexQueue = [];
+let _mangadexActive = 0;
+let _mangadexLastRunAt = 0;
+const _mangadexRespCache = new Map();
+const _mangadexInflight = new Map();
+let _mangadexDirectBlockedUntil = 0;
+function _drainMangadexQueue() {
+  while (_mangadexActive < 3 && _mangadexQueue.length > 0) {
+    const job = _mangadexQueue.shift();
+    _mangadexActive++;
+    (async () => {
+      try {
+        const now = Date.now();
+        const waitMs = Math.max(0, (_mangadexLastRunAt + 240) - now);
+        _mangadexLastRunAt = now + waitMs;
+        if (waitMs > 0) await ruWait(waitMs);
+        const res = await job.fn();
+        job.resolve(res);
+      } catch (err) {
+        job.reject(err);
+      } finally {
+        _mangadexActive--;
+        _drainMangadexQueue();
+      }
+    })();
+  }
+}
+function _enqueueMangaDex(fn) {
+  return new Promise((resolve, reject) => {
+    _mangadexQueue.push({ fn, resolve, reject });
+    _drainMangadexQueue();
+  });
+}
+async function _mangadexJson(url, ms = 6500) {
+  const cached = _mangadexRespCache.get(url);
+  if (cached && (Date.now() - cached.t) < 300000) return cached.data;
+  if (_mangadexInflight.has(url)) return _mangadexInflight.get(url);
+  const prom = _enqueueMangaDex(async () => {
+    const tryProxy = async () => {
+      const proxies = [
+        'https://corsproxy.io/?' + encodeURIComponent(url),
+        'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)
+      ];
+      return await Promise.any(proxies.map(pu => ruJson(pu, 6500)));
+    };
+    let data = null;
+    if (Date.now() >= _mangadexDirectBlockedUntil) {
+      try {
+        data = await ruJson(url, ms);
+      } catch (e) {
+        if (e?.status === 429) {
+          await ruWait(1000);
+          data = await ruJson(url, ms);
+        } else {
+          _mangadexDirectBlockedUntil = Date.now() + 5 * 60 * 1000;
+          data = await tryProxy();
+        }
+      }
+    } else {
+      data = await tryProxy();
+    }
+    _mangadexRespCache.set(url, { t: Date.now(), data });
+    if (_mangadexRespCache.size > 120) _mangadexRespCache.delete(_mangadexRespCache.keys().next().value);
+    return data;
+  }).finally(() => {
+    _mangadexInflight.delete(url);
+  });
+  _mangadexInflight.set(url, prom);
+  return prom;
+}
+
+let _shikiDirectBlockedUntil = 0;
 async function shiki(path) {
   return _enqueueShiki(async () => {
     let lastErr = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      for (const d of SHD) {
-        try {
-          return await ruJson('https://' + d + path, 6500);
-        } catch (e) {
-          lastErr = e;
-          if (e?.status === 429 || /429/.test(e?.message || '')) break;
+    if (Date.now() >= _shikiDirectBlockedUntil) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        for (const d of SHD) {
+          try {
+            return await ruJson('https://' + d + path, 6000);
+          } catch (e) {
+            lastErr = e;
+            if (e?.status === 429 || /429/.test(e?.message || '')) break;
+          }
+        }
+        if (attempt === 0) {
+          const is429 = lastErr?.status === 429 || /429/.test(lastErr?.message || '');
+          if (!is429) break;
+          await ruWait(1200);
         }
       }
-      if (attempt === 0) {
-        const is429 = lastErr?.status === 429 || /429/.test(lastErr?.message || '');
-        await ruWait(is429 ? 1200 : 450);
-      }
+    }
+    // Если прямой доступ к Shikimori заблокирован в РФ без VPN — пробуем через CORS-прокси
+    if (!lastErr || (lastErr.status !== 429)) {
+      try {
+        const target = 'https://shikimori.one' + path;
+        const pData = await Promise.any([
+          ruJson('https://corsproxy.io/?' + encodeURIComponent(target), 6000),
+          ruJson('https://api.allorigins.win/raw?url=' + encodeURIComponent(target), 6000)
+        ]);
+        _shikiDirectBlockedUntil = Date.now() + 3 * 60 * 1000;
+        return pData;
+      } catch (proxyErr) {}
     }
     throw lastErr || new Error('Shikimori REST error');
   });
@@ -1988,7 +2194,7 @@ async function shikiGraphQL(query, variables = {}) {
     for (let attempt = 0; attempt < 2; attempt++) {
       for (const ep of endpoints) {
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 7000);
+        const timer = setTimeout(() => ctrl.abort(), 6500);
         try {
           const resp = await fetch(ep, {
             method: 'POST',
@@ -2014,7 +2220,8 @@ async function shikiGraphQL(query, variables = {}) {
       }
       if (attempt === 0) {
         const is429 = lastErr?.status === 429 || /429/.test(lastErr?.message || '');
-        await ruWait(is429 ? 1200 : 450);
+        if (!is429) break;
+        await ruWait(1200);
       }
     }
     throw lastErr || new Error('Shikimori GraphQL error');
@@ -2212,7 +2419,20 @@ function ruFull(r) {
   })();
 }
 async function ruPreview(r) {
-  if (r.src !== 'AniList' || r.ruDone) return;
+  if (!r || r.ruDone) return;
+  if (r.tmdb && typeof tmdbInfo === 'function' && (!r.author || !r.studio || !r.trailerId)) {
+    try {
+      const info = await tmdbInfo(r);
+      Object.assign(r, info);
+      r.ruDone = 1;
+      if (rndR === r) {
+        $('rndCredits').textContent = [r.author && 'Режиссёр: ' + r.author, r.studio && 'Студия: ' + r.studio, r.cast && 'В ролях: ' + r.cast].filter(Boolean).join('  •  ');
+        if (typeof rndTagChips === 'function') rndTagChips(r);
+      }
+    } catch (e) {}
+    return;
+  }
+  if (!['AniList', 'Jikan', 'MangaDex', 'Shikimori'].includes(r.src)) return;
   if (!r.desc) $('rndDesc').textContent = 'Загружаю описание на русском…';
   else if (!hasRu(r.desc)) $('rndDesc').textContent = 'Перевожу на русский…';
   await ruFull(r);

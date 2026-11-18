@@ -1122,7 +1122,20 @@ function mergeTwoDuplicateItems(best, other) {
   merged.lists = [...new Set([...(merged.lists || []), ...(other.lists || [])])];
   merged.tags = [...new Set([...(merged.tags || []), ...(other.tags || [])])];
 
-  ['aniId', 'mal', 'tmdb', 'imdbId', 'poster', 'titleEn', 'titleOrig', 'alt', 'year', 'extRating', 'extSrc', 'description', 'author', 'studio', 'source', 'eps', 'vols', 'dur', 'format', 'subKind', 'recBy'].forEach(k => {
+  const allFallbacks = [];
+  const pushFb = u => {
+    if (isValidPosterUrl(u) && !allFallbacks.includes(String(u).trim())) allFallbacks.push(String(u).trim());
+  };
+  pushFb(merged.poster);
+  (merged.posterFallbacks || []).forEach(pushFb);
+  pushFb(other.poster);
+  (other.posterFallbacks || []).forEach(pushFb);
+  if (allFallbacks.length) {
+    if (!isValidPosterUrl(merged.poster)) merged.poster = allFallbacks[0];
+    merged.posterFallbacks = allFallbacks.slice(0, 6);
+  }
+
+  ['aniId', 'mal', 'shikiId', 'mdId', 'tmdb', 'imdbId', 'poster', 'titleEn', 'titleOrig', 'alt', 'year', 'extRating', 'extSrc', 'description', 'author', 'studio', 'cast', 'source', 'eps', 'vols', 'dur', 'format', 'subKind', 'recBy', 'trailerId'].forEach(k => {
     if (!merged[k] && other[k]) merged[k] = other[k];
   });
   merged.needsReview = Boolean(!hasExternalCatalogId(merged) && merged.needsReview && other.needsReview);
@@ -1268,7 +1281,7 @@ if ($('dedupMergeBtn')) $('dedupMergeBtn').onclick = findAndMergeDuplicatesModal
 
 // ---------- КНОПКА «🔗 Связать коллекцию с каталогом» (Исправлен Этап 1 п.11) ----------
 function hasExternalCatalogId(it) {
-  return Boolean(Number(it.aniId) > 0 || Number(it.mal) > 0 || (it.tmdb && String(it.tmdb).includes('/')));
+  return Boolean(Number(it.aniId) > 0 || Number(it.mal) > 0 || Number(it.shikiId) > 0 || Boolean(it.mdId) || (it.tmdb && String(it.tmdb).includes('/')));
 }
 
 // Хранение попыток связывания и очереди спорных совпадений в localStorage (чтобы не засорять документы в базе и восстанавливать очередь после перезагрузки — Этап 1 п.11)
@@ -1329,12 +1342,28 @@ function applyCatalogMatchToItem(it, match, allowFillMissingIds = true) {
   if (allowFillMissingIds) {
     if (match.aniId && !Number(it.aniId)) it.aniId = match.aniId;
     if (match.mal && !Number(it.mal)) it.mal = match.mal;
+    if (match.shikiId && !Number(it.shikiId)) it.shikiId = Number(match.shikiId);
+    if (match.mdId && !it.mdId) it.mdId = String(match.mdId);
     if (match.tmdb && !it.tmdb) it.tmdb = match.tmdb;
+    if (match.imdbId && !it.imdbId) it.imdbId = match.imdbId;
   }
   if (match.format && !it.format) it.format = match.format;
   if (match.isAdult) it.isAdult = true;
   if (match.subKind && it.category === 'Манга' && (!it.subKind || it.subKind === 'Манга')) it.subKind = match.subKind;
-  if (isValidPosterUrl(match.poster) && !isValidPosterUrl(it.poster)) it.poster = match.poster;
+
+  const fbPosters = [];
+  const pushP = u => {
+    if (isValidPosterUrl(u) && !fbPosters.includes(String(u).trim())) fbPosters.push(String(u).trim());
+  };
+  pushP(it.poster);
+  (it.posterFallbacks || []).forEach(pushP);
+  pushP(match.poster);
+  (match.posterFallbacks || []).forEach(pushP);
+  if (fbPosters.length) {
+    if (!isValidPosterUrl(it.poster)) it.poster = fbPosters[0];
+    it.posterFallbacks = fbPosters.slice(0, 6);
+  }
+
   const cleanedTrailer = cleanYoutubeId(match.trailerId);
   if (cleanedTrailer && !cleanYoutubeId(it.trailerId)) it.trailerId = cleanedTrailer;
   if (match.title && hasRu(match.title) && !hasRu(it.title)) {
@@ -1347,21 +1376,33 @@ function applyCatalogMatchToItem(it, match, allowFillMissingIds = true) {
   if (match.alt && !it.alt) it.alt = match.alt;
   if (match.year && !it.year) it.year = String(match.year);
   if (match.ext && !it.extRating) { it.extRating = String(match.ext); it.extSrc = match.src || ''; }
-  if (match.desc && !it.description) it.description = match.desc;
+  if (match.desc && (!it.description || (hasRu(match.desc) && !hasRu(it.description)))) it.description = match.desc;
   if (match.author && !it.author) it.author = match.author;
   if (match.studio && !it.studio) it.studio = match.studio;
+  if (match.cast && !it.cast) it.cast = match.cast;
   if (match.source && !it.source) it.source = match.source;
   if (match.eps && !num(it.eps)) it.eps = match.eps;
   if (match.vols && !num(it.vols)) it.vols = match.vols;
   if (match.dur && !num(it.dur)) it.dur = match.dur;
-  if (Array.isArray(match.tags) && match.tags.length && (!it.tags || !it.tags.length)) it.tags = match.tags;
+  if (Array.isArray(match.tags) && match.tags.length) {
+    if (!it.tags || !it.tags.length) {
+      it.tags = [...match.tags];
+    } else {
+      const seenTags = new Set(it.tags.map(t => String(t).toLowerCase()));
+      for (const tg of match.tags) {
+        if (it.tags.length >= 12) break;
+        const low = String(tg || '').toLowerCase();
+        if (tg && !seenTags.has(low)) { seenTags.add(low); it.tags.push(tg); }
+      }
+    }
+  }
   if (it._knownStatusFromImport !== false) it.needsReview = false;
   delete it._knownStatusFromImport;
   delete it.lastLinkAttempt;
   fix(it);
 }
 
-// Этап 1 п.11: Если у тайтла УЖЕ есть aniId, mal или tmdb — запрашиваем каталог строго по этому ID, а не ищем по названию!
+// Этап 1 п.11: Если у тайтла УЖЕ есть aniId, mal, mdId или tmdb — запрашиваем каталог строго по этому ID, а не ищем по названию!
 async function findCatalogMatchForItem(it) {
   const isAni = ['Аниме', 'Манга', 'Ранобэ'].includes(it.category);
   if (isAni) {
@@ -1374,7 +1415,7 @@ async function findCatalogMatchForItem(it) {
         return { confident: true, match: byAni[0], candidates: byAni };
       }
     }
-    // 2. Если уже есть idMal — запрашиваем по idMal (автофоллбэк в Shikimori GraphQL при блоке AniList)
+    // 2. Если уже есть idMal — запрашиваем по idMal (автофоллбэк в Shikimori GraphQL / Jikan при блоке AniList)
     if (Number(it.mal) > 0) {
       const byMal = await _anilistRaw(null, mType, { idMal: Number(it.mal), per: 3, format: it.category === 'Ранобэ' ? 'NOVEL' : undefined }).catch(() => []);
       if (byMal[0]) {
@@ -1382,7 +1423,17 @@ async function findCatalogMatchForItem(it) {
         return { confident: true, match: byMal[0], candidates: byMal };
       }
     }
-    // 3. Быстрый и точный поиск по названию (сначала через Shikimori GraphQL для русских названий, затем AniList)
+    // 2.5 Если уже есть mdId (MangaDex) — догружаем детали напрямую
+    if (it.mdId && typeof _mangadexJson === 'function' && typeof mapMangaDexNode === 'function') {
+      try {
+        const mdResp = await _mangadexJson(`https://api.mangadex.org/manga/${encodeURIComponent(it.mdId)}?includes[]=cover_art&includes[]=author&includes[]=artist`, 6000);
+        if (mdResp?.data) {
+          const mdNode = mapMangaDexNode(mdResp.data, it.category === 'Ранобэ');
+          return { confident: true, match: mdNode, candidates: [mdNode] };
+        }
+      } catch (e) {}
+    }
+    // 3. Быстрый и точный поиск по названию (Shikimori GraphQL -> AniList -> Jikan / MangaDex)
     const cleanAnixSearch = s => String(s || '')
       .replace(/\[(?:тв|tv|ova|ona|фильм|movie)[^\]]*\]/gi, ' ')
       .replace(/\((?:тв-?1|tv-?1|тв|tv|сериал)\)/gi, ' ')
@@ -1410,14 +1461,15 @@ async function findCatalogMatchForItem(it) {
       const overlap = Math.max(calcWordOverlap(it.title, c.title), calcWordOverlap(it.titleEn || it.title, c.en));
       const cYear = parseInt(c.year) || 0;
       const hasBothYears = Boolean(itemYear > 0 && cYear > 0);
-      const yearMatch = hasBothYears && Math.abs(itemYear - cYear) <= 1;
-      const yearCompatible = !hasBothYears || Math.abs(itemYear - cYear) <= 1;
+      const yearDiffLimit = (it.category === 'Манга' || it.category === 'Ранобэ') ? 2 : 1;
+      const yearMatch = hasBothYears && Math.abs(itemYear - cYear) <= yearDiffLimit;
+      const yearCompatible = !hasBothYears || Math.abs(itemYear - cYear) <= yearDiffLimit;
       const markerOk = getItemMarkers(c) === itemMarker;
       if (!markerOk) return false;
       return (exactTitle && yearCompatible) || (yearMatch && overlap >= 0.85);
     };
 
-    // Шаг 3А: Прямой поиск через Shikimori GraphQL (реальные постеры, жанры, описание, студия без 404 заглушек)
+    // Шаг 3А: Прямой поиск через Shikimori GraphQL (встроенный фоллбэк на Jikan / MangaDex при ошибке)
     let shCandidates = [];
     try {
       shCandidates = await _shikiCatalogFallback(qStr, mType, {
@@ -1430,15 +1482,12 @@ async function findCatalogMatchForItem(it) {
             return { confident: true, match: c, candidates: shCandidates, needsFullEnrich: !isAniListBlockedNow() };
           }
         }
-        if (isAniListBlockedNow()) {
-          return { confident: false, match: shCandidates[0], candidates: shCandidates };
-        }
       }
     } catch (e) {}
 
     // Шаг 3Б: Поиск через AniList GraphQL (если доступен)
     const searchEn = it.titleEn || qStr;
-    if (!isAniListBlockedNow() || !shCandidates.length) {
+    if (!isAniListBlockedNow()) {
       const candidates = await anilist(searchEn, mType, { per: 6 }).catch(() => []);
       if (candidates.length) {
         try { await ruFull(candidates[0]); } catch (e) {}
@@ -1451,23 +1500,56 @@ async function findCatalogMatchForItem(it) {
         return { confident: false, match: candidates[0], candidates };
       }
     }
+
+    // Шаг 3В: Дополнительный фоллбэк Jikan v4 (+ MangaDex для манги/ранобэ), если Shikimori/AniList не дали точного совпадения
+    const extraTasks = [];
+    if (typeof _jikanCatalogRaw === 'function') {
+      extraTasks.push(_jikanCatalogRaw(searchEn, mType, { per: 6, format: it.category === 'Ранобэ' ? 'NOVEL' : undefined }).catch(() => []));
+    }
+    if (mType === 'MANGA' && typeof _mangadexCatalogRaw === 'function') {
+      extraTasks.push(_mangadexCatalogRaw(searchEn, { per: 6, format: it.category === 'Ранобэ' ? 'NOVEL' : undefined }).catch(() => []));
+    }
+    if (extraTasks.length) {
+      const extraLists = await Promise.all(extraTasks);
+      const extraMerged = interleaveAndDedupCatalogLists([shCandidates, ...extraLists]);
+      for (const c of extraMerged) {
+        if (isConfidentTitleOrYearMatch(c)) {
+          try { await ruFull(c); } catch (e) {}
+          return { confident: true, match: c, candidates: extraMerged.slice(0, 6) };
+        }
+      }
+      if (extraMerged.length) {
+        return { confident: false, match: extraMerged[0], candidates: extraMerged.slice(0, 6) };
+      }
+    }
+
     return shCandidates.length
       ? { confident: false, match: shCandidates[0], candidates: shCandidates }
       : { confident: false, match: null, candidates: [] };
   } else {
     const k = getActiveTmdbKey();
-    // 1. Если у тайтла УЖЕ есть tmdb ('movie/123' или 'tv/123') — запрашиваем TMDB напрямую по этому ID!
+    // 1. Если у тайтла УЖЕ есть tmdb ('movie/123' или 'tv/123') — запрашиваем TMDB напрямую по этому ID с трейлерами, актёрами и external_ids!
     if (it.tmdb && /^(movie|tv)\/\d+$/i.test(String(it.tmdb))) {
       try {
         const [mType, rawId] = String(it.tmdb).split('/');
-        const d = await fetchTmdbJson(`https://api.themoviedb.org/3/${mType}/${rawId}?api_key=${encodeURIComponent(k)}&language=ru-RU&append_to_response=credits`, 6000);
+        const d = await fetchTmdbJson(`https://api.themoviedb.org/3/${mType}/${rawId}?api_key=${encodeURIComponent(k)}&language=ru-RU&append_to_response=credits,videos,external_ids&include_video_language=ru,en,null`, 6000);
         if (d && d.id) {
           const orig = d.original_title || d.original_name || '';
           const dir = (d.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name);
           const by = (d.created_by || []).map(c => c.name);
+          const castNames = (d.credits?.cast || []).slice(0, 6).map(c => c.name).filter(Boolean).join(', ');
+          const vids = (d.videos?.results || []).filter(v => String(v.site || '').toLowerCase() === 'youtube');
+          const pickedVid = vids.find(v => v.type === 'Trailer' && v.iso_639_1 === 'ru')
+            || vids.find(v => v.type === 'Trailer' && v.official)
+            || vids.find(v => v.type === 'Trailer')
+            || vids[0];
+          const p342 = d.poster_path ? 'https://image.tmdb.org/t/p/w342' + d.poster_path : '';
+          const p500 = d.poster_path ? 'https://image.tmdb.org/t/p/w500' + d.poster_path : '';
           const matchObj = {
             title: d.title || d.name, en: orig, orig, alt: '',
-            poster: d.poster_path ? 'https://image.tmdb.org/t/p/w342' + d.poster_path : '',
+            poster: p342,
+            posterFallbacks: [p342, p500].filter(Boolean),
+            banner: d.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + d.backdrop_path : '',
             year: (d.release_date || d.first_air_date || '').slice(0, 4),
             ext: d.vote_count ? d.vote_average.toFixed(1) : '',
             tags: (d.genres || []).map(g => g.name || TG[g.id]).filter(Boolean),
@@ -1475,6 +1557,9 @@ async function findCatalogMatchForItem(it) {
             category: mType === 'tv' ? 'Сериал' : 'Фильм',
             author: [...new Set([...by, ...dir])].slice(0, 2).join(', '),
             studio: (d.production_companies || []).slice(0, 2).map(c => c.name).join(', '),
+            cast: castNames,
+            trailerId: cleanYoutubeId(pickedVid?.key),
+            imdbId: d.external_ids?.imdb_id || '',
             dur: d.runtime || (d.episode_run_time || [])[0] || 0,
             eps: d.number_of_episodes || 0
           };
@@ -1493,9 +1578,12 @@ async function findCatalogMatchForItem(it) {
         if (x) {
           const mType = hitM ? 'movie' : 'tv';
           const orig = x.original_title || x.original_name || '';
+          const p342 = x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '';
+          const p500 = x.poster_path ? 'https://image.tmdb.org/t/p/w500' + x.poster_path : '';
           const matchObj = {
             title: x.title || x.name, en: orig, orig, alt: '',
-            poster: x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '',
+            poster: p342,
+            posterFallbacks: [p342, p500].filter(Boolean),
             year: (x.release_date || x.first_air_date || '').slice(0, 4),
             ext: x.vote_count ? x.vote_average.toFixed(1) : '',
             tags: (x.genre_ids || []).map(g => TG[g]).filter(Boolean),
@@ -2205,20 +2293,6 @@ function renderAnixartProfileExtras() {
       });
     }
   }
-  renderProgressChart(vis);
-}
-
-function renderProgressChart(visOverride) {
-  const box = $('profProgressChartBox');
-  const metaEl = $('profProgressSummaryMeta');
-  if (!box) return;
-  const vis = Array.isArray(visOverride) ? visOverride : getVisibleItems().filter(i => !i.archived);
-  box.replaceChildren();
-  if (typeof computeProgressChartData === 'function' && typeof buildProgressChartNode === 'function') {
-    const data = computeProgressChartData(vis);
-    if (metaEl) metaEl.textContent = data.totalCount ? `Завершено ${data.totalDone} из ${data.totalCount} (${data.totalPct}%)` : '';
-    box.append(buildProgressChartNode(vis));
-  }
 }
 
 
@@ -2411,7 +2485,7 @@ class CharacterSeiyuuManager {
           .then(d => d?.[field]?.[0] || null)
           .catch(() => null);
         const jProm = isAnime
-          ? ruJson(`https://api.jikan.moe/v4/anime/${malId}/characters`, 4500).then(j => Array.isArray(j?.data) ? j.data : []).catch(() => [])
+          ? _jikanJson(`https://api.jikan.moe/v4/anime/${malId}/characters`, 5500).then(j => Array.isArray(j?.data) ? j.data : []).catch(() => [])
           : Promise.resolve([]);
         [shMedia, jikanChars] = await Promise.all([shProm, jProm]);
       }
@@ -2544,8 +2618,16 @@ class CharacterSeiyuuManager {
     }
     const tk = getActiveTmdbKey();
     if (tk && item.tmdb) {
-      const d = await fetchTmdbJson(`https://api.themoviedb.org/3/${item.tmdb}?api_key=${encodeURIComponent(tk)}&language=ru-RU&append_to_response=credits`, 6000);
+      const d = await fetchTmdbJson(`https://api.themoviedb.org/3/${item.tmdb}?api_key=${encodeURIComponent(tk)}&language=ru-RU&append_to_response=credits,videos,external_ids&include_video_language=ru,en,null`, 6000);
       const cast = d?.credits?.cast || d?.cast || [];
+      const dir = (d?.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name);
+      const by = (d?.created_by || []).map(c => c.name);
+      const vids = (d?.videos?.results || []).filter(v => String(v.site || '').toLowerCase() === 'youtube');
+      const pickedVid = vids.find(v => v.type === 'Trailer' && v.iso_639_1 === 'ru')
+        || vids.find(v => v.type === 'Trailer' && v.official)
+        || vids.find(v => v.type === 'Trailer')
+        || vids[0];
+      const ytKey = cleanYoutubeId(pickedVid?.key);
       const res = {
         isAnime: false,
         isLiveAction: true,
@@ -2553,7 +2635,12 @@ class CharacterSeiyuuManager {
           bannerImage: d?.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + d.backdrop_path : '',
           isOngoingTmdb: d?.status === 'Returning Series' || d?.status === 'In Production',
           nextEpAirDate: d?.next_episode_to_air?.air_date || d?.last_air_date || d?.first_air_date || '',
-          nextEpNum: d?.next_episode_to_air?.episode_number || 0
+          nextEpNum: d?.next_episode_to_air?.episode_number || 0,
+          trailer: ytKey ? { site: 'youtube', id: ytKey } : null,
+          author: [...new Set([...by, ...dir])].slice(0, 2).join(', '),
+          studio: (d?.production_companies || []).slice(0, 2).map(c => c.name).join(', '),
+          castNames: cast.slice(0, 6).map(c => c.name).filter(Boolean).join(', '),
+          imdbId: d?.external_ids?.imdb_id || ''
         },
         items: cast.slice(0, 20).map((c, idx) => ({ name: c.character || c.name, enName: c.original_name || c.name, role: idx < 4 ? 'MAIN' : 'SUP', img: c.profile_path ? 'https://image.tmdb.org/t/p/w342' + c.profile_path : FALL, vaName: c.name || '', vaImg: c.profile_path ? 'https://image.tmdb.org/t/p/w185' + c.profile_path : '', isLiveActor: true }))
       };
@@ -2692,6 +2779,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   };
   addClickableSpec('Автор / Режиссёр', activeItem.author, 'author');
   addClickableSpec('Студия / Издатель', activeItem.studio, 'studio');
+  if (activeItem.cast) addSpec('В главных ролях', activeItem.cast);
   if (activeItem.category === 'Манга' || activeItem.category === 'Ранобэ') {
     addSpec('Объём (Главы и Тома)', `${num(activeItem.eps) || '?'} гл. · ${num(activeItem.vols) || '?'} т.`);
   } else {
@@ -2759,6 +2847,11 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   await CharacterSeiyuuManager.render(charsSec, activeItem);
   const cachedData = await CharacterSeiyuuManager.fetchChars(activeItem);
   const mediaMeta = cachedData?.mediaMeta;
+  if (mediaMeta?.castNames && !activeItem.cast) {
+    activeItem.cast = mediaMeta.castNames;
+    addSpec('В главных ролях', mediaMeta.castNames);
+  }
+  if (mediaMeta?.imdbId && !activeItem.imdbId) activeItem.imdbId = mediaMeta.imdbId;
 
   // Вывод дня недели и даты выхода серий для онгоингов на полной странице тайтла
   const isOngoingNow = Boolean(activeItem.ongoing || mediaMeta?.status === 'RELEASING' || mediaMeta?.isOngoingTmdb);
@@ -2802,6 +2895,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   // Отрисовка Трейлера YouTube + кнопки открытия (Б2)
   const ytId = cleanYoutubeId(activeItem.trailerId) || cleanYoutubeId(mediaMeta?.trailer?.site === 'youtube' ? mediaMeta.trailer.id : '');
   if (ytId) {
+    if (!activeItem.trailerId) activeItem.trailerId = ytId;
     trailerBox.style.display = 'block';
     const th = el('div', 'row'); th.style.justifyContent = 'space-between'; th.style.marginBottom = '10px';
     th.append(el('h4', null, '🎬 Официальный трейлер'));
@@ -2815,8 +2909,9 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
     ifr.allowFullscreen = true;
     trailerBox.append(th, ifr);
   } else {
+    const ytSuffix = ['Аниме', 'Манга', 'Ранобэ'].includes(activeItem.category) ? ' anime trailer' : ' официальный трейлер';
     const searchYt = el('a', 'btn btn-s', '🎬 Найти трейлер на YouTube ↗');
-    searchYt.href = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((activeItem.titleEn || activeItem.title) + ' anime trailer');
+    searchYt.href = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((activeItem.titleEn || activeItem.title) + ytSuffix);
     searchYt.target = '_blank'; searchYt.rel = 'noopener';
     actRow.append(searchYt);
   }

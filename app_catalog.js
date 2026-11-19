@@ -102,7 +102,8 @@ const SHIKI_ANIME_GENRE_IDS = {
   Action: 1, Adventure: 2, Comedy: 4, Drama: 8, Ecchi: 9, Fantasy: 10, Horror: 14, Hentai: 12,
   'Mahou Shoujo': 124, Mecha: 18, Music: 19, Mystery: 7, Psychological: 40, Romance: 22,
   'Sci-Fi': 24, 'Slice of Life': 36, Sports: 30, Supernatural: 37, Thriller: 117,
-  Yuri: 34, "Girls' Love": 129, Yaoi: 33, "Boys' Love": 133, Isekai: 130, Reincarnation: 106,
+  Yuri: 34, "Girls' Love": 129, 'Girls Love': 129, Yaoi: 33, "Boys' Love": 133, 'Boys Love': 133,
+  Isekai: 130, Reincarnation: 106,
   Vampire: 32, Military: 38, School: 23, Mythology: 6, Space: 29, Gore: 105,
   Seinen: 42, Shounen: 27, Shoujo: 25, Josei: 43, Iyashikei: 140, Harem: 35,
   'Reverse Harem': 125, 'Video Games': 103, 'Time Travel': 111, Historical: 13,
@@ -112,7 +113,8 @@ const SHIKI_MANGA_GENRE_IDS = {
   Action: 56, Adventure: 68, Comedy: 49, Drama: 50, Ecchi: 51, Fantasy: 57, Horror: 80, Hentai: 602,
   'Mahou Shoujo': 160, Mecha: 83, Music: 78, Mystery: 46, Psychological: 67, Romance: 62,
   'Sci-Fi': 53, 'Slice of Life': 54, Sports: 76, Supernatural: 48, Thriller: 153,
-  Yuri: 75, "Girls' Love": 170, Yaoi: 65, "Boys' Love": 165, Isekai: 172, Reincarnation: 161,
+  Yuri: 75, "Girls' Love": 75, 'Girls Love': 75, Yaoi: 65, "Boys' Love": 65, 'Boys Love': 65,
+  Isekai: 172, Reincarnation: 161,
   Vampire: 64, Military: 70, School: 60, Mythology: 72, Space: 85, Gore: 127,
   Seinen: 52, Shounen: 47, Shoujo: 63, Josei: 87, Iyashikei: 154, Harem: 71,
   'Reverse Harem': 164, 'Video Games': 175, 'Time Travel': 174, Historical: 69,
@@ -571,7 +573,6 @@ async function _mangadexCatalogRaw(search, o = {}) {
 async function _shikiCatalogFallback(search, type, o = {}) {
   const isAnime = type === 'ANIME';
   const isNovel = o.format === 'NOVEL';
-  const vars = buildShikiGraphQLVars(search, type, o);
   const field = isAnime ? 'animes' : 'mangas';
   const typeDefs = isAnime
     ? '$page:PositiveInt,$limit:PositiveInt,$order:OrderEnum,$kind:AnimeKindString,$status:AnimeStatusString,$season:SeasonString,$score:Int,$genre:String,$censored:Boolean,$search:String,$ids:String'
@@ -582,13 +583,34 @@ async function _shikiCatalogFallback(search, type, o = {}) {
     : 'chapters volumes publishers{name}';
   const gql = `query(${typeDefs}){${field}(${argPass}){id malId name russian english japanese synonyms kind status score airedOn{year month day} releasedOn{year month day} isCensored genres{id name russian} description poster{originalUrl mainUrl} ${extraFields}}}`;
 
+  // Для Аниме Shikimori разделяет 129 (Girls Love / Сёдзё-ай) и 34 (Yuri), а также 133 (Boys Love / Сёнен-ай) и 33 (Yaoi).
+  // Запрос через запятую в Shikimori работает как логическое И, поэтому запускаем оба ID параллельно за 1 проход.
+  const incAll = [...(o.genre || []), ...(o.tag || [])];
+  const hasYuri = incAll.some(t => t === 'Yuri' || t === "Girls' Love" || t === 'Girls Love');
+  const hasYaoi = incAll.some(t => t === 'Yaoi' || t === "Boys' Love" || t === 'Boys Love');
+  let optsList = [o];
+  if (isAnime && (hasYuri || hasYaoi)) {
+    const expandPair = (optsArr, targets, primary, alt) => optsArr.flatMap(cur => {
+      const replaceNames = arr => (arr || []).map(x => targets.includes(x) ? primary : x);
+      const replaceNamesAlt = arr => (arr || []).map(x => targets.includes(x) ? alt : x);
+      return [
+        { ...cur, genre: replaceNames(cur.genre), tag: replaceNames(cur.tag) },
+        { ...cur, genre: replaceNamesAlt(cur.genre), tag: replaceNamesAlt(cur.tag) }
+      ];
+    });
+    if (hasYuri) optsList = expandPair(optsList, ['Yuri', "Girls' Love", 'Girls Love'], "Girls' Love", 'Yuri');
+    if (hasYaoi) optsList = expandPair(optsList, ['Yaoi', "Boys' Love", 'Boys Love'], "Boys' Love", 'Yaoi');
+  }
+
   let mapped = [];
   try {
-    const data = await shikiGraphQL(gql, vars);
-    const list = data?.[field];
-    if (Array.isArray(list)) {
-      mapped = list.map(d => mapShikimoriGraphQLNode(d, type, isNovel));
-    }
+    const lists = await Promise.all(optsList.map(async optItem => {
+      const vars = buildShikiGraphQLVars(search, type, optItem);
+      const data = await shikiGraphQL(gql, vars);
+      const list = data?.[field];
+      return Array.isArray(list) ? list.map(d => mapShikimoriGraphQLNode(d, type, isNovel)) : [];
+    }));
+    mapped = lists.length === 1 ? lists[0] : interleaveAndDedupCatalogLists(lists);
   } catch (gqlErr) {
     const fbTasks = [_jikanCatalogRaw(search, type, o).catch(() => [])];
     if (!isAnime && !o.idMal && !o.idMalIn) fbTasks.push(_mangadexCatalogRaw(search, o).catch(() => []));
@@ -605,6 +627,33 @@ async function _shikiCatalogFallback(search, type, o = {}) {
     if (o.cg) mapped = mapped.filter(x => x.eps > o.cg);
   }
   return mapped;
+}
+
+function normalizeAniListGenresAndTags(o = {}) {
+  const isYuriKey = s => s === 'Yuri' || s === "Girls' Love" || s === 'Girls Love';
+  const isYaoiKey = s => s === 'Yaoi' || s === "Boys' Love" || s === 'Boys Love';
+  const mapTagName = s => isYuriKey(s) ? 'Yuri' : isYaoiKey(s) ? "Boys' Love" : s;
+
+  const g = [], tg = [];
+  (o.genre || []).forEach(x => {
+    if (isYuriKey(x) || isYaoiKey(x)) tg.push(mapTagName(x));
+    else g.push(x);
+  });
+  (o.tag || []).forEach(x => tg.push(mapTagName(x)));
+
+  const gn = [], tgn = [];
+  (o.genreNot || []).forEach(x => {
+    if (isYuriKey(x) || isYaoiKey(x)) tgn.push(mapTagName(x));
+    else gn.push(x);
+  });
+  (o.tagNot || []).forEach(x => tgn.push(mapTagName(x)));
+
+  return {
+    g: g.length ? [...new Set(g)] : undefined,
+    gn: gn.length ? [...new Set(gn)] : undefined,
+    tg: tg.length ? [...new Set(tg)] : undefined,
+    tgn: tgn.length ? [...new Set(tgn)] : undefined
+  };
 }
 
 async function _anilistRaw(search, type, o = {}) {
@@ -628,9 +677,10 @@ async function _anilistRaw(search, type, o = {}) {
     if (!en) { try { en = await ruToEnTranslate(search); } catch (e) {} }
     if (en) search = en;
   }
+  const { g, gn, tg, tgn } = normalizeAniListGenresAndTags(o);
   const gql = 'query($s:String,$id:Int,$idMal:Int,$idMalIn:[Int],$t:MediaType,$p:Int,$pp:Int,$so:[MediaSort],$st:MediaStatus,$f:MediaFormat,$fn:MediaFormat,$c:CountryCode,$ad:Boolean,$pg:Int,$g:[String],$gn:[String],$sg:FuzzyDateInt,$sl:FuzzyDateInt,$ag:Int,$pl:Int,$el:Int,$eg:Int,$cl:Int,$cg:Int,$se:MediaSeason,$sy:Int,$tg:[String],$tgn:[String]){Page(page:$p,perPage:$pp){media(search:$s,id:$id,idMal:$idMal,idMal_in:$idMalIn,type:$t,sort:$so,status:$st,format:$f,format_not:$fn,countryOfOrigin:$c,isAdult:$ad,popularity_greater:$pg,genre_in:$g,genre_not_in:$gn,startDate_greater:$sg,startDate_lesser:$sl,averageScore_greater:$ag,popularity_lesser:$pl,episodes_lesser:$el,episodes_greater:$eg,chapters_lesser:$cl,chapters_greater:$cg,season:$se,seasonYear:$sy,tag_in:$tg,tag_not_in:$tgn){id idMal isAdult format siteUrl countryOfOrigin bannerImage trailer{id site} title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year month day} endDate{year month day} averageScore episodes duration chapters volumes genres tags{name rank isMediaSpoiler} status source studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}}}}}';
   try {
-    const j = await fetchAniListGraphQL(gql, {s: search || undefined, id: o.id || undefined, idMal: o.idMal || undefined, idMalIn: o.idMalIn || undefined, t: type, p: o.page || 1, pp: o.per || 10, so: o.sort || ['SEARCH_MATCH'], st: o.status, f: o.format, fn: o.fn, c: o.country, ad: o.ad, pg: o.pg, g: o.genre, gn: o.genreNot, sg: o.sg, sl: o.sl, ag: o.ag, pl: o.pl, el: o.el, eg: o.eg, cl: o.cl, cg: o.cg, se: o.se, sy: o.sy, tg: o.tag, tgn: o.tagNot}, 2800);
+    const j = await fetchAniListGraphQL(gql, {s: search || undefined, id: o.id || undefined, idMal: o.idMal || undefined, idMalIn: o.idMalIn || undefined, t: type, p: o.page || 1, pp: o.per || 10, so: o.sort || ['SEARCH_MATCH'], st: o.status, f: o.format, fn: o.fn, c: o.country, ad: o.ad, pg: o.pg, g, gn, sg: o.sg, sl: o.sl, ag: o.ag, pl: o.pl, el: o.el, eg: o.eg, cl: o.cl, cg: o.cg, se: o.se, sy: o.sy, tg, tgn}, 2800);
     return (j.data?.Page?.media || []).map(m => mapAniListMediaNode(m, type));
   } catch (err) {
     if (!o.id) {
@@ -1639,10 +1689,12 @@ const EXTRA_SENSITIVE_TAGS = [
   ["t:Shoujo", "Демография: Сёдзё"], ["t:Josei", "Демография: Дзёсэй"]
 ];
 const CANONICAL_TAG_SYNONYMS = {
-  "Yuri": ["Yuri", "Girls' Love", "Юри", "Юри / Сёдзё-ай (Girls’ Love)"],
-  "Girls' Love": ["Yuri", "Girls' Love", "Юри", "Юри / Сёдзё-ай (Girls’ Love)"],
-  "Yaoi": ["Yaoi", "Boys' Love", "Яой", "Яой / Сёнэн-ай (Boys’ Love)"],
-  "Boys' Love": ["Yaoi", "Boys' Love", "Яой", "Яой / Сёнэн-ай (Boys’ Love)"],
+  "Yuri": ["Yuri", "Girls' Love", "Girls Love", "Юри", "Сёдзё-ай", "Юри / Сёдзё-ай (Girls’ Love)", "Юри (Yuri / Сёдзё-ай)", "Юри (Yuri — женская любовь)"],
+  "Girls' Love": ["Yuri", "Girls' Love", "Girls Love", "Юри", "Сёдзё-ай", "Юри / Сёдзё-ай (Girls’ Love)", "Юри (Yuri / Сёдзё-ай)", "Юри (Yuri — женская любовь)"],
+  "Girls Love": ["Yuri", "Girls' Love", "Girls Love", "Юри", "Сёдзё-ай", "Юри / Сёдзё-ай (Girls’ Love)", "Юри (Yuri / Сёдзё-ай)", "Юри (Yuri — женская любовь)"],
+  "Yaoi": ["Yaoi", "Boys' Love", "Boys Love", "Яой", "Сёнен-ай", "Сёнэн-ай", "Яой / Сёнэн-ай (Boys’ Love)", "Яой (Yaoi / Сёнэн-ай)", "Яой (Yaoi — мужская любовь)"],
+  "Boys' Love": ["Yaoi", "Boys' Love", "Boys Love", "Яой", "Сёнен-ай", "Сёнэн-ай", "Яой / Сёнэн-ай (Boys’ Love)", "Яой (Yaoi / Сёнэн-ай)", "Яой (Yaoi — мужская любовь)"],
+  "Boys Love": ["Yaoi", "Boys' Love", "Boys Love", "Яой", "Сёнен-ай", "Сёнэн-ай", "Яой / Сёнэн-ай (Boys’ Love)", "Яой (Yaoi / Сёнэн-ай)", "Яой (Yaoi — мужская любовь)"],
   "Gore": ["Gore", "Violence", "Graphic Violence", "Жестокость (гор)", "Жестокость и насилие"],
   "Drugs": ["Drugs", "Narcotics", "Наркотики"]
 };
@@ -2006,16 +2058,58 @@ function updateActiveFiltersCounterUI() {
 }
 
 let _cgTagSearchQuery = '';
-const _cgOpenTagGroupNames = new Set();
+let _cgActiveTagTab = 'Популярные';
+
+const POPULAR_ANI_TAG_KEYS = [
+  'g:Action', 'g:Adventure', 'g:Comedy', 'g:Drama', 'g:Fantasy', 'g:Romance',
+  'g:Mystery', 'g:Psychological', 'g:Thriller', 'g:Slice of Life', 'g:Sci-Fi',
+  'g:Supernatural', 't:Isekai', 't:Reincarnation', 't:Magic', 't:School',
+  't:Yuri', 't:Yaoi', 't:Harem', 't:Shounen', 't:Seinen', 't:Shoujo'
+];
+const POPULAR_VIDEO_TAG_IDS = ['28', '12', '35', '18', '14', '27', '9648', '10749', '878', '53', '80', '16', '10759', '10765'];
 
 function cgGenres() {
   const isVideo = cg.g === 'Кино и сериалы' || cg.g === 'Фильм' || cg.g === 'Сериал';
-  const groups = isVideo
+  const baseGroups = isVideo
     ? [
-        ['Основные жанры кино и сериалов', [28, 12, 16, 35, 80, 18, 14, 27, 9648, 10749, 878, 53].map(k => [String(k), TG[k]]).filter(x => x[1])],
-        ['Тематика и телевизионные форматы', [99, 10751, 36, 10402, 10752, 37, 10759, 10765, 10768, 10762, 10764, 10766].map(k => [String(k), TG[k]]).filter(x => x[1])]
+        ['Основные жанры', [28, 12, 16, 35, 80, 18, 14, 27, 9648, 10749, 878, 53].map(k => [String(k), TG[k]]).filter(x => x[1])],
+        ['Тематика и форматы', [99, 10751, 36, 10402, 10752, 37, 10759, 10765, 10768, 10762, 10764, 10766].map(k => [String(k), TG[k]]).filter(x => x[1])]
       ]
-    : aniOptions();
+    : aniOptions().map(([title, list]) => {
+        const shortMap = {
+          'Романтика и отношения': 'Романтика и отношения',
+          'Экшен и приключения': 'Экшен и фэнтези',
+          'Триллер, криминал и драма': 'Драма и триллер',
+          'Повседневность и комедия': 'Повседневность',
+          'Демография и дополнительные теги': 'Демография и теги'
+        };
+        return [shortMap[title] || title, list];
+      });
+
+  const allUnique = [];
+  const seenKeys = new Set();
+  baseGroups.forEach(([, list]) => {
+    list.forEach(([valKey, label]) => {
+      if (!seenKeys.has(valKey)) {
+        seenKeys.add(valKey);
+        allUnique.push([valKey, label]);
+      }
+    });
+  });
+
+  const popList = (isVideo ? POPULAR_VIDEO_TAG_IDS : POPULAR_ANI_TAG_KEYS)
+    .map(k => allUnique.find(([vk]) => vk === k))
+    .filter(Boolean);
+
+  const tabsData = [
+    ['Все', allUnique],
+    ['Популярные', popList.length ? popList : allUnique.slice(0, 16)],
+    ...baseGroups
+  ];
+
+  if (!tabsData.some(([name]) => name === _cgActiveTagTab)) {
+    _cgActiveTagTab = 'Популярные';
+  }
 
   const panel = $('cgTagsPanel');
   if (panel) {
@@ -2025,17 +2119,15 @@ function cgGenres() {
     sInp.type = 'search';
     sInp.placeholder = 'Быстрый поиск жанра или тега (например: романтика, криминал, якудза, юри)…';
     sInp.value = _cgTagSearchQuery;
+    const hintSpan = el('span', 'cg-tags-hint', '1 клик: ✓ включить · 2: ✕ исключить · 3: сброс');
+    sWrap.append(sInp, hintSpan);
 
     const selectedStrip = el('div', 'cg-tags-selected-strip');
     const rebuildSelectedStrip = () => {
       selectedStrip.replaceChildren();
-      const activePairs = [];
-      groups.forEach(([, list]) => {
-        list.forEach(([valKey, label]) => {
-          const st = cgTagState.get(valKey) || 0;
-          if (st) activePairs.push({ valKey, label, st });
-        });
-      });
+      const activePairs = allUnique
+        .map(([valKey, label]) => ({ valKey, label, st: cgTagState.get(valKey) || 0 }))
+        .filter(x => x.st !== 0);
       if (!activePairs.length) {
         selectedStrip.style.display = 'none';
         return;
@@ -2059,82 +2151,64 @@ function cgGenres() {
       });
     };
 
-    const accList = el('div', 'cg-tag-acc-list');
-    const sections = [];
+    const tabsRow = el('div', 'cg-tag-tabs');
+    const chipsGrid = el('div', 'cg-tag-chips');
+    const emptyMsg = el('div', 'meta', 'По этому запросу жанры и теги не найдены');
+    emptyMsg.style.display = 'none';
+    emptyMsg.style.padding = '8px 2px';
 
-    groups.forEach(([gTitle, list]) => {
-      const accItem = el('div', 'cg-tag-acc-item' + (_cgOpenTagGroupNames.has(gTitle) ? ' open' : ''));
-      const activeInGroup = list.filter(([valKey]) => (cgTagState.get(valKey) || 0) !== 0).length;
+    const renderTabsAndChips = () => {
+      const ql = _cgTagSearchQuery.trim().toLowerCase();
+      tabsRow.style.display = ql ? 'none' : 'flex';
 
-      const accBtn = el('button', 'cg-tag-acc-btn');
-      accBtn.type = 'button';
-      const titleSpan = el('span', null, gTitle + (activeInGroup ? ` (${activeInGroup})` : ''));
-      const metaRight = el('span', 'cg-tag-acc-meta');
-      const countSpan = el('span', null, `${list.length}`);
-      const arrowSpan = el('span', 'cg-tag-acc-arrow', '▾');
-      metaRight.append(countSpan, arrowSpan);
-      accBtn.append(titleSpan, metaRight);
+      tabsRow.replaceChildren();
+      tabsData.forEach(([tabName, tabList]) => {
+        const activeCnt = tabList.filter(([vk]) => (cgTagState.get(vk) || 0) !== 0).length;
+        const btn = el('button', 'cg-tag-tab' + (_cgActiveTagTab === tabName ? ' on' : ''), tabName + (activeCnt ? ` (${activeCnt})` : ''));
+        btn.type = 'button';
+        btn.onclick = () => {
+          _cgActiveTagTab = tabName;
+          renderTabsAndChips();
+        };
+        tabsRow.append(btn);
+      });
 
-      accBtn.onclick = () => {
-        const nowOpen = accItem.classList.toggle('open');
-        if (nowOpen) _cgOpenTagGroupNames.add(gTitle);
-        else _cgOpenTagGroupNames.delete(gTitle);
-      };
+      const sourceList = ql
+        ? allUnique.filter(([vk, lbl]) => lbl.toLowerCase().includes(ql) || vk.toLowerCase().includes(ql))
+        : (tabsData.find(([name]) => name === _cgActiveTagTab)?.[1] || allUnique);
 
-      const accBody = el('div', 'cg-tag-acc-body');
-      const row = el('div', 'cg-tag-chips');
-      const secChips = [];
-
-      list.forEach(([valKey, label]) => {
+      chipsGrid.replaceChildren();
+      emptyMsg.style.display = sourceList.length ? 'none' : '';
+      sourceList.forEach(([valKey, label]) => {
         const b = el('button', 'cg-tchip', label);
         b.type = 'button';
         b.dataset.k = valKey;
+        b.title = label;
         const st = cgTagState.get(valKey) || 0;
         if (st === 1) b.dataset.state = 'inc';
         else if (st === -1) b.dataset.state = 'exc';
         b.onclick = () => {
           const cur = cgTagState.get(valKey) || 0;
           const next = cur === 0 ? 1 : cur === 1 ? -1 : 0;
-          if (next === 0) { cgTagState.delete(valKey); delete b.dataset.state; }
-          else { cgTagState.set(valKey, next); b.dataset.state = next === 1 ? 'inc' : 'exc'; }
+          if (next === 0) cgTagState.delete(valKey);
+          else cgTagState.set(valKey, next);
           saveCgTagState();
-          const newActCnt = list.filter(([vk]) => (cgTagState.get(vk) || 0) !== 0).length;
-          titleSpan.textContent = gTitle + (newActCnt ? ` (${newActCnt})` : '');
           rebuildSelectedStrip();
+          renderTabsAndChips();
           updateActiveFiltersCounterUI();
           cgLoad(true);
         };
-        row.append(b);
-        secChips.push({ btn: b, label, key: valKey });
-      });
-
-      accBody.append(row);
-      accItem.append(accBtn, accBody);
-      accList.append(accItem);
-      sections.push({ accItem, gTitle, chips: secChips });
-    });
-
-    const applyTagSearch = q => {
-      _cgTagSearchQuery = q;
-      const ql = q.trim().toLowerCase();
-      sections.forEach(({ accItem, gTitle, chips }) => {
-        let visCnt = 0;
-        chips.forEach(({ btn, label, key }) => {
-          const match = !ql || label.toLowerCase().includes(ql) || key.toLowerCase().includes(ql);
-          btn.classList.toggle('hidden-chip', !match);
-          if (match) visCnt++;
-        });
-        accItem.style.display = visCnt ? '' : 'none';
-        if (ql && visCnt > 0) accItem.classList.add('open');
-        else if (!ql) accItem.classList.toggle('open', _cgOpenTagGroupNames.has(gTitle));
+        chipsGrid.append(b);
       });
     };
 
-    sInp.oninput = () => applyTagSearch(sInp.value);
-    sWrap.append(sInp);
+    sInp.oninput = () => {
+      _cgTagSearchQuery = sInp.value;
+      renderTabsAndChips();
+    };
     rebuildSelectedStrip();
-    panel.append(sWrap, selectedStrip, accList);
-    if (_cgTagSearchQuery) applyTagSearch(_cgTagSearchQuery);
+    renderTabsAndChips();
+    panel.append(sWrap, selectedStrip, tabsRow, chipsGrid, emptyMsg);
   }
 
   // Нативные <select> подкатегорий скрыты, так как управление вынесено в hover-список в #cgSubKindBar
@@ -2625,9 +2699,26 @@ async function cgFetch(page, per, q, mode, optsOverride = null) {
   }
 
   const mType = g === 'Аниме' ? 'ANIME' : 'MANGA';
+  const hasTagOrGenreFilter = Boolean(incG.length || excG.length || incT.length || excT.length);
+  const softCap = (p, ms = 1400) => Promise.race([Promise.resolve(p).catch(() => []), new Promise(r => setTimeout(() => r([]), ms))]);
 
   // Живая подборка «🔥 Сейчас актуально»: мульти-источник AniList + Shikimori + Jikan + MangaDex (для Манги/Ранобэ) с умной дедупликацией
   if (!q && (mode === 'actual' || !mode) && !cg.ongOnly) {
+    if (hasTagOrGenreFilter) {
+      // При выборе жанров/тегов сразу опрашиваем все базы параллельно за 1 проход; Jikan не должен тормозить быстрые базы
+      const tagTasks = [
+        _shikiCatalogFallback('', mType, { ...baseOpts, per: 24, sort: ['POPULARITY_DESC'] }).catch(() => []),
+        anilist(null, mType, { ...baseOpts, per: 18, sort: ['TRENDING_DESC'] }).catch(() => []),
+        anilist(null, mType, { ...baseOpts, per: 18, sort: ['POPULARITY_DESC'] }).catch(() => []),
+        softCap(_jikanCatalogRaw('', mType, { ...baseOpts, per: 18, sort: ['POPULARITY_DESC'] }), 1400)
+      ];
+      if (mType === 'MANGA') {
+        tagTasks.push(_mangadexCatalogRaw('', { ...baseOpts, per: 18, sort: ['POPULARITY_DESC'] }).catch(() => []));
+      }
+      const tagLists = await Promise.all(tagTasks);
+      const merged = interleaveAndDedupCatalogLists(tagLists);
+      return optsOverride ? merged : merged.filter(verifyCatalogItemMatchesFilters);
+    }
     if (g === 'Аниме' && !yrFrom && !yrTo) {
       const { se, sy } = getCurrentAnimeSeasonAndYear();
       const [trendRes, airingRes, seasonRes, shikiRes] = await Promise.all([
@@ -2638,7 +2729,7 @@ async function cgFetch(page, per, q, mode, optsOverride = null) {
       ]);
       let merged = interleaveAndDedupCatalogLists([shikiRes, trendRes, airingRes, seasonRes]);
       if (merged.length < 10) {
-        const jMore = await _jikanCatalogRaw('', 'ANIME', { ...baseOpts, per: 16, sort: ['TRENDING_DESC'] }).catch(() => []);
+        const jMore = await softCap(_jikanCatalogRaw('', 'ANIME', { ...baseOpts, per: 16, sort: ['TRENDING_DESC'] }), 1600);
         merged = interleaveAndDedupCatalogLists([merged, jMore]);
       }
       return optsOverride ? merged : merged.filter(verifyCatalogItemMatchesFilters);
@@ -2654,7 +2745,7 @@ async function cgFetch(page, per, q, mode, optsOverride = null) {
     const [trendRes, airingRes, shikiRes, mdRes] = await Promise.all(tasks);
     let merged = interleaveAndDedupCatalogLists([shikiRes, trendRes, airingRes, mdRes || []]);
     if (merged.length < 10) {
-      const jMore = await _jikanCatalogRaw('', mType, { ...baseOpts, per: 16, sort: ['TRENDING_DESC'] }).catch(() => []);
+      const jMore = await softCap(_jikanCatalogRaw('', mType, { ...baseOpts, per: 16, sort: ['TRENDING_DESC'] }), 1600);
       merged = interleaveAndDedupCatalogLists([merged, jMore]);
     }
     return optsOverride ? merged : merged.filter(verifyCatalogItemMatchesFilters);
@@ -2672,27 +2763,19 @@ async function cgFetch(page, per, q, mode, optsOverride = null) {
     if (mode === 'rare') { o.ag = 65; o.pl = 15000; }
   }
 
-  // Мульти-источник с параллельной склейкой (Shikimori + AniList + Jikan + MangaDex для Манги/Ранобэ)
-  const fetchMultiForOpts = async optsObj => {
-    const tasks = [
-      _shikiCatalogFallback(q || '', mType, optsObj).catch(() => []),
-      anilist(q || null, mType, optsObj).catch(() => [])
-    ];
-    if (q || mType === 'ANIME') {
-      tasks.push(_jikanCatalogRaw(q || '', mType, { ...optsObj, per: Math.min(18, optsObj.per || 18) }).catch(() => []));
-    }
-    if (mType === 'MANGA') {
-      tasks.push(_mangadexCatalogRaw(q || '', { ...optsObj, per: Math.min(16, optsObj.per || 16) }).catch(() => []));
-    }
-    const lists = await Promise.all(tasks);
-    return interleaveAndDedupCatalogLists([cachedHits, ...lists]);
-  };
-
-  let res = await fetchMultiForOpts(o);
-  if (!res.length && incT.some(t => t === 'Yuri' || t === 'Yaoi')) {
-    const altOpts = { ...o, tag: incT.map(t => t === 'Yuri' ? "Girls' Love" : t === 'Yaoi' ? "Boys' Love" : t) };
-    res = await fetchMultiForOpts(altOpts);
+  // Мульти-источник с параллельной склейкой за 1 проход (Shikimori + AniList + Jikan + MangaDex для Манги/Ранобэ)
+  const tasks = [
+    _shikiCatalogFallback(q || '', mType, o).catch(() => []),
+    anilist(q || null, mType, o).catch(() => [])
+  ];
+  if (q || mType === 'ANIME' || hasTagOrGenreFilter) {
+    tasks.push(softCap(_jikanCatalogRaw(q || '', mType, { ...o, per: Math.min(18, o.per || 18) }), 1400));
   }
+  if (mType === 'MANGA') {
+    tasks.push(_mangadexCatalogRaw(q || '', { ...o, per: Math.min(16, o.per || 16) }).catch(() => []));
+  }
+  const lists = await Promise.all(tasks);
+  const res = interleaveAndDedupCatalogLists([cachedHits, ...lists]);
   return optsOverride ? res : res.filter(verifyCatalogItemMatchesFilters);
 }
 
@@ -3220,7 +3303,6 @@ async function cgLoad(reset) {
     for (let tries = 0; tries < 5; tries++) {
       const res = await cgFetch(cg.page, 24, cg.q, $('cgMode').value);
       if (t !== cg.t) return;
-      if (reset && !cleared) { cgGrid.replaceChildren(); cleared = true; }
       const vis = res.filter(r => {
         if (!cgPass(r)) return false;
         const keys = getCatalogItemDedupKeys(r);
@@ -3230,6 +3312,10 @@ async function cgLoad(reset) {
         cgSeenItems.push(r);
         return true;
       });
+      if (vis.length > 0 && reset && !cleared) {
+        cgGrid.replaceChildren();
+        cleared = true;
+      }
       if (!firstBatchVis.length && vis.length) firstBatchVis = vis;
       vis.forEach(cgCard); shown += vis.length; cg.page++; more = res.length > 0;
       if (!more || shown >= 8 || !(cg.hide || cg.min)) break;
@@ -3250,6 +3336,7 @@ async function cgLoad(reset) {
           hasHiddenAdult = Array.isArray(probe) && probe.some(x => x && (x.isAdult || (x.rawGenres || []).includes('Hentai') || (x.tags || []).some(tg => /хентай|hentai|этти|ecchi|юри|яой/i.test(tg))));
         } catch (probeErr) {}
       }
+      if (!cleared) { cgGrid.replaceChildren(); cleared = true; }
       if (hasHiddenAdult) {
         const hintBox = el('div', 'cg-adult-hint');
         hintBox.append(
@@ -3271,6 +3358,9 @@ async function cgLoad(reset) {
       } else {
         cgGrid.append(el('div', 'msg', more ? 'Под выбранные фильтры тут ничего не подошло — нажми «Показать ещё» или смени фильтры.' : 'Ничего не найдено.'));
       }
+    } else if (reset && !cleared) {
+      cgGrid.replaceChildren();
+      cleared = true;
     }
     $('cgMore').style.display = more ? '' : 'none';
     ruCards();

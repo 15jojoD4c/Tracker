@@ -2102,11 +2102,14 @@ function renderAnixartHeroAndCategoryCards() {
   const favCount = vis.filter(i => i.fav).length;
   const ratedCount = vis.filter(i => num(i.rating) > 0).length;
 
-  // Плашка «СЕЙЧАС СМОТРЮ» / «СЕЙЧАС ЧИТАЮ» на обложке с правильными единицами (сер. / гл. / мин.)
+  // Плашка «СЕЙЧАС СМОТРЮ» / «СЕЙЧАС ЧИТАЮ» на обложке с правильными единицами (сер. / гл. / мин.) и крестиком скрытия
   const nwBox = $('hybNowWatching');
   if (nwBox) {
     const watchingItem = vis.filter(i => i.status === 'Смотрю/Читаю').sort((a, b) => (b.updatedAt || b.id) - (a.updatedAt || a.id))[0];
-    if (watchingItem) {
+    let storedHiddenId = '';
+    try { storedHiddenId = localStorage.getItem('hiddenNowWatchingId') || ''; } catch (e) {}
+    const hiddenNwId = String(prof.hiddenNowWatchingId || storedHiddenId || '');
+    if (watchingItem && String(watchingItem.id) !== hiddenNwId) {
       const isReading = watchingItem.category === 'Манга' || watchingItem.category === 'Ранобэ';
       const nwTag = $('hybNwTag') || nwBox.querySelector('.hyb-nw-tag');
       if (nwTag) nwTag.textContent = isReading ? 'СЕЙЧАС ЧИТАЮ' : 'СЕЙЧАС СМОТРЮ';
@@ -2125,6 +2128,17 @@ function renderAnixartHeroAndCategoryCards() {
       $('hybNwTitle').textContent = watchingItem.title;
       $('hybNwSub').textContent = `${catLabel(watchingItem)}${volStr}`;
       nwBox.onclick = () => openDetail(watchingItem.id);
+      const closeNwBtn = $('hybNwCloseBtn');
+      if (closeNwBtn) {
+        closeNwBtn.onclick = e => {
+          e.stopPropagation();
+          const curId = String(watchingItem.id);
+          prof.hiddenNowWatchingId = curId;
+          try { localStorage.setItem('hiddenNowWatchingId', curId); } catch (err) {}
+          profCloud();
+          nwBox.style.display = 'none';
+        };
+      }
     } else {
       nwBox.style.display = 'none';
     }
@@ -3260,7 +3274,7 @@ async function downloadProfilePngBusinessCard() {
   $('hybMorePop')?.classList.remove('open');
   toast('🎨 Рисую PNG-визитку профиля…');
   try {
-    const W = 1200, H = 640;
+    const W = 1200, H = 768;
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
@@ -3404,8 +3418,63 @@ async function downloadProfilePngBusinessCard() {
       ctx.fillText(String(cnt), cx + 18, cy + 72);
     });
 
+    // 5б. Блок статистики по 4 категориям (как в Профиле)
+    const TYPE_DEFS = [
+      ['Аниме', 'Аниме', false, '#7c89e8'],
+      ['Кино и сериалы', 'Фильмы и сериалы', false, '#38bdf8'],
+      ['Манга', 'Манга', true, '#f59e0b'],
+      ['Ранобэ', 'Ранобэ', true, '#10b981']
+    ];
+    const catCardW = (W - 48 - 36) / 4;
+    TYPE_DEFS.forEach(([catKey, titleLbl, isRead, accentCol], idx) => {
+      const allOfType = vis.filter(i => catKey === 'Кино и сериалы' ? KINO.includes(i.category) : i.category === catKey);
+      const doneOfType = allOfType.filter(isCompletedItem);
+      const cx = 24 + idx * (catCardW + 12), cy = 402;
+      rRect(cx, cy, catCardW, 96, 12);
+      ctx.fillStyle = '#161920';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.stroke();
+
+      ctx.fillStyle = '#f3f4f6';
+      ctx.font = 'bold 16px system-ui, -apple-system, sans-serif';
+      ctx.fillText(titleLbl, cx + 16, cy + 32);
+
+      const badgeTxt = String(allOfType.length);
+      ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+      const badgeW = Math.max(32, ctx.measureText(badgeTxt).width + 18);
+      rRect(cx + catCardW - badgeW - 14, cy + 14, badgeW, 24, 12);
+      ctx.fillStyle = 'rgba(124,137,232,0.18)';
+      ctx.fill();
+      ctx.fillStyle = accentCol;
+      ctx.textAlign = 'center';
+      ctx.fillText(badgeTxt, cx + catCardW - badgeW / 2 - 14, cy + 31);
+      ctx.textAlign = 'left';
+
+      let line1 = '';
+      let line2 = '';
+      if (isRead) {
+        const ch = doneOfType.reduce((s, i) => s + num(i.eps), 0);
+        const vl = doneOfType.reduce((s, i) => s + num(i.vols), 0);
+        line1 = `Прочитано: ${doneOfType.length}`;
+        line2 = [ch ? `${ch.toLocaleString('ru-RU')} гл.` : '', vl ? `${vl.toLocaleString('ru-RU')} т.` : ''].filter(Boolean).join(' · ') || '—';
+      } else {
+        const eps = doneOfType.filter(i => i.category === 'Аниме' || i.category === 'Сериал').reduce((s, i) => s + getItemEpisodesCount(i), 0);
+        const mins = doneOfType.reduce((s, i) => s + getItemMinutes(i), 0);
+        line1 = `Просмотрено: ${doneOfType.length}`;
+        line2 = [eps ? `${eps.toLocaleString('ru-RU')} сер.` : '', mins > 0 ? formatWatchTimeRu(mins) : ''].filter(Boolean).join(' · ') || '—';
+      }
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '500 13.5px system-ui, -apple-system, sans-serif';
+      ctx.fillText(line1, cx + 16, cy + 60);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '600 13.5px system-ui, -apple-system, sans-serif';
+      ctx.fillText(line2, cx + 16, cy + 81);
+    });
+
     // 6. Нижний ряд: Любимые жанры (слева) и Топ тайтлов коллекции (справа)
-    rRect(24, 404, 460, 210, 14);
+    rRect(24, 518, 460, 224, 14);
     ctx.fillStyle = '#161920';
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.08)';
@@ -3413,16 +3482,16 @@ async function downloadProfilePngBusinessCard() {
 
     ctx.fillStyle = '#f3f4f6';
     ctx.font = 'bold 18px system-ui, -apple-system, sans-serif';
-    ctx.fillText('Любимые жанры', 44, 438);
+    ctx.fillText('Любимые жанры', 44, 552);
 
     const topGenres = topBy(i => i.tags || []).slice(0, 5);
     if (!topGenres.length) {
       ctx.fillStyle = '#8b92a5';
       ctx.font = '15px system-ui, -apple-system, sans-serif';
-      ctx.fillText('Жанры появятся после добавления тайтлов', 44, 475);
+      ctx.fillText('Жанры появятся после добавления тайтлов', 44, 590);
     } else {
       topGenres.forEach(([gName, gCnt], idx) => {
-        const gy = 468 + idx * 28;
+        const gy = 584 + idx * 29;
         ctx.fillStyle = '#d1d5db';
         ctx.font = '500 15px system-ui, -apple-system, sans-serif';
         ctx.fillText(gName.slice(0, 26), 44, gy);
@@ -3434,7 +3503,7 @@ async function downloadProfilePngBusinessCard() {
       });
     }
 
-    rRect(502, 404, W - 526, 210, 14);
+    rRect(502, 518, W - 526, 224, 14);
     ctx.fillStyle = '#161920';
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.08)';
@@ -3442,14 +3511,14 @@ async function downloadProfilePngBusinessCard() {
 
     ctx.fillStyle = '#f3f4f6';
     ctx.font = 'bold 18px system-ui, -apple-system, sans-serif';
-    ctx.fillText('Избранные и лучшие тайтлы коллекции', 524, 438);
+    ctx.fillText('Избранные и лучшие тайтлы коллекции', 524, 552);
 
     const bestItems = vis
       .slice()
       .sort((a, b) => (Number(b.fav) - Number(a.fav)) || (num(b.rating) - num(a.rating)) || ((b.updatedAt || 0) - (a.updatedAt || 0)))
       .slice(0, 5);
     bestItems.forEach((it, idx) => {
-      const ty = 468 + idx * 28;
+      const ty = 584 + idx * 29;
       ctx.fillStyle = '#e5e7eb';
       ctx.font = '500 15px system-ui, -apple-system, sans-serif';
       const titleClean = (it.fav ? '❤ ' : '') + it.title;
@@ -3756,385 +3825,7 @@ if ($('manualLocalMigrateBtn')) {
 }
 if ($('runSchemaMigrationBtn')) $('runSchemaMigrationBtn').onclick = () => migrateOldDocsToKindSchema(true);
 
-// ---------- В1. Индивидуальные значки за аниме (до 3 надетых одновременно + неоновая рамка для оценки 10!), В2. Битва тайтлов с сохранением Топа, В3. Капсула времени по дате просмотра, В4. Импорт Shikimori/AniList/MAL (аниме + манга + 1000+ записей + русские названия) ----------
-
-
-// В2. Битва тайтлов (выбор категории и размера 8/16/32, только завершённые без архива, автоматические проходы bye, матч за 3-е место и точный Топ-3, кнопка «Назад на шаг» и подтверждение при попытке закрыть)
-function openTitleBattleModal() {
-  $('hybMorePop')?.classList.remove('open');
-  $('colMorePop')?.classList.remove('open');
-
-  const BATTLE_CATS = [
-    { key: 'all', label: 'Всё сразу', match: () => true },
-    { key: 'Аниме', label: 'Аниме', match: i => i.category === 'Аниме' },
-    { key: 'Фильм', label: 'Фильмы', match: i => i.category === 'Фильм' || i.category === 'Мультфильм' },
-    { key: 'Сериал', label: 'Сериалы', match: i => i.category === 'Сериал' },
-    { key: 'Манга', label: 'Манга', match: i => i.category === 'Манга' },
-    { key: 'Ранобэ', label: 'Ранобэ', match: i => i.category === 'Ранобэ' }
-  ];
-  const SIZES = [8, 16, 32];
-
-  const getEligiblePool = catKey => {
-    const def = BATTLE_CATS.find(c => c.key === catKey) || BATTLE_CATS[0];
-    return getVisibleItems().filter(i => !i.archived && isCompletedItem(i) && def.match(i));
-  };
-
-  let selectedCat = 'all';
-  let selectedSize = 16;
-  let state = null;
-  const historyStack = [];
-
-  const cloneState = st => ({
-    phase: st.phase,
-    roundPool: [...st.roundPool],
-    matches: st.matches.map(p => [p[0], p[1]]),
-    matchIdx: st.matchIdx,
-    roundWinners: [...st.roundWinners],
-    autoAdvancers: [...st.autoAdvancers],
-    semiLosers: [...st.semiLosers],
-    finalPair: [...st.finalPair],
-    thirdPlacePair: [...st.thirdPlacePair],
-    firstPlace: st.firstPlace,
-    secondPlace: st.secondPlace,
-    thirdPlace: st.thirdPlace,
-    fourthPlace: st.fourthPlace,
-    earlierEliminated: [...st.earlierEliminated],
-    totalParticipants: st.totalParticipants,
-    catLabelText: st.catLabelText
-  });
-
-  const buildRoundMatchesWithByes = pool => {
-    const M = pool.length;
-    if (M <= 1) return { matches: [], autoAdvancers: [...pool] };
-    // Наименьшая степень двойки >= M (4, 8, 16, 32...)
-    let bracketSize = 2;
-    while (bracketSize < M) bracketSize *= 2;
-    const byesCount = bracketSize - M; // число участников, получающих автоматический проход (bye)
-    const playCount = M - byesCount;   // чётное число участников, играющих матчи в этом раунде
-    const matches = [];
-    for (let i = 0; i < playCount; i += 2) {
-      matches.push([pool[i], pool[i + 1]]);
-    }
-    const autoAdvancers = pool.slice(playCount);
-    return { matches, autoAdvancers };
-  };
-
-  const startTournament = () => {
-    const pool = getEligiblePool(selectedCat);
-    const catObj = BATTLE_CATS.find(c => c.key === selectedCat) || BATTLE_CATS[0];
-    if (pool.length < 4) {
-      toast(`В категории «${catObj.label}» сейчас ${pool.length} завершённых тайтлов. Для запуска турнира нужно минимум 4 просмотренных или прочитанных произведения!`, true);
-      return;
-    }
-    const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, Math.min(selectedSize, pool.length));
-    historyStack.length = 0;
-    const { matches, autoAdvancers } = buildRoundMatchesWithByes(shuffled);
-    state = {
-      phase: shuffled.length <= 4 && autoAdvancers.length === 0 ? 'semi' : 'main',
-      roundPool: shuffled,
-      matches,
-      matchIdx: 0,
-      roundWinners: [],
-      autoAdvancers,
-      semiLosers: [],
-      finalPair: [],
-      thirdPlacePair: [],
-      firstPlace: null,
-      secondPlace: null,
-      thirdPlace: null,
-      fourthPlace: null,
-      earlierEliminated: [],
-      totalParticipants: shuffled.length,
-      catLabelText: catObj.label
-    };
-    battleActiveInProgress = true;
-    renderCurrentView();
-  };
-
-  const handlePickWinner = (winner, loser) => {
-    historyStack.push(cloneState(state));
-
-    if (state.phase === 'third_place') {
-      state.thirdPlace = winner;
-      state.fourthPlace = loser;
-      state.phase = 'final';
-      renderCurrentView();
-      return;
-    }
-
-    if (state.phase === 'final') {
-      state.firstPlace = winner;
-      state.secondPlace = loser;
-      state.phase = 'done';
-      battleActiveInProgress = false;
-      renderCurrentView();
-      return;
-    }
-
-    // Обычный раунд или полуфинал
-    state.roundWinners.push(winner);
-    if (state.phase === 'semi') {
-      state.semiLosers.push(loser);
-    } else {
-      state.earlierEliminated.push(loser);
-    }
-    state.matchIdx++;
-
-    if (state.matchIdx >= state.matches.length) {
-      const nextPool = [...state.roundWinners, ...state.autoAdvancers];
-      if (state.phase === 'semi' || nextPool.length === 2) {
-        state.finalPair = nextPool.slice(0, 2);
-        if (state.semiLosers.length >= 2) {
-          state.thirdPlacePair = state.semiLosers.slice(0, 2);
-          state.phase = 'third_place';
-        } else {
-          state.thirdPlace = state.semiLosers[0] || state.earlierEliminated[state.earlierEliminated.length - 1] || null;
-          state.phase = 'final';
-        }
-      } else {
-        const { matches, autoAdvancers } = buildRoundMatchesWithByes(nextPool);
-        state.roundPool = nextPool;
-        state.matches = matches;
-        state.matchIdx = 0;
-        state.roundWinners = [];
-        state.autoAdvancers = autoAdvancers;
-        state.phase = (nextPool.length === 4 && autoAdvancers.length === 0) ? 'semi' : 'main';
-      }
-    }
-    renderCurrentView();
-  };
-
-  const handleUndoStep = () => {
-    if (!historyStack.length) return;
-    state = historyStack.pop();
-    battleActiveInProgress = (state.phase !== 'done');
-    renderCurrentView();
-  };
-
-  const renderCurrentView = () => {
-    const body = $('dlgBody');
-    if (!body) return;
-    body.replaceChildren();
-
-    // 1. Экран настройки перед стартом
-    if (!state) {
-      battleActiveInProgress = false;
-      $('dlgTitle').textContent = '⚔ Битва тайтлов — Настройка турнира';
-      $('dlgText').textContent = 'Выбери категорию и размер турнирной сетки (участвуют только завершённые тайтлы без архива):';
-
-      const catTitle = el('div', 'fs', 'Категория произведений');
-      const catChips = el('div', 'chips');
-      BATTLE_CATS.forEach(c => {
-        const cnt = getEligiblePool(c.key).length;
-        const btn = el('button', 'tb' + (selectedCat === c.key ? ' on' : ''), `${c.label} (${cnt})`);
-        btn.type = 'button';
-        btn.onclick = () => { selectedCat = c.key; renderCurrentView(); };
-        catChips.append(btn);
-      });
-
-      const sizeTitle = el('div', 'fs', 'Размер турнира');
-      const sizeChips = el('div', 'chips');
-      SIZES.forEach(sz => {
-        const btn = el('button', 'tb' + (selectedSize === sz ? ' on' : ''), `${sz} участников`);
-        btn.type = 'button';
-        btn.onclick = () => { selectedSize = sz; renderCurrentView(); };
-        sizeChips.append(btn);
-      });
-
-      const availCount = getEligiblePool(selectedCat).length;
-      const infoNote = el('div', 'meta');
-      infoNote.style.margin = '4px 0 0';
-      if (availCount < 4) {
-        infoNote.style.color = '#fda4af';
-        infoNote.textContent = `⚠ В этой категории завершено всего ${availCount} шт. Нужно минимум 4 просмотренных или прочитанных тайтла!`;
-      } else {
-        const actualCount = Math.min(selectedSize, availCount);
-        let b = 2; while (b < actualCount) b *= 2;
-        const byes = b - actualCount;
-        infoNote.textContent = `Будет выбрано участников: ${actualCount} из ${availCount} доступных` + (byes > 0 ? ` (автоматических проходов во 2-й раунд по bye: ${byes}).` : '.');
-      }
-
-      const startBtn = el('button', 'btn', '⚔ Начать Битву тайтлов');
-      startBtn.type = 'button';
-      startBtn.style.marginTop = '8px';
-      startBtn.onclick = startTournament;
-
-      body.append(catTitle, catChips, sizeTitle, sizeChips, infoNote, startBtn);
-      return;
-    }
-
-    // 2. Экран итогов турнира (Топ-3 + полный список)
-    if (state.phase === 'done') {
-      const win = state.firstPlace;
-      const second = state.secondPlace;
-      const third = state.thirdPlace;
-      const fourth = state.fourthPlace;
-      const top3 = [win, second, third].filter(Boolean);
-      const fullRanking = [win, second, third, fourth, ...[...state.earlierEliminated].reverse()].filter(Boolean);
-
-      $('dlgTitle').textContent = `🏆 Итоги Битвы тайтлов (${state.catLabelText})`;
-      $('dlgText').textContent = `Победитель финала: «${win?.title || '—'}». Топ-3 призёров определён с учётом финала и матча за 3-е место:`;
-
-      const podiumWrap = el('div');
-      podiumWrap.style.cssText = 'display:flex;flex-direction:column;gap:7px;margin:4px 0';
-      const medals = [
-        ['🥇 1 место (Победитель финала)', win, '#fbbf24'],
-        ['🥈 2 место (Финалист)', second, '#cbd5e1'],
-        ['🥉 3 место (Победитель матча за 3-е место)', third, '#d97706']
-      ];
-      medals.forEach(([placeLabel, item, col]) => {
-        if (!item) return;
-        const card = el('div', 'row');
-        card.style.cssText = `padding:8px 10px;background:var(--inp);border:1px solid ${col};border-radius:10px;justify-content:space-between;gap:10px`;
-        const left = el('div', 'row');
-        left.style.gap = '10px';
-        left.style.flex = '1';
-        const im = el('img');
-        applyPosterImg(im, item.poster, item);
-        im.style.cssText = 'width:38px;height:54px;object-fit:cover;border-radius:6px;flex-shrink:0';
-        const txt = el('div');
-        const badge = el('div', null, placeLabel);
-        badge.style.cssText = `font-size:11px;font-weight:700;color:${col}`;
-        txt.append(badge, el('b', null, item.title), el('div', 'meta', `${catLabel(item)} · ${item.year || '—'} · ★ ${item.rating || item.extRating || '—'}`));
-        left.append(im, txt);
-        card.append(left);
-        podiumWrap.append(card);
-      });
-      body.append(podiumWrap);
-
-      if (fullRanking.length > 3) {
-        const restWrap = el('div');
-        restWrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto;margin-top:4px';
-        fullRanking.slice(3, 10).forEach((it, idx) => {
-          const r = el('div', 'sr');
-          r.append(el('span', null, `#${idx + 4} ${it.title}`), el('span', 'meta', `${catLabel(it)} · ★ ${it.rating || it.extRating || '—'}`));
-          restWrap.append(r);
-        });
-        body.append(restWrap);
-      }
-
-      const actionsRow = el('div', 'row');
-      actionsRow.style.gap = '8px';
-      actionsRow.style.marginTop = '6px';
-
-      const saveTopB = el('button', 'btn', '💾 Сохранить Топ-3 в подборку «🏆 Топ Битвы тайтлов»');
-      saveTopB.type = 'button';
-      saveTopB.style.flex = '1';
-      saveTopB.onclick = () => {
-        const listName = '🏆 Топ Битвы тайтлов';
-        prof.customLists = prof.customLists || [];
-        if (!prof.customLists.includes(listName)) prof.customLists.push(listName);
-        top3.forEach(it => {
-          it.lists = it.lists || [];
-          if (!it.lists.includes(listName)) { it.lists.push(listName); cloudSave(it); }
-        });
-        profCloud();
-        refresh();
-        toast('Топ-3 сохранён в подборку «🏆 Топ Битвы тайтлов»!');
-      };
-
-      const undoB = el('button', 'btn btn-s', '↩ Назад на шаг');
-      undoB.type = 'button';
-      undoB.onclick = handleUndoStep;
-
-      const restartB = el('button', 'btn btn-s', '🔄 Новый турнир');
-      restartB.type = 'button';
-      restartB.onclick = () => { state = null; historyStack.length = 0; renderCurrentView(); };
-
-      actionsRow.append(saveTopB, undoB, restartB);
-      body.append(actionsRow);
-      return;
-    }
-
-    // 3. Экран текущего матча (основная сетка, полуфинал, матч за 3-е место или финал)
-    let stageName = '';
-    let pair = null;
-    let subNote = 'Нажми на постер произведения, которое нравится тебе больше:';
-
-    if (state.phase === 'third_place') {
-      stageName = '🥉 Матч за 3-е место (Бронзовый финал)';
-      pair = state.thirdPlacePair;
-      subNote = 'Встречаются проигравшие в полуфиналах — выбери обладателя 3-го места:';
-    } else if (state.phase === 'final') {
-      stageName = '🔥 ФИНАЛ (Матч за 1-е и 2-е место)';
-      pair = state.finalPair;
-      subNote = 'Главный поединок турнира — выбери чемпиона (1 место):';
-    } else {
-      const effSize = state.roundPool.length + state.autoAdvancers.length;
-      const bSize = Math.pow(2, Math.ceil(Math.log2(Math.max(4, state.roundPool.length))));
-      const baseStage = state.phase === 'semi' || bSize === 4
-        ? 'Полуфинал (1/2)'
-        : bSize === 8
-        ? 'Четвертьфинал (1/4)'
-        : bSize === 16
-        ? '1/8 финала'
-        : '1/16 финала';
-      stageName = `${baseStage} · Матч ${state.matchIdx + 1} из ${state.matches.length}`;
-      pair = state.matches[state.matchIdx];
-      if (state.autoAdvancers.length > 0) {
-        subNote = `Автоматический проход (bye) в следующий раунд: ${state.autoAdvancers.length} уч. Выбери победителя пары:`;
-      }
-    }
-
-    $('dlgTitle').textContent = `⚔ Битва тайтлов · ${stageName}`;
-    $('dlgText').textContent = subNote;
-
-    const [a, b] = pair;
-    const arena = el('div', 'battle-arena');
-    const mkCard = (it, other) => {
-      const c = el('div', 'battle-contender');
-      const im = el('img');
-      applyPosterImg(im, it.poster, it);
-      c.append(
-        im,
-        el('b', null, it.title),
-        el('span', 'meta', `${catLabel(it)} · ${it.year || '—'}${it.rating ? ' · ★ ' + it.rating : (it.extRating ? ' · ★ ' + it.extRating : '')}`)
-      );
-      c.onclick = () => handlePickWinner(it, other);
-      return c;
-    };
-    arena.append(mkCard(a, b), el('div', 'battle-vs', 'VS'), mkCard(b, a));
-    body.append(arena);
-
-    const navRow = el('div', 'row');
-    navRow.style.justifyContent = 'space-between';
-    const undoBtn = el('button', 'btn btn-s', '↩ Назад на шаг');
-    undoBtn.type = 'button';
-    undoBtn.disabled = historyStack.length === 0;
-    undoBtn.onclick = handleUndoStep;
-
-    const changeSetupBtn = el('button', 'btn btn-s', '⚙ Сменить категорию / размер');
-    changeSetupBtn.type = 'button';
-    changeSetupBtn.onclick = () => {
-      if (battleActiveInProgress && !confirmExitBattleIfActive()) return;
-      state = null;
-      historyStack.length = 0;
-      renderCurrentView();
-    };
-    navRow.append(undoBtn, changeSetupBtn);
-    body.append(navRow);
-  };
-
-  dlgOpen(() => {
-    renderCurrentView();
-  }, 'Закрыть турнир', false, () => true);
-
-  // Перехватываем кнопки закрытия #dlgOk и #dlgCancel, чтобы не закрыть активный турнир случайно без подтверждения
-  const origOk = $('dlgOk').onclick;
-  const origCancel = $('dlgCancel').onclick;
-  $('dlgOk').onclick = () => {
-    if (battleActiveInProgress && !confirmExitBattleIfActive()) return;
-    if (origOk) origOk();
-  };
-  $('dlgCancel').onclick = () => {
-    if (battleActiveInProgress && !confirmExitBattleIfActive()) return;
-    if (origCancel) origCancel();
-  };
-}
-
-['battleBtn', 'colBattleBtn', 'colMoreBattleBtn'].forEach(id => {
-  if ($(id)) $(id).onclick = openTitleBattleModal;
-});
+// ---------- В1. Индивидуальные значки за аниме (до 3 надетых одновременно + неоновая рамка для оценки 10!), В3. Капсула времени по дате просмотра, В4. Импорт Shikimori/AniList/MAL (аниме + манга + 1000+ записей + русские названия) ----------
 
 
 

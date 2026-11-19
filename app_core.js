@@ -238,14 +238,10 @@ const el = (t, c, x) => { const e = document.createElement(t); if (c) e.classNam
 let dlgDone = null;
 function dlgOpen(build, okLabel, danger, getVal) {
   return new Promise(res => {
-    if (dlgDone) {
-      battleActiveInProgress = false;
-      dlgDone(null);
-    }
+    if (dlgDone) dlgDone(null);
     const m = $('dlgModal'), done = v => {
       if (dlgDone !== done) return;
       dlgDone = null;
-      battleActiveInProgress = false;
       hideModalElement(m);
       res(v);
     };
@@ -1918,14 +1914,6 @@ $('sizeSel').value = localStorage.getItem('cw') || '190'; setSize($('sizeSel').v
 
 // ---------- Модальные окна ----------
 let cropDone = null;
-let battleActiveInProgress = false;
-
-function confirmExitBattleIfActive() {
-  if (!battleActiveInProgress) return true;
-  const ok = window.confirm('Турнир «Битва тайтлов» ещё не завершён! Точно закрыть окно и сбросить текущий прогресс?');
-  if (ok) battleActiveInProgress = false;
-  return ok;
-}
 
 // Приоритет модальных окон от самого верхнего к нижнему (по z-index)
 const MODAL_STACK_ORDER = ['cropModal', 'dlgModal', 'charPopupModal', 'themeModal', 'dataModal', 'profModal', 'statsModal', 'addModal', 'detailModal', 'rndModal'];
@@ -1957,7 +1945,6 @@ function closeTopModal(fromPopState = false) {
     return;
   }
   if (topModal.id === 'dlgModal') {
-    if (battleActiveInProgress && !confirmExitBattleIfActive()) return;
     if (dlgDone) dlgDone(null);
     else hideModalElement(topModal, fromPopState);
     return;
@@ -1966,7 +1953,6 @@ function closeTopModal(fromPopState = false) {
 }
 
 const closeAll = (fromPopState = false) => {
-  if (battleActiveInProgress && !confirmExitBattleIfActive()) return;
   if (dlgDone) dlgDone(null);
   if (cropDone) cropDone(null);
   if (typeof closeQuickAddStatusMenu === 'function') closeQuickAddStatusMenu();
@@ -2009,7 +1995,6 @@ document.addEventListener('click', e => {
   const clickedDirectlyOnBackdrop = (_lastMouseDownTarget === t);
   if (t.id === 'dlgModal') {
     if (!clickedDirectlyOnBackdrop) return;
-    if (battleActiveInProgress && !confirmExitBattleIfActive()) return;
     if (dlgDone) dlgDone(null);
     return;
   }
@@ -3188,8 +3173,8 @@ $('inputRating').addEventListener('input', starPaint);
 // ИСПРАВЛЕНИЕ ОШИБКИ №3: Критерии можно включать и выключать без возврата старых при сохранении
 let criteriaActiveInForm = false;
 {
-  const ratingWrap = $('inputRating')?.parentElement;
-  if (ratingWrap && !$('criteriaBox')) {
+  const criteriaMount = $('criteriaAnchor') || $('inputRating')?.parentElement;
+  if (criteriaMount && !$('criteriaBox')) {
     const cBox = el('div', 'criteria-box'); cBox.id = 'criteriaBox';
     const toggleBtn = el('button', 'btn btn-s', '🎛 Оценить по 4 критериям (Сюжет, Рисовка, Персонажи, Музыка)');
     toggleBtn.type = 'button'; toggleBtn.id = 'criteriaToggleBtn'; toggleBtn.style.width = '100%'; toggleBtn.style.fontSize = '12px';
@@ -3211,7 +3196,7 @@ let criteriaActiveInForm = false;
       cGrid.style.display = criteriaActiveInForm ? 'grid' : 'none';
       toggleBtn.textContent = criteriaActiveInForm ? '✕ Убрать оценку по 4 критериям (оставить обычную)' : '🎛 Оценить по 4 критериям (Сюжет, Рисовка, Персонажи, Музыка)';
     };
-    cBox.append(toggleBtn, cGrid); ratingWrap.append(cBox);
+    cBox.append(toggleBtn, cGrid); criteriaMount.append(cBox);
   }
 }
 
@@ -3277,9 +3262,6 @@ function openAdd(item) {
     $('otherTitlesBox').style.display = hasExtraNames ? 'flex' : 'none';
     $('toggleOtherTitlesBtn').textContent = (hasExtraNames ? '▾ ' : '▸ ') + 'Другие названия (Английское, Оригинальное, Синонимы)';
   }
-  ['spoilerVolume', 'spoilerDates', 'spoilerCreators'].forEach(spId => {
-    if ($(spId)) $(spId).open = false;
-  });
   setAddFormManualMode(true, false);
 
   const c = i.criteria || null;

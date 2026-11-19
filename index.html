@@ -170,11 +170,12 @@
         <div class="hyb-banner" id="hybBanner">
           <div class="hyb-now-watching" id="hybNowWatching" style="display:none" title="Нажми, чтобы открыть тайтл">
             <img id="hybNwPoster" src="" alt="" referrerpolicy="no-referrer">
-            <div style="min-width:0">
+            <div style="min-width:0;flex:1">
               <div class="hyb-nw-tag" id="hybNwTag">СЕЙЧАС СМОТРЮ</div>
               <div class="hyb-nw-title" id="hybNwTitle"></div>
               <div class="hyb-nw-sub" id="hybNwSub">активно сейчас</div>
             </div>
+            <button type="button" class="hyb-nw-close" id="hybNwCloseBtn" title="Скрыть для этого тайтла" aria-label="Скрыть">✕</button>
           </div>
           <div style="margin-left:auto;display:flex;gap:8px;position:relative;z-index:2">
             <button class="hyb-cover-btn" id="quickCoverChangeBtn" type="button">Изменить обложку</button>
@@ -222,7 +223,6 @@
                   <button class="btn btn-s" id="hybMoreBtn" type="button" title="Дополнительные инструменты">Ещё ▾</button>
                   <div class="hyb-more-pop" id="hybMorePop">
                     <button id="downloadPngCardBtn" type="button">🪪 Скачать PNG-визитку</button>
-                    <button id="battleBtn" type="button">Битва тайтлов (Топ-турнир)</button>
                     <button id="statsBtn" type="button">Полная статистика</button>
                   </div>
                 </div>
@@ -310,7 +310,6 @@
           </select>
           <button class="btn btn-s" id="viewBtn" type="button" title="Переключить вид: Сетка ↔ Список">Вид: Сетка</button>
           <button class="btn btn-s" id="selBtn" type="button">Выбрать</button>
-          <button class="btn btn-s" id="colBattleBtn" type="button" title="Запустить турнир среди завершённых тайтлов">⚔ Битва тайтлов</button>
           <div class="toolbar-more-wrap" id="colMoreWrap">
             <button class="btn btn-s" id="colMoreBtn" type="button">Дополнительно ▾</button>
             <div class="toolbar-more-pop" id="colMorePop">
@@ -333,7 +332,6 @@
                 <button class="btn btn-d" id="deleteListBtn" type="button" style="display:none;font-size:12.5px;padding:8px 10px">🗑 Удалить подборку</button>
               </div>
               <button class="btn btn-s" id="rndBtn" type="button" style="width:100%;font-size:12.5px;padding:8px 10px">🎲 Случайный тайтл из списка</button>
-              <button class="btn btn-s" id="colMoreBattleBtn" type="button" style="width:100%;font-size:12.5px;padding:8px 10px">⚔ Битва тайтлов (Топ-турнир)</button>
             </div>
           </div>
         </div>
@@ -423,33 +421,32 @@
     <div class="row"><input type="file" id="inputPosterFile" accept="image/*" style="flex:1"><button class="btn btn-s" id="clearPoster" type="button">Убрать</button></div>
   </div></div>
   <div class="row2"><input type="number" id="inputYear" placeholder="Год" min="1900" max="2100"><input type="number" id="inputRating" placeholder="Моя оценка (1-10)" min="1" max="10" step="0.1"></div>
-  <div class="fs">Жанры и описание</div>
+  <div id="criteriaAnchor"></div>
+
+  <div class="fs">Создатели и объём</div>
+  <div class="row2"><input id="inputAuthor" placeholder="Автор / режиссёр"><input id="inputStudio" placeholder="Студия / издатель"></div>
+  <div class="row2">
+    <select id="inputSource"><option value="">Источник: не указан</option><option>Оригинал</option><option>Манга</option><option>Ранобэ</option><option>Визуальная новелла</option><option>Игра</option><option>Книга</option><option>Комикс</option><option>Другое</option></select>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;padding-top:16px"><input type="checkbox" id="inputOngoing" style="flex:none;width:18px;height:18px;padding:0"> Онгоинг (выходит сейчас)</label>
+  </div>
+  <div class="row3">
+    <input type="number" id="inputEps" placeholder="Серий или глав" min="0">
+    <input type="number" id="inputVols" placeholder="Томов (манга/ранобэ)" min="0">
+    <input type="number" id="inputDur" placeholder="Минут на серию/фильм" min="0">
+  </div>
+
+  <div class="fs">Жанры, подборки и описание</div>
   <input id="inputTags" placeholder="Жанры и теги (через запятую)">
   <input id="inputLists" placeholder="Подборки (через запятую)">
   <textarea id="inputDescription" placeholder="Синопсис / Описание..."></textarea>
 
-  <details class="form-spoiler" id="spoilerVolume">
-    <summary>📺 Объём и серии</summary>
-    <div class="form-spoiler-body">
-      <div class="row2"><input type="number" id="inputEps" placeholder="Серий или глав" min="0"><input type="number" id="inputVols" placeholder="Томов (для манги и ранобэ)" min="0"><input type="number" id="inputDur" placeholder="Минут на серию или фильм" min="0"></div>
-      <div class="row2"><select id="inputSource"><option value="">Источник: не указан</option><option>Оригинал</option><option>Манга</option><option>Ранобэ</option><option>Визуальная новелла</option><option>Игра</option><option>Книга</option><option>Комикс</option><option>Другое</option></select><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" id="inputOngoing" style="flex:none;width:18px;height:18px;padding:0"> Онгоинг (выходит сейчас)</label></div>
-    </div>
-  </details>
-
-  <details class="form-spoiler" id="spoilerDates">
-    <summary>📅 Даты и пересмотры</summary>
-    <div class="form-spoiler-body">
-      <div class="row2"><input type="date" id="inputCompletedAt" title="Дата завершения просмотра/чтения"><input type="number" id="inputRewatchCount" placeholder="Повторных просмотров (0+)" min="0" max="100"></div>
-    </div>
-  </details>
-
-  <details class="form-spoiler" id="spoilerCreators">
-    <summary>🎬 Создатели, студия и оценка базы</summary>
-    <div class="form-spoiler-body">
-      <div class="row2"><input id="inputAuthor" placeholder="Автор / режиссёр"><input id="inputStudio" placeholder="Студия"></div>
-      <input type="number" id="inputExtRating" placeholder="Внешняя оценка (AniList/TMDB, напр. 8.5)" min="0" max="10" step="0.01"><input type="hidden" id="inputExtSrc">
-    </div>
-  </details>
+  <div class="fs">Даты, пересмотры и оценка базы</div>
+  <div class="row3">
+    <input type="date" id="inputCompletedAt" title="Дата завершения просмотра/чтения">
+    <input type="number" id="inputRewatchCount" placeholder="Повторных просмотров (0+)" min="0" max="100">
+    <input type="number" id="inputExtRating" placeholder="Внешняя оценка (напр. 8.5)" min="0" max="10" step="0.01">
+  </div>
+  <input type="hidden" id="inputExtSrc">
 
   <div class="fs">Как будет выглядеть</div><div id="pvCard" class="pv"></div>
   <div class="mb" style="justify-content:flex-end">

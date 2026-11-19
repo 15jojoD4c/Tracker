@@ -15,10 +15,11 @@
 <meta property="og:title" content="Kiroku">
 <meta property="og:description" content="Kiroku — трекер фильмов, сериалов, аниме, манги и ранобэ с каталогом и облачной синхронизацией">
 <meta property="og:type" content="website">
-<link rel="preload" href="./app_core.js?v=20261119" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261119" as="script">
-<link rel="preload" href="./app.js?v=20261119" as="script">
-<link rel="stylesheet" href="./style.css?v=20261119">
+<link rel="preload" href="./kiroku_engine.js?v=20261120" as="script">
+<link rel="preload" href="./app_core.js?v=20261120" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261120" as="script">
+<link rel="preload" href="./app.js?v=20261120" as="script">
+<link rel="stylesheet" href="./style.css?v=20261120">
 <style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
 </head>
 <body class="auth-checking">
@@ -58,7 +59,7 @@
         <input type="file" id="malXmlFile" accept=".xml,.json" onchange="importMalXml(event)">
         <input type="file" id="kpFile" accept=".csv,.xls,.html,.htm,.json,.txt" style="display:none" onchange="importKinopoiskFile(event)">
         <select id="sizeSel" title="Размер карточек"><option value="150">Карточки: мелкие</option><option value="190">Карточки: средние</option><option value="240">Карточки: крупные</option></select>
-        <button class="btn" id="openModalBtn" type="button">+ Добавить</button>
+        <button class="btn" id="openModalBtn" type="button" aria-label="Добавить тайтл"><span class="add-btn-plus">+</span><span class="add-btn-lbl"> Добавить</span></button>
         <div class="acc">
           <button class="av" id="accBtn" title="Аккаунт и настройки" aria-haspopup="true"><img id="hdrAvatar" referrerpolicy="no-referrer" alt=""></button>
           <div class="menu" id="accMenu">
@@ -131,6 +132,7 @@
             <option value="rare">Малоизвестные</option>
           </select>
           <button class="tb" id="cgFltBtn" type="button" aria-expanded="false">Фильтры ▾</button>
+          <button class="tb mob-size-btn" id="cgMobSizeBtn" type="button" title="Размер карточек на экране" aria-label="Размер карточек">⊞ 2</button>
           <div class="pick-menu-wrap" id="cgPickMenuWrap">
             <button class="btn" id="cgPickMenuBtn" type="button">Подобрать ▾</button>
             <div class="pick-menu-pop" id="cgPickMenuPop">
@@ -146,7 +148,7 @@
           <button class="tb" id="cgOngBtn" type="button">Онгоинг</button>
           <button class="tb" id="cgHide" type="button">Скрыть добавленные</button>
           <select id="cgMin" title="Минимальная внешняя оценка"><option value="0">Любой рейтинг</option><option value="6">★ 6+</option><option value="7">★ 7+</option><option value="8">★ 8+</option></select>
-          <div class="row" style="gap:4px;background:var(--inp);padding:2px 8px;border-radius:var(--rad-sm);border:1px solid var(--bd)">
+          <div class="row cg-year-pair" style="gap:4px;background:var(--inp);padding:2px 8px;border-radius:var(--rad-sm);border:1px solid var(--bd)">
             <input type="number" id="cgYear" placeholder="Год от" aria-label="Год от" min="1900" max="2100" style="width:76px;padding:5px 6px;border:0;background:transparent">
             <span class="meta" style="margin:0">—</span>
             <input type="number" id="cgYear2" placeholder="Год до" aria-label="Год до" min="1900" max="2100" style="width:76px;padding:5px 6px;border:0;background:transparent">
@@ -157,6 +159,9 @@
           <button class="tb" id="cgReset" type="button">Сбросить <span id="cgActiveFiltersBadge"></span></button>
         </div>
         <div class="cg-tags-panel" id="cgTagsPanel" style="display:none"></div>
+        <div class="cg-mob-filter-footer" id="cgMobFilterFooter">
+          <button class="btn" id="cgMobApplyBtn" type="button" style="flex:1">Применить и скрыть</button>
+        </div>
       </div>
       <!-- Видимые чипы активных фильтров каталога (показываются даже если панель фильтров свёрнута на телефоне — Часть 1 п.5) -->
       <div id="cgActiveChipsBar" class="cg-active-chips" style="display:none"></div>
@@ -310,6 +315,7 @@
             <option value="Архив">📦 Архив</option>
           </select>
           <button class="btn btn-s" id="viewBtn" type="button" title="Переключить вид: Сетка ↔ Список">Вид: Сетка</button>
+          <button class="btn btn-s mob-size-btn" id="colMobSizeBtn" type="button" title="Размер карточек на экране" aria-label="Размер карточек">⊞ 2</button>
           <button class="btn btn-s" id="selBtn" type="button">Выбрать</button>
           <div class="toolbar-more-wrap" id="colMoreWrap">
             <button class="btn btn-s" id="colMoreBtn" type="button">Дополнительно ▾</button>
@@ -611,6 +617,12 @@
   <div class="row" style="justify-content:space-between"><h2 style="margin:0">🎨 Оформление сайта</h2><button class="btn btn-s" id="closeThemeModalBtn" type="button">✕</button></div>
   <div class="fs">Цвет акцента</div>
   <div class="sw" id="accSw" title="Цвет оформления" style="padding:4px 0"></div>
+  <div class="fs">Размер карточек</div>
+  <div class="th" id="themeSizeSw" style="display:flex;flex-wrap:wrap;gap:6px">
+    <button type="button" data-size="150">Мелкие (3 в ряд)</button>
+    <button type="button" data-size="190">Средние (2 в ряд)</button>
+    <button type="button" data-size="240">Крупные (1 в ряд)</button>
+  </div>
   <div class="fs">Тема оформления</div>
   <div class="th" id="accTh" style="display:flex;flex-wrap:wrap;gap:6px"></div>
   <div class="mb" style="justify-content:space-between;margin-top:12px">
@@ -684,14 +696,12 @@
 </div>
 
 <script type="module">
-const importWithTimeout = (url, ms = 8000) => Promise.race([
+const importWithTimeout = (url, ms = 4500) => Promise.race([
   import(url),
   new Promise((_, rej) => setTimeout(() => rej(new Error("Firebase load timeout")), ms))
 ]);
 
-// Запускаем предзагрузку локальных скриптов в кэш браузера параллельно с импортом Firebase
-const APP_VER = "20261119";
-const prefetchLocal = ["./app_core.js?v=" + APP_VER, "./app_catalog.js?v=" + APP_VER, "./app.js?v=" + APP_VER].map(u => fetch(u).catch(() => null));
+const APP_VER = "20261120";
 
 try {
   const [fbApp, fbAuth, fbDb] = await Promise.all([
@@ -743,8 +753,6 @@ try {
   });
 }
 
-await Promise.allSettled(prefetchLocal);
-
 const loadScript = src => new Promise((resolve, reject) => {
   const s = document.createElement("script");
   s.src = src;
@@ -757,6 +765,7 @@ const loadScript = src => new Promise((resolve, reject) => {
 });
 
 try {
+  await loadScript("./kiroku_engine.js?v=" + APP_VER);
   await loadScript("./app_core.js?v=" + APP_VER);
   await loadScript("./app_catalog.js?v=" + APP_VER);
   await loadScript("./app.js?v=" + APP_VER);

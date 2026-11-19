@@ -54,6 +54,21 @@ async function batchSaveItems(listToSave, opts = {}) {
   }
 
   try {
+    if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
+      const ok = await saveCollectionChunksToCloud(user.uid, items, { throwOnError: requireCloud });
+      if (ok) {
+        listToSave.forEach(it => { delete it.dirty; });
+        saveLocalItems();
+        setSync();
+        return { synced: true, localSaved: true };
+      }
+      if (!isChunkStorageEnabled()) {
+        // Fallback на поштучные документы только если правила Firestore отклонили чанки
+      } else {
+        setSync();
+        return { synced: false, localSaved: true };
+      }
+    }
     for (let i = 0; i < listToSave.length; i += 350) {
       const chunk = listToSave.slice(i, i + 350);
       const b = writeBatch(db);
@@ -108,13 +123,21 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
   profCloud(true);
   refresh();
 
-  // 3. Удаляем документы в Firestore (или ставим в очередь pendingCloudDeletes при квоте/офлайне)
+  // 3. Обновляем чанки коллекции в Firestore (1 запись вместо сотни удалений) или удаляем legacy-документы
   try {
     if (user && !user.isLocal) {
       const allDelIds = [...docIdsToRemove].filter(Boolean);
       if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
         if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
         setSync();
+      } else if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
+        try {
+          const ok = await saveCollectionChunksToCloud(user.uid, items, { silent: true });
+          if (!ok && typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
+        } catch (e) {
+          if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
+          if (typeof handleCloudError === 'function') handleCloudError(e, true);
+        }
       } else {
         try {
           for (let i = 0; i < allDelIds.length; i += 350) {
@@ -184,13 +207,9 @@ window.exportData = () => {
   try { localStorage.setItem('lastBackup', String(Date.now())); } catch (e) {}
 };
 
-let nudged = false;
+let nudged = true;
 function backupNudge() {
-  if (nudged || items.length < 5) return;
-  nudged = true; let t = 0; try { t = +localStorage.getItem('lastBackup') || 0; } catch (e) {}
-  if (Date.now() - t > 14 * 864e5) {
-    toast('Напоминание: давно не сохранялась резервная копия коллекции.', false, {label: 'Скачать бэкап', fn: () => window.exportData()});
-  }
+  // Автонапоминание о бэкапе отключено по просьбе пользователя
 }
 
 function getSavedImportMeta() {
@@ -3220,6 +3239,8 @@ if ($('openFullPageFromRndBtn')) $('openFullPageFromRndBtn').onclick = () => { i
 async function wipeAllUserDataFromFirestore(targetUid) {
   if (!targetUid || !auth.currentUser) return 0;
   const docIds = new Set(['prof_' + targetUid, 'prof_rucache_' + targetUid]);
+  const maxChunks = Math.max(Number(prof?.colChunks) || 0, 6);
+  for (let i = 0; i < maxChunks; i++) docIds.add(`prof_col_${targetUid}_${i}`);
   try {
     const s = await getDocs(query(collection(db, 'items'), where('userId', '==', targetUid)));
     s.docs.forEach(d => docIds.add(d.id));
@@ -4155,7 +4176,8 @@ function refresh(opts = {}) {
   const sync = () => {
     const open = mods.find(m => m.style.display && m.style.display !== 'none');
     document.body.style.overflow = open ? 'hidden' : '';
-    $('modalX').classList.toggle('show', !!open);
+    const hasOwnClose = Boolean(open && open.querySelector('[id$="CloseBtn"], [id^="close"], #cropCancelBtn'));
+    $('modalX').classList.toggle('show', Boolean(open && !hasOwnClose));
     if (open) {
       if (!back) back = document.activeElement;
       const curTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
@@ -4188,6 +4210,12 @@ document.addEventListener('error', e => {
 
 window.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
+    if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled() && user && !user.isLocal && !(typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked())) {
+      const hasDirty = items.some(x => x && x.dirty);
+      if ((typeof _chunkSyncTimer !== 'undefined' && _chunkSyncTimer) || hasDirty) {
+        if (typeof scheduleChunkCloudSync === 'function') scheduleChunkCloudSync(true).catch(() => {});
+      }
+    }
     if (_cloudSaveTimers.size) {
       const pendingFlush = [];
       _cloudSaveTimers.forEach((entry, docId) => {

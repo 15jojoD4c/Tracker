@@ -1275,6 +1275,7 @@ function buildStats(b) {
     { label: 'В планах', count: vis.filter(i => i.status === 'В планах').length, color: '#a855f7' },
     { label: 'Смотрю / Читаю', count: vis.filter(i => i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю').length, color: '#10b981' },
     { label: 'Просмотрено / Прочитано', count: vis.filter(i => i.status === 'Просмотрено/Прочитано').length, color: '#38bdf8' },
+    { label: 'Отложено', count: vis.filter(i => i.status === 'Отложено').length, color: '#f59e0b' },
     { label: 'Брошено', count: vis.filter(i => i.status === 'Брошено').length, color: '#ef4444' }
   ];
   const typeDefs = [
@@ -1317,15 +1318,16 @@ function buildStats(b) {
   });
   addSection('По типам (количество и средняя оценка)', typeRows);
 
-  // 2. По статусам (В планах, Смотрю, Просмотрено, Брошено, Любимое): точное количество штук и доля в %
+  // 2. По статусам (В планах, Смотрю, Просмотрено, Отложено, Брошено, Любимое): точное количество штук и доля в %
   const favCount = vis.filter(i => i.fav).length;
   const rewatchingCount = vis.filter(i => i.status === 'Пересматриваю').length;
   const statusRows = [
     ['В планах', statusEntries[0].count],
     ['Смотрю / Читаю', vis.filter(i => i.status === 'Смотрю/Читаю').length],
     ['Просмотрено / Прочитано', statusEntries[2].count],
+    ['Отложено', statusEntries[3].count],
     ['Пересматриваю', rewatchingCount],
-    ['Брошено', statusEntries[3].count],
+    ['Брошено', statusEntries[4].count],
     ['❤ Любимое', favCount]
   ].map(([lbl, cnt]) => [lbl, `${cnt} шт. (${pctStr(cnt)})`]);
   addSection('По статусам (количество и доля в коллекции)', statusRows);
@@ -2918,6 +2920,7 @@ const QUICK_STATUS_OPTIONS = [
   ['В планах', 'В планах', '#5b6b8c', '📋'],
   ['Смотрю/Читаю', 'Смотрю / Читаю', '#2f8fe8', '▶'],
   ['Просмотрено/Прочитано', 'Просмотрено', '#1db57a', '●'],
+  ['Отложено', 'Отложено', '#f59e0b', '⏸'],
   ['Брошено', 'Брошено', '#c2543e', '✕'],
   ['Любимое', 'В любимое', '#e0457b', '❤']
 ];
@@ -2925,6 +2928,7 @@ const SHORT_ST_BTN = {
   'В планах': 'В планах',
   'Смотрю/Читаю': 'Смотрю',
   'Просмотрено/Прочитано': 'Просмотрено',
+  'Отложено': 'Отложено',
   'Пересматриваю': 'Пересматриваю',
   'Брошено': 'Брошено'
 };
@@ -2932,6 +2936,7 @@ const SHORT_ST_ICON = {
   'В планах': '📋',
   'Смотрю/Читаю': '▶',
   'Просмотрено/Прочитано': '●',
+  'Отложено': '⏸',
   'Пересматриваю': '🔁',
   'Брошено': '✕',
   'Любимое': '❤'
@@ -3162,7 +3167,9 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
 
   const rebuildFolderSub = () => {
     folderSub.replaceChildren();
-    const allFolders = [...new Set([...(prof.customLists || []), ...items.flatMap(i => i.lists || [])])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ru'));
+    const allFolders = typeof getAllUserCollectionNames === 'function'
+      ? getAllUserCollectionNames()
+      : [...new Set([...(prof.customLists || []), ...items.flatMap(i => i.lists || [])])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ru'));
     if (!allFolders.length) {
       const emptyHint = el('div', 'meta', 'Подборок пока нет');
       emptyHint.style.padding = '4px 8px';
@@ -3192,6 +3199,8 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
             toast(`Добавлено в подборку «${folderName}»`);
           }
           cloudSave(existing);
+          refreshLists();
+          if (typeof renderMyListsFolderBlock === 'function') renderMyListsFolderBlock();
           refresh({ itemId: existing.id });
           const cnt = existing.lists.length;
           folderToggleBtn.firstChild.textContent = `📁 В подборку${cnt ? ` (${cnt})` : ''}`;
@@ -3204,26 +3213,15 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
     const newFB = el('button', 'qa-folder-item');
     newFB.type = 'button';
     newFB.style.color = 'var(--ach)';
-    newFB.append(el('span', null, '＋ Новая подборка…'));
+    newFB.append(el('span', null, '🔍 Все подборки / Новая…'));
     newFB.onclick = async ev => {
       ev.stopPropagation();
       closeQuickAddStatusMenu();
-      const nm = ((await uiPrompt('Новая подборка', '', 'Например: Избранное, Шедевры...')) || '').trim();
-      if (!nm) return;
-      prof.customLists = prof.customLists || [];
-      if (!prof.customLists.some(x => x.toLowerCase() === nm.toLowerCase())) prof.customLists.push(nm);
-      if (!existing) {
-        existing = await quickAdd(r, 'В планах');
+      if (typeof openAddToCollectionModal === 'function') {
+        await openAddToCollectionModal(existing || r, updated => {
+          if (onAfterPick) onAfterPick(updated);
+        });
       }
-      if (existing) {
-        existing.lists = existing.lists || [];
-        if (!existing.lists.some(x => x.toLowerCase() === nm.toLowerCase())) existing.lists.push(nm);
-        cloudSave(existing);
-      }
-      profCloud();
-      refresh();
-      toast(`Подборка «${nm}» создана и тайтл добавлен!`);
-      if (onAfterPick && existing) onAfterPick(existing);
     };
     folderSub.append(newFB);
   };
@@ -3799,6 +3797,11 @@ function syncRndAddBtnUI(r) {
   a.disabled = false;
   a.classList.add('qa-trigger');
   a.textContent = m ? `${SHORT_ST_ICON[m.status] || '●'} ${SHORT_ST_BTN[m.status] || m.status}${m.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾';
+  const lb = $('rndListBtn');
+  if (lb) {
+    const cnt = m && Array.isArray(m.lists) ? m.lists.length : 0;
+    lb.textContent = cnt ? `📁 В подборке (${cnt})` : '📁 В подборку';
+  }
 }
 
 function showPreview(r, rnd) {
@@ -3813,10 +3816,16 @@ function showPreview(r, rnd) {
   $('rndMeta').textContent = [r.year, catLabel(r), r.ext ? '★ ' + r.ext + (r.src ? ' (' + r.src + ')' : '') : '', r.ongoing ? 'Онгоинг' : ''].filter(Boolean).join(' | ');
   $('rndCredits').textContent = [r.author && 'Автор: ' + r.author, r.studio && 'Студия: ' + r.studio, r.source && 'Источник: ' + r.source].filter(Boolean).join('  •  ');
   rndTagChips(r);
-  $('rndDesc').textContent = r.desc || 'Описание отсутствует.';
+  const dKeyRnd = 'd_' + getRuCacheKey(r);
+  const bestRndDesc = (typeof KirokuEngine !== 'undefined' && KirokuEngine.resolveBestTitleDescription)
+    ? KirokuEngine.resolveBestTitleDescription(r, null, RUC[dKeyRnd] || '')
+    : (r.desc || RUC[dKeyRnd] || '');
+  if (bestRndDesc && !r.desc) r.desc = bestRndDesc;
+  $('rndDesc').textContent = bestRndDesc || 'Описание отсутствует.';
   $('rndLink').href = r.url || '#';
   $('rndLink').style.display = r.url ? '' : 'none';
   $('rndMore').style.display = rnd ? '' : 'none';
+  if ($('rndEdit')) $('rndEdit').style.display = 'none';
   syncRndAddBtnUI(r);
   $('rndModal').style.display = 'flex';
   ruPreview(r);
@@ -3868,7 +3877,15 @@ async function cgThree() {
 $('cgThree').onclick = cgThree;
 $('cgRand').onclick = cgRandom;
 $('rndMore').onclick = cgRandom;
-$('rndEdit').onclick = () => { closeAll(); openAdd(null); fillForm(rndR); if (rndR.tmdb) tmdbExtra(rndR).catch(() => {}); };
+$('rndEdit').onclick = () => { closeAll(true); openAdd(null); fillForm(rndR); if (rndR.tmdb) tmdbExtra(rndR).catch(() => {}); };
+if ($('rndListBtn')) {
+  $('rndListBtn').onclick = e => {
+    e.stopPropagation();
+    if (rndR && typeof openAddToCollectionModal === 'function') {
+      openAddToCollectionModal(rndR, () => syncRndAddBtnUI(rndR));
+    }
+  };
+}
 $('rndAdd').onclick = e => {
   e.stopPropagation();
   openQuickAddStatusMenu($('rndAdd'), rndR, () => syncRndAddBtnUI(rndR));

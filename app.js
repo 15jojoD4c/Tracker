@@ -121,7 +121,11 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
   items = remainingAfterDelete;
   flushLocalItemsNow(items.length === 0);
   profCloud(true);
-  refresh();
+  if (delIdStrs.size <= 15 && items.length > 0) {
+    refresh({ removedIds: [...delIdStrs] });
+  } else {
+    refresh();
+  }
 
   // 3. Обновляем чанки коллекции в Firestore (1 запись вместо сотни удалений) или удаляем legacy-документы
   try {
@@ -203,7 +207,7 @@ window.exportData = () => {
     items: myOwnItems.map(({userId, _docId, _knownStatusFromImport, lastLinkAttempt, ...r}) => r)
   };
   const a = document.createElement('a'), u = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'}));
-  a.href = u; a.download = `Kiroku_FullBackup_${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(u);
+  a.href = u; a.download = `Kirokucho_FullBackup_${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(u);
   try { localStorage.setItem('lastBackup', String(Date.now())); } catch (e) {}
 };
 
@@ -550,7 +554,7 @@ window.importMalXml = e => {
       const fp = await sha256Hex(txt.slice(0, 50000) + '_' + txt.length);
       if (txt.trim().startsWith('[') || txt.trim().startsWith('{')) {
         const jsonArr = JSON.parse(txt);
-        const ST_SH = { completed: 'Просмотрено/Прочитано', watching: 'Смотрю/Читаю', planned: 'В планах', dropped: 'Брошено', on_hold: 'В планах', rewatching: 'Пересматриваю' };
+        const ST_SH = { completed: 'Просмотрено/Прочитано', watching: 'Смотрю/Читаю', planned: 'В планах', dropped: 'Брошено', on_hold: 'Отложено', rewatching: 'Пересматриваю' };
         const candidates = (Array.isArray(jsonArr) ? jsonArr : []).map(entry => {
           const title = String(entry.target_title || entry.title || '').trim();
           if (!title) return null;
@@ -580,7 +584,7 @@ window.importMalXml = e => {
       const xml = new DOMParser().parseFromString(txt, 'text/xml');
       const animeNodes = [...xml.querySelectorAll('anime')];
       const mangaNodes = [...xml.querySelectorAll('manga')];
-      const ST_MAL = { 'Completed': 'Просмотрено/Прочитано', 'Watching': 'Смотрю/Читаю', 'Reading': 'Смотрю/Читаю', 'Plan to Watch': 'В планах', 'Plan to Read': 'В планах', 'Dropped': 'Брошено', 'On-Hold': 'В планах' };
+      const ST_MAL = { 'Completed': 'Просмотрено/Прочитано', 'Watching': 'Смотрю/Читаю', 'Reading': 'Смотрю/Читаю', 'Plan to Watch': 'В планах', 'Plan to Read': 'В планах', 'Dropped': 'Брошено', 'On-Hold': 'Отложено' };
       const gTxt = (node, tag) => node.querySelector(tag)?.textContent?.trim() || '';
       const candidates = [];
 
@@ -715,9 +719,9 @@ function buildKinopoiskCandidateFromRecord(rec, defaultCat = 'Фильм', isFiv
 
   let status = '';
   if (rawSt === '1' || /смотрю|читаю|watching|reading|current/i.test(rawSt)) status = 'Смотрю/Читаю';
-  else if (rawSt === '2' || /план|буду|запланир|отложен|пауз|hold|paused|watchlist|plan/i.test(rawSt)) status = 'В планах';
+  else if (rawSt === '2' || /план|буду|запланир|watchlist|plan/i.test(rawSt)) status = 'В планах';
   else if (rawSt === '3' || /просмотр|прочит|заверш|watched|completed|оценен/i.test(rawSt)) status = 'Просмотрено/Прочитано';
-  else if (rawSt === '4') status = 'В планах';
+  else if (rawSt === '4' || /отложен|пауз|hold|paused/i.test(rawSt)) status = 'Отложено';
   else if (rawSt === '5' || /брош|dropped/i.test(rawSt)) status = 'Брошено';
   else if (/пересматр|rewatch|repeat/i.test(rawSt)) status = 'Пересматриваю';
   else if (isFav || myRating) status = 'Просмотрено/Прочитано';
@@ -2280,12 +2284,14 @@ function renderAnixartHeroAndCategoryCards() {
   const wWatch = (vis.filter(i => i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю').length / tot * 100).toFixed(1);
   const wDone = (vis.filter(i => i.status === 'Просмотрено/Прочитано').length / tot * 100).toFixed(1);
   const wPlan = (vis.filter(i => i.status === 'В планах').length / tot * 100).toFixed(1);
+  const wHold = (vis.filter(i => i.status === 'Отложено').length / tot * 100).toFixed(1);
   const wDrop = (vis.filter(i => i.status === 'Брошено').length / tot * 100).toFixed(1);
   if ($('hybProgressBar')) {
     $('hybProgressBar').innerHTML = `
       <i style="width:${wWatch}%;background:#10b981"></i>
       <i style="width:${wDone}%;background:#38bdf8"></i>
       <i style="width:${wPlan}%;background:#8b5cf6"></i>
+      <i style="width:${wHold}%;background:#f59e0b"></i>
       <i style="width:${wDrop}%;background:#ef4444"></i>
     `;
   }
@@ -2297,6 +2303,7 @@ function renderAnixartHeroAndCategoryCards() {
       { st: 'Смотрю/Читаю', title: 'Смотрю', dot: '#10b981', flt: i => i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю' },
       { st: 'Просмотрено/Прочитано', title: 'Просмотрено', dot: '#38bdf8', flt: i => i.status === 'Просмотрено/Прочитано' },
       { st: 'В планах', title: 'В планах', dot: '#a855f7', flt: i => i.status === 'В планах' },
+      { st: 'Отложено', title: 'Отложено', dot: '#f59e0b', flt: i => i.status === 'Отложено' },
       { st: 'Любимое', title: 'Любимое', dot: '#ec4899', flt: i => !!i.fav },
       { st: 'Брошено', title: 'Брошено', dot: '#ef4444', flt: i => i.status === 'Брошено' }
     ];
@@ -2499,7 +2506,7 @@ class CharacterSeiyuuManager {
       const mType = item.category === 'Аниме' ? 'ANIME' : 'MANGA';
       const isAnime = item.category === 'Аниме';
       const hasDirectId = Boolean(Number(item.aniId) > 0 || Number(item.mal) > 0);
-      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal status bannerImage format source duration episodes volumes chapters title{romaji english native} synonyms startDate{year month day} endDate{year month day} nextAiringEpisode{airingAt episode} trailer{id site} relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,RELEVANCE,ID],perPage:25){edges{role node{name{full native}image{large}}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
+      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal status bannerImage description(asHtml:false) format source duration episodes volumes chapters title{romaji english native} synonyms startDate{year month day} endDate{year month day} nextAiringEpisode{airingAt episode} trailer{id site} relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,RELEVANCE,ID],perPage:25){edges{role node{name{full native}image{large}}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
       const vars = { t: mType };
       if (Number(item.aniId) > 0) vars.id = Number(item.aniId);
       else if (Number(item.mal) > 0) vars.mal = Number(item.mal);
@@ -2576,8 +2583,8 @@ class CharacterSeiyuuManager {
       let jikanChars = [];
       if (malId > 0) {
         const detailFields = isAnime
-          ? 'id malId status kind airedOn{year month day} releasedOn{year month day} nextEpisodeAt duration episodes episodesAired videos{url kind} related{relationKind relationText anime{id malId name russian kind score airedOn{year} poster{mainUrl}} manga{id malId name russian kind score airedOn{year} poster{mainUrl}}} characterRoles{rolesEn rolesRu character{id name russian poster{originalUrl mainUrl}}}'
-          : 'id malId status kind airedOn{year month day} releasedOn{year month day} chapters volumes related{relationKind relationText anime{id malId name russian kind score airedOn{year} poster{mainUrl}} manga{id malId name russian kind score airedOn{year} poster{mainUrl}}} characterRoles{rolesEn rolesRu character{id name russian poster{originalUrl mainUrl}}}';
+          ? 'id malId status kind description airedOn{year month day} releasedOn{year month day} nextEpisodeAt duration episodes episodesAired videos{url kind} related{relationKind relationText anime{id malId name russian kind score airedOn{year} poster{mainUrl}} manga{id malId name russian kind score airedOn{year} poster{mainUrl}}} characterRoles{rolesEn rolesRu character{id name russian poster{originalUrl mainUrl}}}'
+          : 'id malId status kind description airedOn{year month day} releasedOn{year month day} chapters volumes related{relationKind relationText anime{id malId name russian kind score airedOn{year} poster{mainUrl}} manga{id malId name russian kind score airedOn{year} poster{mainUrl}}} characterRoles{rolesEn rolesRu character{id name russian poster{originalUrl mainUrl}}}';
         const shProm = shikiGraphQL(`query($ids:String){${field}(ids:$ids,limit:1){${detailFields}}}`, { ids: String(malId) })
           .then(d => d?.[field]?.[0] || null)
           .catch(() => null);
@@ -2661,6 +2668,7 @@ class CharacterSeiyuuManager {
 
       const mediaMeta = shMedia ? {
         idMal: Number(shMedia.malId || malId),
+        description: ruClean(shMedia.description || ''),
         status: shMedia.status === 'ongoing' ? 'RELEASING' : shMedia.status === 'anons' ? 'NOT_YET_RELEASED' : 'FINISHED',
         startDate: shMedia.airedOn || null,
         endDate: shMedia.releasedOn || null,
@@ -2731,6 +2739,7 @@ class CharacterSeiyuuManager {
         isLiveAction: true,
         mediaMeta: {
           bannerImage: d?.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + d.backdrop_path : '',
+          description: d?.overview || '',
           isOngoingTmdb: d?.status === 'Returning Series' || d?.status === 'In Production',
           nextEpAirDate: d?.next_episode_to_air?.air_date || d?.last_air_date || d?.first_air_date || '',
           endDateStr: d?.last_air_date || '',
@@ -2923,22 +2932,70 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
 
   const fullPageSimBox = el('div', 'chips');
   fullPageSimBox.style.marginTop = '10px';
+  const fullPageListsBox = el('div', 'chips');
+  fullPageListsBox.style.margin = '6px 0 0';
+  const renderFullPageListChips = targetIt => {
+    fullPageListsBox.replaceChildren();
+    const curLists = (targetIt && Array.isArray(targetIt.lists)) ? targetIt.lists : [];
+    curLists.forEach(listName => {
+      const chip = el('span', 'chip', '📁 ' + listName);
+      chip.title = 'Открыть подборку';
+      chip.onclick = () => {
+        page.style.display = 'none';
+        applyMainTabView('collection');
+        $('listFilter').value = listName.toLowerCase();
+        render(false);
+      };
+      fullPageListsBox.append(chip);
+    });
+  };
   {
-    const curMatch = items.find(x => same(x, activeItem));
+    let curMatch = items.find(x => (activeItem.id && String(x.id) === String(activeItem.id)) || same(x, activeItem));
+    renderFullPageListChips(curMatch);
     const stB = el('button', 'btn qa-trigger', curMatch ? `✓ ${SHORT_ST_BTN[curMatch.status] || curMatch.status}${curMatch.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾');
     stB.type = 'button';
     stB.onclick = e => {
       e.stopPropagation();
-      openQuickAddStatusMenu(stB, activeItem, updated => {
+      openQuickAddStatusMenu(stB, curMatch || activeItem, updated => {
+        curMatch = updated || null;
         stB.textContent = updated ? `✓ ${SHORT_ST_BTN[updated.status] || updated.status}${updated.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾';
+        stPill.textContent = updated ? getStatusLabelForCategory(updated.status, updated.category) : 'В каталоге';
+        stPill.dataset.s = updated ? updated.status : 'В планах';
+        const lCnt = updated && Array.isArray(updated.lists) ? updated.lists.length : 0;
+        listBtnFp.textContent = lCnt ? `📁 В подборке (${lCnt})` : '📁 В подборку';
+        renderFullPageListChips(updated);
       });
     };
     actRow.append(stB);
+
+    const initListCnt = curMatch && Array.isArray(curMatch.lists) ? curMatch.lists.length : 0;
+    const listBtnFp = el('button', 'btn btn-s', initListCnt ? `📁 В подборке (${initListCnt})` : '📁 В подборку');
+    listBtnFp.type = 'button';
+    listBtnFp.onclick = () => {
+      if (typeof openAddToCollectionModal === 'function') {
+        openAddToCollectionModal(curMatch || activeItem, updated => {
+          curMatch = updated || curMatch;
+          const cnt = curMatch && Array.isArray(curMatch.lists) ? curMatch.lists.length : 0;
+          listBtnFp.textContent = cnt ? `📁 В подборке (${cnt})` : '📁 В подборку';
+          if (curMatch) {
+            stB.textContent = `✓ ${SHORT_ST_BTN[curMatch.status] || curMatch.status}${curMatch.fav ? ' ❤' : ''} ▾`;
+            stPill.textContent = getStatusLabelForCategory(curMatch.status, curMatch.category);
+            stPill.dataset.s = curMatch.status;
+          }
+          renderFullPageListChips(curMatch);
+        });
+      }
+    };
+    actRow.append(listBtnFp);
+
     // Кнопка «✏ Редактировать» отображается ТОЛЬКО у тайтлов, созданных вручную (без привязки к внешнему каталогу)
-    if (curMatch && !hasExternalCatalogId(curMatch)) {
+    if (curMatch && isManualItemEditable(curMatch)) {
       const edB = el('button', 'btn btn-s', '✏ Редактировать');
       edB.type = 'button';
-      edB.onclick = () => openAdd(curMatch);
+      edB.onclick = () => {
+        window._editReturnTarget = 'fullPage';
+        openAdd(curMatch);
+      };
       actRow.append(edB);
     }
   }
@@ -2952,11 +3009,24 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   };
   actRow.append(simBtnFp);
 
-  heroInfo.append(badgesRow, titleH1, subNames, specsGrid, tagsBox, actRow, fullPageSimBox);
+  heroInfo.append(badgesRow, titleH1, subNames, specsGrid, tagsBox, fullPageListsBox, actRow, fullPageSimBox);
   hero.append(heroArtBg, posterImg, heroInfo);
 
+  const pageRenderTok = (window._fullPageRenderTok = (window._fullPageRenderTok || 0) + 1);
+  const dKeyFp = 'd_' + getRuCacheKey(activeItem);
+  const dKeyOrig = itemObj !== activeItem ? ('d_' + getRuCacheKey(itemObj)) : dKeyFp;
+  const cachedDescFp = RUC[dKeyFp] || RUC[dKeyOrig] || '';
+  const initialDesc = (typeof KirokuEngine !== 'undefined' && KirokuEngine.resolveBestTitleDescription)
+    ? KirokuEngine.resolveBestTitleDescription(activeItem, itemObj, cachedDescFp)
+    : (activeItem.description || activeItem.desc || itemObj.description || itemObj.desc || cachedDescFp || '');
+  if (inCol && initialDesc && !inCol.description) {
+    inCol.description = initialDesc;
+    saveLocalItems();
+  }
+  const isManualFp = isManualItemEditable(activeItem);
+
   const descHdr = el('h3', null, '📖 Описание и синопсис'); descHdr.style.margin = '22px 0 8px';
-  const descBody = el('div', null, activeItem.description || activeItem.desc || 'Описание отсутствует.');
+  const descBody = el('div', null, initialDesc || (isManualFp ? 'Описание отсутствует.' : 'Загружаю описание…'));
   descBody.style.cssText = 'background:rgba(0,0,0,.25);padding:14px;border-radius:12px;line-height:1.6;white-space:pre-wrap';
 
   const mediaRowSec = el('div', 'dash'); mediaRowSec.style.marginTop = '18px';
@@ -2976,6 +3046,54 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   await CharacterSeiyuuManager.render(charsSec, activeItem);
   const cachedData = await CharacterSeiyuuManager.fetchChars(activeItem);
   const mediaMeta = cachedData?.mediaMeta;
+
+  // Синхронизируем и подгружаем описание, если оно отсутствовало или было не на русском (локально, без лишних записей в Firestore)
+  (async () => {
+    if (window._fullPageRenderTok !== pageRenderTok) return;
+    let bestText = initialDesc;
+    const cleanRawDesc = raw => ruClean(String(raw || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim();
+    const metaDesc = cleanRawDesc(mediaMeta?.description || '');
+    if (!bestText && metaDesc) bestText = metaDesc;
+    else if (bestText && !hasRu(bestText) && metaDesc && hasRu(metaDesc)) bestText = metaDesc;
+
+    if ((!bestText || !hasRu(bestText)) && !isManualFp) {
+      try {
+        const probe = { ...activeItem, desc: bestText || '' };
+        if (activeItem.tmdb && typeof tmdbInfo === 'function' && !bestText) {
+          const info = await tmdbInfo(probe);
+          if (info?.description) probe.desc = cleanRawDesc(info.description);
+        } else if (activeItem.mal || activeItem.aniId || SHK[activeItem.category]) {
+          await ruFull(probe);
+        }
+        const fetched = cleanRawDesc(probe.desc || probe.description || '');
+        if (fetched && (!bestText || (hasRu(fetched) && !hasRu(bestText)))) {
+          bestText = fetched;
+        }
+      } catch (e) {}
+    }
+
+    if (bestText && !hasRu(bestText)) {
+      try {
+        const tr = await ruTranslate(bestText);
+        if (tr && hasRu(tr)) bestText = tr;
+      } catch (e) {}
+    }
+
+    if (window._fullPageRenderTok !== pageRenderTok) return;
+    if (bestText) {
+      descBody.textContent = bestText;
+      if (hasRu(bestText)) RUC[dKeyFp] = bestText;
+      if (inCol && inCol.description !== bestText) {
+        inCol.description = bestText;
+        saveLocalItems();
+        updateSingleItemCardInDOM(inCol.id);
+      }
+      if (itemObj && !itemObj.desc) itemObj.desc = bestText;
+    } else {
+      descBody.textContent = 'Описание отсутствует.';
+    }
+  })();
+
   if (releaseSpecBox && mediaMeta) {
     const bEl = releaseSpecBox.querySelector('b');
     if (bEl) bEl.textContent = formatReleasePeriodText(activeItem, mediaMeta);
@@ -3484,15 +3602,16 @@ async function downloadProfilePngBusinessCard() {
     ctx.fillText(`${totalEps.toLocaleString('ru-RU')} серий  •  ❤ ${favCount} в любимом  •  ★ ${ratedCount} оценок`, W - 54, 226);
     ctx.textAlign = 'left';
 
-    // 5. Пять карточек статусов
+    // 5. Шесть карточек статусов
     const stCards = [
       ['Смотрю', vis.filter(i => i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю').length, '#10b981'],
       ['Просмотрено', vis.filter(i => i.status === 'Просмотрено/Прочитано').length, '#38bdf8'],
       ['В планах', vis.filter(i => i.status === 'В планах').length, '#a855f7'],
+      ['Отложено', vis.filter(i => i.status === 'Отложено').length, '#f59e0b'],
       ['Любимое', favCount, '#ec4899'],
       ['Брошено', vis.filter(i => i.status === 'Брошено').length, '#ef4444']
     ];
-    const cardW = (W - 48 - 48) / 5;
+    const cardW = (W - 48 - 60) / 6;
     stCards.forEach(([lbl, cnt, col], idx) => {
       const cx = 24 + idx * (cardW + 12), cy = 290;
       rRect(cx, cy, cardW, 92, 12);
@@ -3629,7 +3748,7 @@ async function downloadProfilePngBusinessCard() {
     });
 
     const dataUrl = canvas.toDataURL('image/png');
-    const fileName = `Kiroku_Card_${nick.replace(/[^a-zA-Zа-яА-ЯёЁ0-9_-]/g, '_') || 'Profile'}.png`;
+    const fileName = `Kirokucho_Card_${nick.replace(/[^a-zA-Zа-яА-ЯёЁ0-9_-]/g, '_') || 'Profile'}.png`;
     const shouldDownload = await dlgOpen(() => {
       $('dlgTitle').textContent = '🪪 Предпросмотр PNG-визитки профиля';
       $('dlgText').textContent = 'Так выглядит твоя визитка. Нажми на картинку, чтобы увеличить, или кнопку «Скачать PNG», чтобы сохранить файл:';
@@ -3958,7 +4077,7 @@ if ($('shikiImportBtn')) {
       try {
         const candidates = [];
         if (res.p === 'anilist') {
-          const ST_MAP = { COMPLETED: 'Просмотрено/Прочитано', CURRENT: 'Смотрю/Читаю', PLANNING: 'В планах', DROPPED: 'Брошено', PAUSED: 'В планах', REPEATING: 'Пересматриваю' };
+          const ST_MAP = { COMPLETED: 'Просмотрено/Прочитано', CURRENT: 'Смотрю/Читаю', PLANNING: 'В планах', DROPPED: 'Брошено', PAUSED: 'Отложено', REPEATING: 'Пересматриваю' };
           for (const mediaType of ['ANIME', 'MANGA']) {
             const q = `query($u:String,$t:MediaType){MediaListCollection(userName:$u,type:$t){lists{entries{status score(format:POINT_10) repeat updatedAt completedAt{year month day} media{id idMal isAdult countryOfOrigin format duration episodes volumes chapters startDate{year} averageScore genres coverImage{large} title{romaji english}}}}}}`;
             const j = await fetchAniListGraphQL(q, { u: res.n, t: mediaType }, 6000);
@@ -3996,7 +4115,7 @@ if ($('shikiImportBtn')) {
         } else {
           const uInfo = await shiki(`/api/users/${encodeURIComponent(res.n)}?is_nickname=1`);
           if (!uInfo || !uInfo.id) throw new Error('пользователь Shikimori не найден');
-          const ST_SHIKI = { completed: 'Просмотрено/Прочитано', watching: 'Смотрю/Читаю', planned: 'В планах', dropped: 'Брошено', on_hold: 'В планах', rewatching: 'Пересматриваю' };
+          const ST_SHIKI = { completed: 'Просмотрено/Прочитано', watching: 'Смотрю/Читаю', planned: 'В планах', dropped: 'Брошено', on_hold: 'Отложено', rewatching: 'Пересматриваю' };
           for (const [targetType, apiKind, catName] of [['Anime', 'animes', 'Аниме'], ['Manga', 'mangas', 'Манга']]) {
             let rates = [];
             for (let page = 1; page <= 10; page++) {
@@ -4144,6 +4263,28 @@ function refresh(opts = {}) {
     renderAnixartHeroAndCategoryCards();
     renderAnixartProfileExtras();
     renderStatusAndCategoryBanner();
+    return;
+  }
+  if (opts && Array.isArray(opts.removedIds) && opts.removedIds.length) {
+    const remSet = new Set(opts.removedIds.map(String));
+    remSet.forEach(rid => {
+      const node = grid.querySelector(`.card[data-id="${CSS.escape(rid)}"]`);
+      if (node) node.remove();
+    });
+    lastList = (lastList || []).filter(x => !remSet.has(String(x.id)));
+    const visLen = getVisibleItems().length;
+    if ($('countInfo')) $('countInfo').textContent = `Показано: ${Math.min(currentRenderLimit, lastList.length)} из ${lastList.length} (всего: ${visLen})`;
+    if (!lastList.length) render(false);
+    refreshTags();
+    refreshLists();
+    syncHybridStatusTabsUI();
+    profStats();
+    cgMarks();
+    catCounts();
+    renderAnixartHeroAndCategoryCards();
+    renderAnixartProfileExtras();
+    renderStatusAndCategoryBanner();
+    renderMyListsFolderBlock();
     return;
   }
   if (opts && opts.onlyList) {

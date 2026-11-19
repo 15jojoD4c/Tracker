@@ -262,7 +262,9 @@ function dlgOpen(build, okLabel, danger, getVal) {
       hideModalElement(m);
       res(v);
     };
-    dlgDone = done; build();
+    dlgDone = done;
+    if ($('dlgCancel')) $('dlgCancel').style.display = '';
+    build();
     const ok = $('dlgOk'); ok.textContent = okLabel; ok.className = 'btn' + (danger ? ' btn-d' : '');
     ok.onclick = () => done(getVal()); $('dlgCancel').onclick = () => done(null);
     m.style.display = 'flex';
@@ -283,6 +285,170 @@ function uiListDialog(name, desc, cn, cols) {
     $('dlgTitle').textContent = 'Настройка подборки'; $('dlgText').textContent = 'Оставь название пустым, чтобы удалить подборку (тайтлы останутся в коллекции).';
     $('dlgBody').replaceChildren(f('Название', iName), f('Описание', iDesc), f('Цвет метки', sw));
   }, 'Сохранить', false, () => ({name: iName.value.trim(), desc: iDesc.value.trim(), cn: cur}));
+}
+
+function isManualItemEditable(it) {
+  if (!it) return false;
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.isManualTitleItem === 'function') {
+    return KirokuEngine.isManualTitleItem(it);
+  }
+  if (typeof hasExternalCatalogId === 'function' && hasExternalCatalogId(it)) return false;
+  return !it.aniId && !it.mal && !it.tmdb && !it.shikiId && !it.mdId && !it.imdbId;
+}
+
+function getAllUserCollectionNames() {
+  const seen = new Map();
+  const add = raw => {
+    const nm = String(raw || '').trim();
+    if (!nm) return;
+    const key = nm.toLowerCase();
+    if (!seen.has(key)) seen.set(key, nm);
+  };
+  (prof.customLists || []).forEach(add);
+  (items || []).forEach(x => (x.lists || []).forEach(add));
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, 'ru'));
+}
+
+async function openAddToCollectionModal(targetItem, onUpdated = null) {
+  if (!targetItem) return;
+  const resolveColItem = () => {
+    if (targetItem.id != null) {
+      const byId = items.find(x => String(x.id) === String(targetItem.id));
+      if (byId) return byId;
+    }
+    if (typeof same === 'function') {
+      const bySame = items.find(x => same(x, targetItem));
+      if (bySame) return bySame;
+    }
+    return null;
+  };
+
+  let searchInput = null;
+  let listBox = null;
+
+  const computeCountsMap = () => {
+    const map = {};
+    (items || []).forEach(x => {
+      if (x.archived) return;
+      (x.lists || []).forEach(l => {
+        const k = String(l || '').trim().toLowerCase();
+        if (k) map[k] = (map[k] || 0) + 1;
+      });
+    });
+    return map;
+  };
+
+  const toggleFolderForItem = async (folderName, isCreate = false) => {
+    const cleanName = String(folderName || '').trim();
+    if (!cleanName) return;
+    let colItem = resolveColItem();
+    if (!colItem && typeof quickAdd === 'function') {
+      colItem = await quickAdd(targetItem, 'В планах');
+    }
+    if (!colItem) return;
+
+    prof.customLists = prof.customLists || [];
+    if (!prof.customLists.some(x => x.toLowerCase() === cleanName.toLowerCase())) {
+      prof.customLists.push(cleanName);
+    }
+
+    colItem.lists = Array.isArray(colItem.lists) ? colItem.lists : [];
+    const existsInItem = colItem.lists.some(x => x.toLowerCase() === cleanName.toLowerCase());
+    if (existsInItem && !isCreate) {
+      colItem.lists = colItem.lists.filter(x => x.toLowerCase() !== cleanName.toLowerCase());
+      toast(`Убрано из подборки «${cleanName}»`);
+    } else if (!existsInItem) {
+      colItem.lists.push(cleanName);
+      toast(isCreate ? `Подборка «${cleanName}» создана и тайтл добавлен` : `Добавлено в подборку «${cleanName}»`);
+    }
+
+    cloudSave(colItem);
+    profCloud(true);
+    refreshLists();
+    if (typeof renderMyListsFolderBlock === 'function') renderMyListsFolderBlock();
+    if (typeof refresh === 'function') refresh({ itemId: colItem.id });
+    if (isCreate && searchInput) searchInput.value = '';
+    renderList();
+    if (typeof onUpdated === 'function') onUpdated(colItem);
+  };
+
+  const renderList = () => {
+    if (!listBox) return;
+    listBox.replaceChildren();
+    const colItem = resolveColItem();
+    const curLists = colItem ? (colItem.lists || []) : [];
+    const allFolders = getAllUserCollectionNames();
+    const countsMap = computeCountsMap();
+    const query = searchInput ? searchInput.value : '';
+
+    const data = (typeof KirokuEngine !== 'undefined' && KirokuEngine.filterAndListCollections)
+      ? KirokuEngine.filterAndListCollections(allFolders, curLists, query, countsMap)
+      : {
+          totalCount: allFolders.length,
+          query: String(query || '').trim(),
+          canCreateNew: Boolean(String(query || '').trim() && !allFolders.some(f => f.toLowerCase() === String(query || '').trim().toLowerCase())),
+          items: allFolders
+            .filter(f => !query || f.toLowerCase().includes(String(query).trim().toLowerCase()))
+            .map(name => ({
+              name,
+              inList: curLists.some(x => x.toLowerCase() === name.toLowerCase()),
+              count: countsMap[name.toLowerCase()] || 0
+            }))
+        };
+
+    if (data.canCreateNew) {
+      const createBtn = el('button', 'col-picker-item col-picker-create');
+      createBtn.type = 'button';
+      createBtn.append(
+        el('span', 'col-picker-item-left', `＋ Создать подборку «${data.query}» и добавить`),
+        el('span', 'col-picker-item-right', 'Новая')
+      );
+      createBtn.onclick = () => toggleFolderForItem(data.query, true);
+      listBox.append(createBtn);
+    }
+
+    if (!data.items.length) {
+      const msg = data.totalCount === 0
+        ? 'Подборок пока нет — введи название выше, чтобы создать первую.'
+        : 'Подходящих подборок не найдено. Нажми кнопку выше, чтобы создать новую.';
+      listBox.append(el('div', 'col-picker-empty', msg));
+      return;
+    }
+
+    data.items.forEach(entry => {
+      const rowBtn = el('button', 'col-picker-item' + (entry.inList ? ' on' : ''));
+      rowBtn.type = 'button';
+      rowBtn.dataset.folder = entry.name;
+      const left = el('span', 'col-picker-item-left', `${entry.inList ? '✓' : '📁'} ${entry.name}`);
+      const right = el('span', 'col-picker-item-right', `${entry.count} шт. · ${entry.inList ? 'В подборке' : '+ Добавить'}`);
+      rowBtn.append(left, right);
+      rowBtn.onclick = () => toggleFolderForItem(entry.name, false);
+      listBox.append(rowBtn);
+    });
+  };
+
+  await dlgOpen(() => {
+    if ($('dlgCancel')) $('dlgCancel').style.display = 'none';
+    $('dlgTitle').textContent = '📁 Добавить в подборку';
+    $('dlgText').textContent = targetItem.title ? `Тайтл: «${targetItem.title}». Выбери одну или несколько подборок:` : 'Выбери одну или несколько подборок:';
+    const body = $('dlgBody');
+    body.replaceChildren();
+    searchInput = el('input', 'col-picker-search');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Поиск по моим подборкам или название новой…';
+    searchInput.oninput = renderList;
+    searchInput.onkeydown = e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const firstBtn = listBox?.querySelector('.col-picker-item');
+        if (firstBtn) firstBtn.click();
+      }
+    };
+    listBox = el('div', 'col-picker-list');
+    body.append(searchInput, listBox);
+    renderList();
+    setTimeout(() => searchInput && searchInput.focus({ preventScroll: true }), 40);
+  }, 'Готово', false, () => true);
 }
 
 const CATS = ['Фильм','Сериал','Аниме','Манга','Ранобэ','Мультфильм'];
@@ -328,7 +494,7 @@ const catLabel = i => {
   }
   return i.category || '';
 };
-const STATS = ['В планах','Смотрю/Читаю','Просмотрено/Прочитано','Пересматриваю','Брошено'];
+const STATS = ['В планах','Смотрю/Читаю','Просмотрено/Прочитано','Отложено','Пересматриваю','Брошено'];
 const FORMAT_RU = {
   TV: 'TV-сериал', TV_SHORT: 'Короткометражный TV', MOVIE: 'Полнометражный фильм',
   SPECIAL: 'Спешл (Special)', OVA: 'OVA', ONA: 'ONA (Веб-аниме)', MUSIC: 'Музыкальное видео',
@@ -2373,6 +2539,7 @@ function syncHybridStatusTabsUI() {
     'Смотрю/Читаю': vis.filter(i => i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю').length,
     'В планах': vis.filter(i => i.status === 'В планах').length,
     'Просмотрено/Прочитано': vis.filter(i => i.status === 'Просмотрено/Прочитано').length,
+    'Отложено': vis.filter(i => i.status === 'Отложено').length,
     'Брошено': vis.filter(i => i.status === 'Брошено').length,
     'Любимое': vis.filter(i => i.fav).length
   };
@@ -2381,6 +2548,7 @@ function syncHybridStatusTabsUI() {
     'Смотрю/Читаю': getStatusLabelForCategory('Смотрю/Читаю', cat),
     'В планах': 'В планах',
     'Просмотрено/Прочитано': getStatusLabelForCategory('Просмотрено/Прочитано', cat),
+    'Отложено': 'Отложено',
     'Брошено': 'Брошено',
     'Любимое': 'Любимое'
   };
@@ -2407,6 +2575,7 @@ function createCollectionCardNode(i) {
   const stLabel = getStatusLabelForCategory(i.status, i.category);
   const card = el('div', 'card'), pc = el('div', 'pc'), img = el('img'), stEl = el('div', 'status', stLabel);
   card.dataset.id = String(i.id);
+  card._item = i;
   stEl.dataset.s = i.status;
   img.loading = 'lazy';
   applyPosterImg(img, i.poster, i);
@@ -2435,13 +2604,13 @@ function createCollectionCardNode(i) {
   if (i.needsReview) bd.append(el('span', 'review-badge', '📥 На разбор'));
   if (i.ongoing) bd.append(el('div', 'ong', 'ОНГОИНГ'));
 
-  // Кнопка «⋮» для быстрой смены статуса в компактном списке на телефоне и ПК (Скриншот 2)
+  // Кнопка «⋮» для быстрой смены статуса в компактном списке на телефоне и ПК
   const dotsBtn = el('button', 'card-dots-btn', '⋮');
   dotsBtn.type = 'button';
   dotsBtn.title = 'Сменить статус или добавить в Любимое';
   dotsBtn.onclick = e => {
     e.stopPropagation();
-    openQuickAddStatusMenu(dotsBtn, i, () => refresh({ onlyList: true }));
+    openQuickAddStatusMenu(dotsBtn, card._item || i, null);
   };
 
   const addedStr = formatAddedDateRu(i);
@@ -2451,10 +2620,80 @@ function createCollectionCardNode(i) {
   card.tabIndex = 0;
   card.onclick = () => {
     if ($('qaFloatMenu')?.classList.contains('open')) { closeQuickAddStatusMenu(); return; }
-    openDetail(i.id);
+    openDetail((card._item || i).id);
   };
-  card.onkeydown = e => { if (e.key === 'Enter') openDetail(i.id); };
+  card.onkeydown = e => { if (e.key === 'Enter') openDetail((card._item || i).id); };
   return card;
+}
+
+// Точечное обновление существующей карточки в DOM без пересоздания узла и картинки (устраняет «дрожание» сетки)
+function patchCollectionCardNode(card, i) {
+  if (!card || !i) return;
+  card._item = i;
+  const stLabel = getStatusLabelForCategory(i.status, i.category);
+  const pc = card.querySelector('.pc');
+  if (pc) {
+    const img = pc.querySelector('img');
+    const nextPoster = i.poster || '';
+    if (img && img.dataset.rawPoster !== nextPoster) {
+      applyPosterImg(img, i.poster, i);
+    }
+    const ovP = pc.querySelector('.ov p');
+    if (ovP) ovP.textContent = i.description || 'Описание отсутствует.';
+    const stEl = pc.querySelector(':scope > .status');
+    if (stEl) {
+      stEl.textContent = stLabel;
+      stEl.dataset.s = i.status;
+    }
+    let rightBadges = pc.querySelector('.pc-badges-right');
+    if (i.ongoing || i.fav || i.pin) {
+      if (!rightBadges) {
+        rightBadges = el('div', 'pc-badges-right');
+        pc.append(rightBadges);
+      }
+      rightBadges.replaceChildren();
+      if (i.ongoing) rightBadges.append(el('div', 'ong', 'ОНГОИНГ'));
+      if (i.fav) { const hb = el('div', 'fav-heart-badge', '❤'); hb.title = 'В любимом'; rightBadges.append(hb); }
+      if (i.pin) { const pb = el('div', 'pin-badge', '📌'); pb.title = 'Закреплено'; rightBadges.append(pb); }
+    } else if (rightBadges) {
+      rightBadges.remove();
+    }
+    let mineEl = pc.querySelector('.mine');
+    if (i.rating) {
+      if (!mineEl) { mineEl = el('div', 'mine'); pc.append(mineEl); }
+      mineEl.textContent = '★ ' + i.rating;
+    } else if (mineEl) {
+      mineEl.remove();
+    }
+  }
+  const titleEl = card.querySelector('.title');
+  if (titleEl) { titleEl.textContent = i.title; titleEl.title = i.title; }
+  const cm = card.querySelector('.cm');
+  if (cm) {
+    const fmtStr = (typeof FORMAT_RU !== 'undefined' && FORMAT_RU[i.format]) ? FORMAT_RU[i.format] : catLabel(i);
+    const epsStr = i.eps ? (i.eps + (i.category === 'Манга' || i.category === 'Ранобэ' ? ' гл.' : ' эп.')) : '';
+    const scoreVal = i.rating ? `★ ${i.rating}` : (i.extRating ? `★ ${i.extRating}` : '');
+    if (cm.children[0]) cm.children[0].textContent = [i.year, fmtStr, epsStr].filter(Boolean).join(' • ');
+    if (cm.children[1]) cm.children[1].textContent = scoreVal;
+  }
+  const descSnip = card.querySelector('.list-desc-snip');
+  if (descSnip) descSnip.textContent = i.description || 'Описание отсутствует.';
+  const tgEl = card.querySelector('.tg');
+  if (tgEl) {
+    const addedStr = formatAddedDateRu(i);
+    tgEl.textContent = [(i.tags || []).slice(0, 3).join(', '), addedStr ? 'Добавлено: ' + addedStr : ''].filter(Boolean).join(' · ');
+  }
+  const bd = card.querySelector('.bd2');
+  if (bd) {
+    bd.replaceChildren();
+    const st2 = el('div', 'status', stLabel); st2.dataset.s = i.status; bd.append(st2);
+    if (i.fav) bd.append(el('span', 'chip', '❤ Любимое'));
+    if (num(i.rewatchCount) > 0) bd.append(el('span', 'chip', `🔁 ×${i.rewatchCount}`));
+    if (i.importSource) bd.append(el('span', 'imp-badge', `Импорт: ${i.importSource}`));
+    if (i.needsReview) bd.append(el('span', 'review-badge', '📥 На разбор'));
+    if (i.ongoing) bd.append(el('div', 'ong', 'ОНГОИНГ'));
+  }
+  card.classList.toggle('sel', Boolean(selMode && selSet.has(i.id)));
 }
 
 function itemMatchesCurrentCollectionFilter(i) {
@@ -2480,9 +2719,7 @@ function updateSingleItemCardInDOM(itemId) {
   const existingNode = grid.querySelector(`.card[data-id="${CSS.escape(String(itemId))}"]`);
   const matches = it ? itemMatchesCurrentCollectionFilter(it) : false;
   if (existingNode && matches) {
-    const newNode = createCollectionCardNode(it);
-    if (selMode && selSet.has(it.id)) newNode.classList.add('sel');
-    existingNode.replaceWith(newNode);
+    patchCollectionCardNode(existingNode, it);
     const lIdx = lastList.findIndex(x => String(x.id) === String(itemId));
     if (lIdx > -1) lastList[lIdx] = it;
     return true;
@@ -4263,10 +4500,22 @@ $('saveItemBtn').onclick = async () => {
       it._docId = user.uid + '_' + it.id;
     }
 
-    const k = items.findIndex(x => x.id === it.id);
+    const k = items.findIndex(x => String(x.id) === String(it.id));
     if (k > -1) items[k] = it; else items.push(it);
-    refresh(); closeAll();
-    if (editId) openDetail(it.id);
+    if (editId) {
+      refresh({ itemId: it.id });
+      const returnTarget = window._editReturnTarget || 'detail';
+      window._editReturnTarget = '';
+      closeAll(true);
+      if (returnTarget === 'fullPage' && $('titlePageView')?.style.display === 'block' && typeof openFullTitlePage === 'function') {
+        openFullTitlePage(it, true);
+      } else {
+        openDetail(it.id);
+      }
+    } else {
+      refresh();
+      closeAll(again ? true : false);
+    }
     cloudSave(it); profCloud(true); draftClear();
     if (again && !editId) { toast('Добавлено: ' + it.title); openAdd(null); }
   } finally { saving = false; again = false; }
@@ -4288,17 +4537,10 @@ function detailExtra(id) {
       i.archived = !i.archived; cloudSave(i); refresh(); closeAll();
       toast(i.archived ? 'Убрано в архив (кнопка «📦 Архив» в фильтрах)' : 'Возвращено из архива');
     });
-    btn('📁＋ В подборку', async () => {
-      const existing = [...new Set([...(prof.customLists || []), ...items.flatMap(x => x.lists || [])])];
-      const nm = ((await uiPrompt('Добавить в подборку', '', existing.length ? `Существующие: ${existing.join(', ')}` : 'Название подборки')) || '').trim();
-      if (!nm) return;
-      i.lists = i.lists || [];
-      if (!i.lists.some(x => x.toLowerCase() === nm.toLowerCase())) {
-        i.lists.push(nm);
-        prof.customLists = prof.customLists || [];
-        if (!prof.customLists.some(x => x.toLowerCase() === nm.toLowerCase())) prof.customLists.push(nm);
-        profCloud(); cloudSave(i); refresh(); openDetail(id); toast(`Добавлено в «${nm}»`);
-      }
+    btn('📁＋ В подборку', () => {
+      openAddToCollectionModal(i, () => {
+        if (String(curId) === String(id)) openDetail(id);
+      });
     });
   }
 
@@ -4373,12 +4615,45 @@ function openDetail(id) {
     tg.append(wrap);
   });
 
-  $('detailDescription').textContent = i.description || 'Описание отсутствует.';
-  if (i.description && !hasRu(i.description)) {
-    ruTranslate(i.description).then(tr => {
+  const dKeyDetail = 'd_' + getRuCacheKey(i);
+  const resolvedDetDesc = (typeof KirokuEngine !== 'undefined' && KirokuEngine.resolveBestTitleDescription)
+    ? KirokuEngine.resolveBestTitleDescription(i, null, RUC[dKeyDetail] || '')
+    : (i.description || i.desc || RUC[dKeyDetail] || '');
+  if (resolvedDetDesc && !i.description) {
+    i.description = resolvedDetDesc;
+    saveLocalItems();
+  }
+  $('detailDescription').textContent = resolvedDetDesc || (isManualItemEditable(i) ? 'Описание отсутствует.' : 'Загружаю описание…');
+  if (!resolvedDetDesc && !isManualItemEditable(i)) {
+    (async () => {
+      try {
+        const probe = { ...i, desc: '' };
+        if (i.tmdb && typeof tmdbInfo === 'function') {
+          const info = await tmdbInfo(probe);
+          if (info?.description) probe.desc = info.description;
+        } else if (i.mal || i.aniId || SHK[i.category]) {
+          await ruFull(probe);
+        }
+        const fetched = String(probe.desc || probe.description || '').trim();
+        if (fetched) {
+          i.description = fetched;
+          if (hasRu(fetched)) RUC[dKeyDetail] = fetched;
+          saveLocalItems();
+          if (String(curId) === String(id) && $('detailDescription')) $('detailDescription').textContent = fetched;
+          updateSingleItemCardInDOM(i.id);
+        } else if (String(curId) === String(id) && $('detailDescription')) {
+          $('detailDescription').textContent = 'Описание отсутствует.';
+        }
+      } catch (e) {
+        if (String(curId) === String(id) && $('detailDescription')) $('detailDescription').textContent = 'Описание отсутствует.';
+      }
+    })();
+  } else if (resolvedDetDesc && !hasRu(resolvedDetDesc)) {
+    ruTranslate(resolvedDetDesc).then(tr => {
       if (tr && hasRu(tr)) {
         i.description = tr;
-        if (curId === id && $('detailDescription')) $('detailDescription').textContent = tr;
+        RUC[dKeyDetail] = tr;
+        if (String(curId) === String(id) && $('detailDescription')) $('detailDescription').textContent = tr;
         saveLocalItems();
       }
     }).catch(() => {});
@@ -4453,7 +4728,7 @@ function openDetail(id) {
   }
 
   $('deleteItemBtn').style.display = '';
-  const isManualItem = typeof hasExternalCatalogId === 'function' ? !hasExternalCatalogId(i) : (!i.aniId && !i.mal && !i.tmdb && !i.shikiId && !i.mdId);
+  const isManualItem = isManualItemEditable(i);
   $('editItemBtn').style.display = isManualItem ? '' : 'none';
 
   detailExtra(id);
@@ -4473,7 +4748,13 @@ function openDetail(id) {
 
 
 
-$('editItemBtn').onclick = () => { const i = items.find(x => x.id === curId); if (i) { closeAll(); openAdd(i); } };
+$('editItemBtn').onclick = () => {
+  const i = items.find(x => String(x.id) === String(curId));
+  if (!i || !isManualItemEditable(i)) return;
+  window._editReturnTarget = 'detail';
+  closeAll(true);
+  openAdd(i);
+};
 $('deleteItemBtn').onclick = async () => {
   if (!(await uiConfirm('Точно удалить этот тайтл из коллекции?', 'Удалить', true))) return;
   const id = curId; closeAll(); removeItem(id, true);

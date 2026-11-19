@@ -291,6 +291,88 @@
     return { key: 'md', cols: 2, shortLabel: '⊞ 2', fullLabel: 'Средние (2 в ряд)' };
   }
 
+  const EXTERNAL_CATALOG_SOURCES = new Set([
+    'anilist', 'shikimori', 'jikan', 'mangadex', 'tmdb', 'google books', 'комиксы'
+  ]);
+
+  function isManualTitleItem(item) {
+    if (!item || typeof item !== 'object') return false;
+    if (Number(item.aniId) > 0) return false;
+    if (Number(item.mal) > 0) return false;
+    if (Number(item.shikiId) > 0) return false;
+    if (item.mdId && String(item.mdId).trim()) return false;
+    if (item.tmdb && String(item.tmdb).includes('/')) return false;
+    if (item.imdbId && String(item.imdbId).trim()) return false;
+    const srcLower = String(item.src || item.extSrc || '').trim().toLowerCase();
+    if (srcLower && EXTERNAL_CATALOG_SOURCES.has(srcLower)) return false;
+    const urlStr = String(item.url || '').trim().toLowerCase();
+    if (urlStr && /(anilist\.co|shikimori\.(io|one)|myanimelist\.net|themoviedb\.org|mangadex\.org)/.test(urlStr)) {
+      return false;
+    }
+    return true;
+  }
+
+  function resolveBestTitleDescription(activeItem, fallbackItem, cachedRuDesc) {
+    const candidates = [
+      activeItem && activeItem.description,
+      activeItem && activeItem.desc,
+      fallbackItem && fallbackItem.description,
+      fallbackItem && fallbackItem.desc,
+      cachedRuDesc
+    ];
+    const cleaned = candidates
+      .map(v => String(v || '').trim())
+      .filter(Boolean);
+    if (!cleaned.length) return '';
+    // Предпочитаем русское описание, если среди кандидатов есть кириллица
+    const ruHit = cleaned.find(txt => /[а-яё]/i.test(txt));
+    return ruHit || cleaned[0];
+  }
+
+  function filterAndListCollections(allFolders, itemLists, query, countsMap) {
+    const seen = new Map();
+    const addFolder = raw => {
+      const name = String(raw || '').trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (!seen.has(key)) seen.set(key, name);
+    };
+    (Array.isArray(allFolders) ? allFolders : []).forEach(addFolder);
+    (Array.isArray(itemLists) ? itemLists : []).forEach(addFolder);
+
+    const itemSet = new Set(
+      (Array.isArray(itemLists) ? itemLists : [])
+        .map(v => String(v || '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    const sorted = [...seen.values()].sort((a, b) => a.localeCompare(b, 'ru'));
+    const qRaw = String(query || '').trim();
+    const qLower = qRaw.toLowerCase();
+
+    const filtered = sorted
+      .filter(name => !qLower || name.toLowerCase().includes(qLower))
+      .map(name => {
+        const key = name.toLowerCase();
+        const count = countsMap && typeof countsMap === 'object'
+          ? (Number(countsMap[key]) || 0)
+          : 0;
+        return {
+          name,
+          inList: itemSet.has(key),
+          count
+        };
+      });
+
+    const exactExists = Boolean(qLower && seen.has(qLower));
+    return {
+      totalCount: sorted.length,
+      items: filtered,
+      query: qRaw,
+      canCreateNew: Boolean(qRaw && !exactExists)
+    };
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -304,7 +386,10 @@
     normalizeGridSize,
     getGridSizeKey,
     getNextMobileGridSize,
-    getGridSizeMobileMeta
+    getGridSizeMobileMeta,
+    isManualTitleItem,
+    resolveBestTitleDescription,
+    filterAndListCollections
   };
 
   if (typeof module !== 'undefined' && module.exports) {

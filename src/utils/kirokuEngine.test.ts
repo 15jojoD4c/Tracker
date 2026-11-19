@@ -217,3 +217,80 @@ test('catalog cache stores, clones, expires by TTL, and mobile grid size cycles 
   assert.equal(KirokuEngine.getNextMobileGridSize(240), 190);
   assert.equal(KirokuEngine.getGridSizeMobileMeta(150).cols, 3);
 });
+
+test('isManualTitleItem returns true only for manually added titles without external catalog links', () => {
+  assert.equal(KirokuEngine.isManualTitleItem({ id: 1, title: 'Мой фильм', category: 'Фильм' }), true);
+  assert.equal(KirokuEngine.isManualTitleItem({ id: 2, title: 'Из импорта без ID', extSrc: 'Anixart' }), true);
+  assert.equal(KirokuEngine.isManualTitleItem({ id: 3, title: 'AniList anime', aniId: 12345 }), false);
+  assert.equal(KirokuEngine.isManualTitleItem({ id: 4, title: 'MAL manga', mal: 54321 }), false);
+  assert.equal(KirokuEngine.isManualTitleItem({ id: 5, title: 'TMDB movie', tmdb: 'movie/550' }), false);
+  assert.equal(KirokuEngine.isManualTitleItem({ id: 6, title: 'Shikimori', shikiId: 999 }), false);
+  assert.equal(KirokuEngine.isManualTitleItem({ id: 7, title: 'MangaDex', mdId: 'abc-123' }), false);
+  assert.equal(KirokuEngine.isManualTitleItem({ id: 8, title: 'Catalog preview', src: 'AniList' }), false);
+  assert.equal(KirokuEngine.isManualTitleItem({ id: 9, title: 'External URL', url: 'https://anilist.co/anime/1' }), false);
+});
+
+test('resolveBestTitleDescription merges collection, mini-card fallback, and Russian cache cleanly', () => {
+  assert.equal(
+    KirokuEngine.resolveBestTitleDescription(
+      { id: 1, description: '' },
+      { desc: 'Описание из мини-карточки каталога' },
+      ''
+    ),
+    'Описание из мини-карточки каталога'
+  );
+  assert.equal(
+    KirokuEngine.resolveBestTitleDescription(
+      { id: 1, description: 'English synopsis' },
+      { desc: '' },
+      'Русский синопсис из кэша'
+    ),
+    'Русский синопсис из кэша'
+  );
+  assert.equal(
+    KirokuEngine.resolveBestTitleDescription({ id: 1 }, { id: 1 }, ''),
+    ''
+  );
+});
+
+test('filterAndListCollections shows all existing collections, filters live, and detects new names', () => {
+  const resAll = KirokuEngine.filterAndListCollections(
+    ['Любимое аниме', 'На вечер', 'любимое аниме'],
+    ['На вечер'],
+    '',
+    { 'любимое аниме': 5, 'на вечер': 2 }
+  );
+  assert.equal(resAll.totalCount, 2);
+  assert.equal(resAll.items.length, 2);
+  assert.equal(resAll.canCreateNew, false);
+  assert.deepEqual(resAll.items.map((x: { name: string }) => x.name), ['Любимое аниме', 'На вечер']);
+  assert.equal(resAll.items[1].inList, true);
+  assert.equal(resAll.items[0].count, 5);
+
+  const resSearch = KirokuEngine.filterAndListCollections(
+    ['Любимое аниме', 'На вечер'],
+    ['На вечер'],
+    'веч'
+  );
+  assert.equal(resSearch.items.length, 1);
+  assert.equal(resSearch.items[0].name, 'На вечер');
+  assert.equal(resSearch.canCreateNew, true);
+
+  const resExact = KirokuEngine.filterAndListCollections(
+    ['На вечер'],
+    [],
+    'на вечер'
+  );
+  assert.equal(resExact.items.length, 1);
+  assert.equal(resExact.canCreateNew, false);
+});
+
+test('packCollectionChunks preserves new Отложено status cleanly', () => {
+  const chunks = KirokuEngine.packCollectionChunks([
+    { id: 777, title: 'Отложенное аниме', status: 'Отложено', category: 'Аниме' }
+  ]);
+  const unpacked = KirokuEngine.unpackCollectionChunks(chunks);
+  assert.equal(unpacked.length, 1);
+  assert.equal(unpacked[0].status, 'Отложено');
+});
+

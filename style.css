@@ -980,4 +980,41 @@ html[data-theme=white] .cg-tag-acc-item{background:rgba(0,0,0,.02)}
 .chars-fullpage-hint:hover{background:rgba(92,106,196,.18);border-color:var(--ac);transform:translateY(-1px)}
 html[data-theme=white] .chars-fullpage-hint{color:#3f4eae}
 
+/* Статус синхронизации и явные предупреждения о квоте / офлайне / локальном режиме */
+.sync.warn{color:#f59e0b}
+.sync.clickable{cursor:pointer;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid var(--bd);transition:.15s}
+.sync.clickable:hover{border-color:var(--ac);background:rgba(255,255,255,.08)}
+.sync.err.clickable{background:rgba(244,63,94,.12);border-color:rgba(244,63,94,.38)}
+.sync.warn.clickable{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.38)}
+html[data-theme=white] .sync.clickable{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.14)}
+html[data-theme=white] .sync.err.clickable{background:#fee2e2;border-color:#fca5a5;color:#b91c1c}
+html[data-theme=white] .sync.warn.clickable{background:#fef3c7;border-color:#fcd34d;color:#b45309}
+
+.cloud-status-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 15px;margin:0 0 14px;border-radius:var(--rad);border:1px solid var(--bd);background:var(--card);font-size:13px;line-height:1.45}
+.cloud-status-banner.is-quota{background:rgba(245,158,11,.11);border-color:rgba(245,158,11,.42)}
+.cloud-status-banner.is-offline,.cloud-status-banner.is-error{background:rgba(244,63,94,.11);border-color:rgba(244,63,94,.42)}
+.cloud-status-banner.is-local{background:rgba(56,189,248,.10);border-color:rgba(56,189,248,.35)}
+.cloud-status-banner.is-pending{background:rgba(139,92,246,.11);border-color:rgba(139,92,246,.38)}
+.cloud-banner-body{flex:1;min-width:240px;display:flex;flex-direction:column;gap:3px}
+.cloud-banner-title{font-weight:700;font-size:13.5px;color:#fff;display:flex;align-items:center;gap:6px}
+.cloud-banner-desc{color:#d1d5db;font-size:12.5px}
+.cloud-banner-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.cloud-banner-actions .btn{padding:6px 12px;font-size:12.5px}
+html[data-theme=white] .cloud-status-banner.is-quota{background:#fffbeb;border-color:#f59e0b}
+html[data-theme=white] .cloud-status-banner.is-offline,html[data-theme=white] .cloud-status-banner.is-error{background:#fef2f2;border-color:#ef4444}
+html[data-theme=white] .cloud-status-banner.is-local{background:#f0f9ff;border-color:#38bdf8}
+html[data-theme=white] .cloud-status-banner.is-pending{background:#f5f3ff;border-color:#8b5cf6}
+html[data-theme=white] .cloud-banner-title{color:#14161f}
+html[data-theme=white] .cloud-banner-desc{color:#475569}
+
+.cloud-empty-notice{grid-column:1/-1;max-width:640px;margin:18px auto;padding:22px 20px;border-radius:var(--rad-lg);border:1px solid rgba(245,158,11,.42);background:rgba(245,158,11,.08);text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}
+.cloud-empty-notice.is-offline,.cloud-empty-notice.is-error{border-color:rgba(244,63,94,.42);background:rgba(244,63,94,.08)}
+.cloud-empty-notice h3{margin:0;font-size:16px;color:#fff}
+.cloud-empty-notice p{margin:0;font-size:13px;line-height:1.55;color:#d1d5db;max-width:520px}
+html[data-theme=white] .cloud-empty-notice{background:#fffbeb;border-color:#f59e0b}
+html[data-theme=white] .cloud-empty-notice.is-offline,html[data-theme=white] .cloud-empty-notice.is-error{background:#fef2f2;border-color:#ef4444}
+html[data-theme=white] .cloud-empty-notice h3{color:#14161f}
+html[data-theme=white] .cloud-empty-notice p{color:#475569}
+
+
 

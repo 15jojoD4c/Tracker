@@ -24,24 +24,55 @@ $('accReset').onclick = async () => {
   location.reload();
 };
 
-// Пакетное сохранение и удаление в Firestore с откатом при ошибке облака (Этап 1 п.3)
-async function batchSaveItems(listToSave) {
-  if (!listToSave || !listToSave.length) return;
+// Пакетное сохранение и удаление в Firestore с локальным страховочным сохранением ДО облака и очередью dirty/pendingDeletes
+async function batchSaveItems(listToSave, opts = {}) {
+  if (!listToSave || !listToSave.length) return { synced: true, localSaved: true };
+  const requireCloud = Boolean(opts && opts.requireCloud);
   const now = Date.now();
-  listToSave.forEach(it => { it.updatedAt = now; fix(it); });
-  if (user && !user.isLocal && auth.currentUser) {
-    for (let i = 0; i < listToSave.length; i += 380) {
+  listToSave.forEach(it => {
+    it.updatedAt = now;
+    it.dirty = true;
+    fix(it);
+  });
+  saveLocalItems();
+
+  if (!user || user.isLocal) {
+    listToSave.forEach(it => { delete it.dirty; });
+    saveLocalItems();
+    setSync();
+    return { synced: true, localSaved: true };
+  }
+
+  if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
+    setSync();
+    if (requireCloud) {
+      const err = new Error('Облако временно недоступно (' + (cloudAccessError || 'offline') + ')');
+      err.code = cloudAccessError || 'unavailable';
+      throw err;
+    }
+    return { synced: false, localSaved: true };
+  }
+
+  try {
+    for (let i = 0; i < listToSave.length; i += 350) {
+      const chunk = listToSave.slice(i, i + 350);
       const b = writeBatch(db);
-      listToSave.slice(i, i + 380).forEach(it => {
+      chunk.forEach(it => {
         const { docId, payload } = prepareTitleForCloud(it, user.uid);
         b.set(doc(db, 'items', docId), payload);
       });
       await track(b.commit());
+      chunk.forEach(it => { delete it.dirty; });
     }
-  } else {
+    saveLocalItems();
+    if (typeof scheduleColRevBump === 'function') scheduleColRevBump();
     setSync();
+    return { synced: true, localSaved: true };
+  } catch (err) {
+    saveLocalItems();
+    if (typeof handleCloudError === 'function') handleCloudError(err, true);
+    throw err;
   }
-  saveLocalItems();
 }
 
 async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено') {
@@ -55,7 +86,6 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
   backupCopies.forEach(it => {
     const primaryDocId = getCloudDocId(it);
     const actualDocId = it._docId ? String(it._docId) : primaryDocId;
-    // Добавляем в пакет удаления только реальный docId документа, чтобы правила Firestore не отклоняли батч из-за несуществующего ID
     docIdsToRemove.add(actualDocId);
     window._recentlyDeletedIds.add(String(it.id));
     window._recentlyDeletedIds.add(actualDocId);
@@ -78,18 +108,26 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
   profCloud(true);
   refresh();
 
-  // 3. Удаляем документы в Firestore и сбрасываем _explicitEmptyAllowed обратно в false после завершения удаления
+  // 3. Удаляем документы в Firestore (или ставим в очередь pendingCloudDeletes при квоте/офлайне)
   try {
-    if (user && !user.isLocal && auth.currentUser) {
+    if (user && !user.isLocal) {
       const allDelIds = [...docIdsToRemove].filter(Boolean);
-      try {
-        for (let i = 0; i < allDelIds.length; i += 350) {
-          const b = writeBatch(db);
-          allDelIds.slice(i, i + 350).forEach(dId => b.delete(doc(db, 'items', dId)));
-          await track(b.commit());
+      if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
+        if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
+        setSync();
+      } else {
+        try {
+          for (let i = 0; i < allDelIds.length; i += 350) {
+            const chunk = allDelIds.slice(i, i + 350);
+            const b = writeBatch(db);
+            chunk.forEach(dId => b.delete(doc(db, 'items', dId)));
+            await track(b.commit());
+          }
+          if (typeof scheduleColRevBump === 'function') scheduleColRevBump();
+        } catch (e) {
+          if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
+          if (typeof handleCloudError === 'function') handleCloudError(e, true);
         }
-      } catch (e) {
-        await Promise.allSettled(allDelIds.map(dId => track(deleteDoc(doc(db, 'items', dId)))));
       }
     }
   } finally {
@@ -100,19 +138,26 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
     label: '↩ Отменить удаление',
     fn: async () => {
       try {
+        const undoIds = [];
         backupCopies.forEach(it => {
+          const pId = getCloudDocId(it);
+          const aId = it._docId ? String(it._docId) : pId;
+          undoIds.push(aId, pId);
           window._recentlyDeletedIds.delete(String(it.id));
-          window._recentlyDeletedIds.delete(getCloudDocId(it));
+          window._recentlyDeletedIds.delete(pId);
           if (it._docId) window._recentlyDeletedIds.delete(String(it._docId));
           if (!items.some(x => String(x.id) === String(it.id))) items.push(fix(it));
         });
+        if (user && !user.isLocal && typeof removePendingDeletes === 'function') {
+          removePendingDeletes(undoIds, user.uid);
+        }
         saveLocalItems();
         refresh();
         await batchSaveItems(backupCopies);
         profCloud(true);
         toast(`Восстановлено записей: ${backupCopies.length}`);
       } catch (err) {
-        toast('Не удалось восстановить в облаке: ' + (err.code || err.message), true);
+        toast('Восстановлено локально (облако недоступно: ' + (err.code || err.message) + ')', true);
       }
     }
   });
@@ -330,6 +375,22 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
 
   // Этап 1 п.2 и п.3: Сначала выполняем облачную транзакцию (при replaceAll удаляем ВСЕ старые документы по их реальным docId, включая старые без префикса uid_), и только после успеха обновляем локальный список и кэш!
   if (user && !user.isLocal && auth.currentUser) {
+    if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
+      const saveAsLocalDirty = [...finalAdd, ...enrichedExisting];
+      saveAsLocalDirty.forEach(it => { it.dirty = true; });
+      if (!replaceAll) {
+        if (enrichedExisting.length) applyEnrichedCopiesToMainCollection();
+        items = deduplicateListByIdAndCleanupCloud([...items, ...finalAdd], false);
+        saveLocalItems();
+        setSavedImportMeta({ batchId, source: sourceName, count: finalAdd.length, fingerprint: fileFingerprint, ts: Date.now() });
+        refresh();
+        hideModalElement('dataModal');
+        toast(`Импортировано локально (${finalAdd.length} шт.) — облако сейчас недоступно, записи отправятся при синхронизации.`);
+        return;
+      }
+      toast('Массовая замена коллекции недоступна, пока исчерпан лимит Firebase или нет сети.', true);
+      return;
+    }
     try {
       if (replaceAll) {
         const oldDocIdsSet = new Set();
@@ -351,23 +412,25 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
           });
         } catch (e) {}
         const allOldDocIds = [...oldDocIdsSet];
-        for (let i = 0; i < allOldDocIds.length; i += 380) {
+        for (let i = 0; i < allOldDocIds.length; i += 350) {
           const bDel = writeBatch(db);
-          allOldDocIds.slice(i, i + 380).forEach(dId => bDel.delete(doc(db, 'items', dId)));
+          allOldDocIds.slice(i, i + 350).forEach(dId => bDel.delete(doc(db, 'items', dId)));
           await track(bDel.commit());
         }
       }
 
       const allCloudWrites = [...finalAdd, ...enrichedExisting];
-      for (let i = 0; i < allCloudWrites.length; i += 380) {
+      for (let i = 0; i < allCloudWrites.length; i += 350) {
         const bSet = writeBatch(db);
-        allCloudWrites.slice(i, i + 380).forEach(it => {
+        allCloudWrites.slice(i, i + 350).forEach(it => {
           const { docId, payload } = prepareTitleForCloud(it, user.uid);
           bSet.set(doc(db, 'items', docId), payload);
         });
         await track(bSet.commit());
       }
+      if (typeof scheduleColRevBump === 'function') scheduleColRevBump();
     } catch (cloudErr) {
+      if (typeof handleCloudError === 'function') handleCloudError(cloudErr, true);
       items = prevItemsSnapshot;
       saveLocalItems();
       refresh();
@@ -1245,6 +1308,7 @@ async function findAndMergeDuplicatesModal() {
         await track(b.commit());
       }
     } catch (cloudErr) {
+      if (typeof handleCloudError === 'function') handleCloudError(cloudErr, true);
       items = snapshotBeforeMerge;
       saveLocalItems();
       refresh();
@@ -1742,12 +1806,25 @@ async function startCatalogLinkingForList(targetList, manualTrigger = false) {
   try { localStorage.setItem(getUidStorageKey('catalogLinkPending'), '1'); } catch (e) {}
 
   let linkedCount = 0;
+  let cloudBlockedNotified = false;
   const dirtyBatch = [];
   const flushDirtyBatch = async () => {
     if (!dirtyBatch.length) return;
     const toSave = dirtyBatch.splice(0, dirtyBatch.length);
+    toSave.forEach(it => { it.dirty = true; });
     saveLocalItems();
-    try { await batchSaveItems(toSave); } catch (e) {}
+    if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
+      setSync();
+      return;
+    }
+    try {
+      await batchSaveItems(toSave);
+    } catch (e) {
+      if (!cloudBlockedNotified && typeof isCloudQuotaBlocked === 'function' && isCloudQuotaBlocked()) {
+        cloudBlockedNotified = true;
+        toast('Лимит Firebase исчерпан — продолжу связывание только в локальный кэш браузера.', true);
+      }
+    }
   };
 
   // Шаг 1: Тайтлы, у которых УЖЕ есть mal ID (например, после импорта XML/JSON), обогащаем пачками по 35 штук за 1 запрос!
@@ -3817,6 +3894,13 @@ async function runCloudDiagnostics() {
   box.replaceChildren(tbl);
 }
 if ($('cloudDiagBtn')) $('cloudDiagBtn').onclick = runCloudDiagnostics;
+if ($('manualCloudSyncBtn')) {
+  $('manualCloudSyncBtn').onclick = async () => {
+    if (typeof window.forceCloudSyncNow === 'function') {
+      await window.forceCloudSyncNow(true);
+    }
+  };
+}
 if ($('manualLocalMigrateBtn')) {
   $('manualLocalMigrateBtn').onclick = async () => {
     if (!(await uiConfirm('Перенести локальную коллекцию в облако?\n\nЧто делает эта кнопка: проверяет записи, созданные в локальном режиме этого браузера, и переносит недостающие тайтлы в твой облачный аккаунт без удаления текущих данных.', 'Подтвердить'))) return;
@@ -4104,20 +4188,37 @@ document.addEventListener('error', e => {
 
 window.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
-    if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
-    if (typeof profSaveLocal === 'function') profSaveLocal(true);
-    if (_cloudSaveTimers.size && user && !user.isLocal && auth.currentUser) {
+    if (_cloudSaveTimers.size) {
+      const pendingFlush = [];
       _cloudSaveTimers.forEach((entry, docId) => {
         clearTimeout(entry.timer);
         const it = items.find(x => getCloudDocId(x) === docId);
         if (it) {
-          const { payload } = prepareTitleForCloud(it, user.uid);
-          setDoc(doc(db, 'items', docId), payload).catch(() => {});
+          it.dirty = true;
+          pendingFlush.push(it);
         }
         entry.resolve();
       });
       _cloudSaveTimers.clear();
+
+      if (pendingFlush.length && user && !user.isLocal && !(typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked())) {
+        const b = writeBatch(db);
+        pendingFlush.forEach(it => {
+          const { docId, payload } = prepareTitleForCloud(it, user.uid);
+          b.set(doc(db, 'items', docId), payload);
+        });
+        b.commit()
+          .then(() => {
+            pendingFlush.forEach(it => { delete it.dirty; });
+            if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
+          })
+          .catch(err => {
+            if (typeof handleCloudError === 'function') handleCloudError(err, true);
+          });
+      }
     }
+    if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
+    if (typeof profSaveLocal === 'function') profSaveLocal(true);
   }
 });
 

@@ -15,10 +15,10 @@
 <meta property="og:title" content="Kiroku">
 <meta property="og:description" content="Kiroku — трекер фильмов, сериалов, аниме, манги и ранобэ с каталогом и облачной синхронизацией">
 <meta property="og:type" content="website">
-<link rel="preload" href="./app_core.js?v=20261118" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261118" as="script">
-<link rel="preload" href="./app.js?v=20261118" as="script">
-<link rel="stylesheet" href="./style.css?v=20261118">
+<link rel="preload" href="./app_core.js?v=20261119" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261119" as="script">
+<link rel="preload" href="./app.js?v=20261119" as="script">
+<link rel="stylesheet" href="./style.css?v=20261119">
 <style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
 </head>
 <body class="auth-checking">
@@ -75,6 +75,7 @@
   </header>
 
   <div class="app-container">
+    <div id="cloudStatusBanner" class="cloud-status-banner" style="display:none" role="status" aria-live="polite"></div>
     <div class="nav-bar-wrap">
       <div class="tabs" id="mainTabs">
         <button class="tab on" data-v="catalog" type="button">Каталог</button>
@@ -595,10 +596,13 @@
 
   <div class="fs">Локальная копия и диагностика облака</div>
   <div class="row2">
+    <button class="btn btn-s" id="manualCloudSyncBtn" type="button">↻ Синхронизировать с облаком</button>
     <button class="btn btn-s" id="manualLocalMigrateBtn" type="button">☁ Перенести локальную коллекцию в облако</button>
-    <button class="btn btn-s" id="cloudDiagBtn" type="button">🩺 Проверка облака</button>
   </div>
-  <button class="btn btn-s" id="runSchemaMigrationBtn" type="button" style="width:100%">⚙ Обновить схему старых записей</button>
+  <div class="row2">
+    <button class="btn btn-s" id="cloudDiagBtn" type="button">🩺 Проверка облака</button>
+    <button class="btn btn-s" id="runSchemaMigrationBtn" type="button">⚙ Обновить схему старых записей</button>
+  </div>
   <div id="cloudDiagResultBox" style="display:none;margin-top:8px;max-height:260px;overflow-y:auto;background:rgba(0,0,0,.3);border:1px solid var(--bd);border-radius:12px;padding:10px"></div>
 </div></div>
 
@@ -686,7 +690,7 @@ const importWithTimeout = (url, ms = 8000) => Promise.race([
 ]);
 
 // Запускаем предзагрузку локальных скриптов в кэш браузера параллельно с импортом Firebase
-const APP_VER = "20261118";
+const APP_VER = "20261119";
 const prefetchLocal = ["./app_core.js?v=" + APP_VER, "./app_catalog.js?v=" + APP_VER, "./app.js?v=" + APP_VER].map(u => fetch(u).catch(() => null));
 
 try {
@@ -706,6 +710,10 @@ try {
     getAuth: () => ({ currentUser: null }),
     getFirestore: () => ({}),
     initializeFirestore: () => ({}),
+    persistentLocalCache: () => ({}),
+    persistentMultipleTabManager: () => ({}),
+    persistentSingleTabManager: () => ({}),
+    memoryLocalCache: () => ({}),
     GoogleAuthProvider: class { setCustomParameters() {} },
     EmailAuthProvider: { credential: () => ({}) },
     signInWithPopup: noop, signInWithRedirect: noop, getRedirectResult: () => Promise.resolve(null),
@@ -725,7 +733,9 @@ try {
     sendPasswordResetEmail: noop, sendEmailVerification: noop, deleteUser: noop,
     collection: () => ({}), doc: () => ({}), setDoc: noop, deleteDoc: noop,
     getDoc: () => Promise.resolve({ exists: () => false }),
+    getDocFromCache: () => Promise.resolve({ exists: () => false }),
     getDocs: () => Promise.resolve({ docs: [] }),
+    getDocsFromCache: () => Promise.resolve({ docs: [] }),
     query: () => ({}), where: () => ({}), orderBy: () => ({}), limit: () => ({}),
     serverTimestamp: () => Date.now(), deleteField: () => undefined,
     onSnapshot: () => () => {},

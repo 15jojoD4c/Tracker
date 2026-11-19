@@ -225,9 +225,26 @@ const app = initializeApp({
   measurementId: "G-NKNYFSP981"
 });
 const auth = getAuth(app);
-const db = (typeof initializeFirestore === 'function')
-  ? initializeFirestore(app, { ignoreUndefinedProperties: true })
-  : getFirestore(app);
+const db = (() => {
+  try {
+    if (typeof initializeFirestore === 'function') {
+      const opts = { ignoreUndefinedProperties: true };
+      if (typeof persistentLocalCache === 'function') {
+        try {
+          opts.localCache = typeof persistentMultipleTabManager === 'function'
+            ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+            : persistentLocalCache();
+        } catch (cacheErr) {
+          try { opts.localCache = persistentLocalCache(); } catch (e2) {}
+        }
+      }
+      return initializeFirestore(app, opts);
+    }
+  } catch (fsErr) {
+    console.warn('Firestore persistent cache init fallback:', fsErr);
+  }
+  return getFirestore(app);
+})();
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
 
@@ -468,7 +485,16 @@ const flushLocalItemsNow = (forceEmpty = false) => {
 
   if (!forceEmpty && slimItems.length === 0) {
     const existingLocal = loadLocalItems();
-    if (existingLocal.length > 0) return;
+    let metaCnt = 0;
+    try { metaCnt = Number(JSON.parse(localStorage.getItem(uidKey + '_meta') || '{}').count || 0); } catch (e) {}
+    if (existingLocal.length > 0 || metaCnt > 0) return;
+    // Дополнительно проверяем IndexedDB перед записью пустого массива, чтобы не затереть коллекцию при сбое localStorage
+    idbVault.get(uidKey).then(existingIdb => {
+      if (Array.isArray(existingIdb) && existingIdb.length > 0) return;
+      idbVault.set(uidKey, []);
+      if (user && user.isLocal) idbVault.set('localItems', []);
+    });
+    return;
   }
 
   // IndexedDB — основное хранилище без лимита 5 МБ (надёжно держит 5 000–10 000+ тайтлов)
@@ -579,6 +605,153 @@ const profSaveLocal = (immediate = false) => {
 };
 
 let pend = 0, syncBad = false, cloudAccessError = '';
+let cloudQuotaBlockedUntil = 0;
+let _quotaToastShown = false;
+let _cloudBannerDismissedKey = '';
+let _activeCloudSessionUid = '';
+let _cloudSyncInFlight = null;
+let _colRevBumpTimer = 0;
+
+const CLOUD_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
+const FULL_SYNC_RECONCILE_MS = 24 * 60 * 60 * 1000;
+
+function isQuotaError(err) {
+  if (!err) return false;
+  const code = String(err.code || '').toLowerCase();
+  const msg = String(err.message || err || '').toLowerCase();
+  return code.includes('resource-exhausted') || /resource[-_ ]?exhausted|quota exceeded|daily usage limit/i.test(msg);
+}
+
+function isNetworkError(err) {
+  if (!err) return false;
+  const code = String(err.code || '').toLowerCase();
+  const msg = String(err.message || err || '').toLowerCase();
+  return ['unavailable', 'deadline-exceeded', 'aborted'].some(c => code.includes(c)) || /offline|network|failed to get document because the client is offline/i.test(msg);
+}
+
+function getQuotaStorageKey(forUid) {
+  return 'cloudQuotaUntil_' + (forUid || (user && user.uid) || 'anon');
+}
+
+function loadQuotaCooldownForUid(forUid) {
+  try {
+    const until = Number(localStorage.getItem(getQuotaStorageKey(forUid)) || 0);
+    if (until > Date.now()) {
+      cloudQuotaBlockedUntil = until;
+      cloudAccessError = 'resource-exhausted';
+      syncBad = true;
+      return until;
+    }
+    if (until) localStorage.removeItem(getQuotaStorageKey(forUid));
+  } catch (e) {}
+  cloudQuotaBlockedUntil = 0;
+  return 0;
+}
+
+function isCloudQuotaBlocked() {
+  if (cloudQuotaBlockedUntil && Date.now() < cloudQuotaBlockedUntil) return true;
+  if (cloudQuotaBlockedUntil && Date.now() >= cloudQuotaBlockedUntil) {
+    cloudQuotaBlockedUntil = 0;
+    try { localStorage.removeItem(getQuotaStorageKey()); } catch (e) {}
+  }
+  return false;
+}
+
+function isCloudWriteBlocked() {
+  return !user || user.isLocal || Boolean(window.__FIREBASE_OFFLINE_FALLBACK) || !navigator.onLine || !auth.currentUser || isCloudQuotaBlocked();
+}
+
+function getPendingDeletesKey(forUid) {
+  return 'pendingCloudDeletes_' + (forUid || (user && user.uid) || 'local_user');
+}
+
+function getPendingDeletes(forUid) {
+  try {
+    const arr = JSON.parse(localStorage.getItem(getPendingDeletesKey(forUid)) || '[]');
+    return Array.isArray(arr) ? arr.filter(Boolean).map(String) : [];
+  } catch (e) { return []; }
+}
+
+function setPendingDeletes(ids, forUid) {
+  const clean = [...new Set((ids || []).filter(Boolean).map(String))];
+  const key = getPendingDeletesKey(forUid);
+  try {
+    if (clean.length) localStorage.setItem(key, JSON.stringify(clean));
+    else localStorage.removeItem(key);
+  } catch (e) {}
+  idbVault.set(key, clean);
+  return clean;
+}
+
+function addPendingDeletes(docIds, forUid) {
+  if (!docIds || !docIds.length) return;
+  const cur = getPendingDeletes(forUid);
+  setPendingDeletes([...cur, ...docIds], forUid);
+}
+
+function removePendingDeletes(docIds, forUid) {
+  if (!docIds || !docIds.length) return;
+  const rm = new Set(docIds.map(String));
+  setPendingDeletes(getPendingDeletes(forUid).filter(id => !rm.has(String(id))), forUid);
+}
+
+function getCloudSyncMetaKey(forUid) {
+  return 'cloudSyncMeta_' + (forUid || (user && user.uid) || 'anon');
+}
+
+function getCloudSyncMeta(forUid) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(getCloudSyncMetaKey(forUid)) || '{}');
+    return (raw && typeof raw === 'object') ? raw : {};
+  } catch (e) { return {}; }
+}
+
+function setCloudSyncMeta(patch, forUid) {
+  const key = getCloudSyncMetaKey(forUid);
+  const next = { ...getCloudSyncMeta(forUid), ...(patch || {}) };
+  try { localStorage.setItem(key, JSON.stringify(next)); } catch (e) {}
+  idbVault.set(key, next);
+  return next;
+}
+
+function clearCloudErrorState(forUid) {
+  cloudAccessError = '';
+  syncBad = false;
+  cloudQuotaBlockedUntil = 0;
+  _quotaToastShown = false;
+  try { localStorage.removeItem(getQuotaStorageKey(forUid)); } catch (e) {}
+  setSync();
+}
+
+function handleCloudError(err, silent = false) {
+  if (!err) return;
+  if (isQuotaError(err)) {
+    cloudAccessError = 'resource-exhausted';
+    syncBad = true;
+    cloudQuotaBlockedUntil = Date.now() + CLOUD_QUOTA_COOLDOWN_MS;
+    try { localStorage.setItem(getQuotaStorageKey(), String(cloudQuotaBlockedUntil)); } catch (e) {}
+    _cloudBannerDismissedKey = '';
+    setSync();
+    if (!silent && !_quotaToastShown) {
+      _quotaToastShown = true;
+      toast('Дневной лимит Firebase исчерпан. Все изменения сохраняются локально в браузере.', true);
+    }
+    return;
+  }
+  if (isNetworkError(err) || !navigator.onLine) {
+    cloudAccessError = 'unavailable';
+    syncBad = true;
+    setSync();
+    return;
+  }
+  cloudAccessError = err?.code || err?.message || 'error';
+  syncBad = true;
+  setSync();
+  if (!silent) {
+    toast('Ошибка облака (' + cloudAccessError + '). Изменения сохранены локально.', true);
+  }
+}
+
 const updateAccountBadge = () => {
   const b = $('accountBadge');
   if (!b) return;
@@ -586,34 +759,201 @@ const updateAccountBadge = () => {
   b.textContent = '';
   b.style.display = 'none';
 };
+
+function getUnsyncedPendingCounts() {
+  const dirtyItems = items.filter(x => x && x.dirty).length;
+  const pendingDeletes = (user && !user.isLocal) ? getPendingDeletes(user.uid).length : 0;
+  let dirtyProf = false;
+  try { dirtyProf = Boolean(user && !user.isLocal && localStorage.getItem('profDirty_' + user.uid) === '1'); } catch (e) {}
+  return { dirtyItems, pendingDeletes, dirtyProf, total: dirtyItems + pendingDeletes + (dirtyProf ? 1 : 0) };
+}
+
+function renderCloudStatusBanner() {
+  const box = $('cloudStatusBanner');
+  if (!box) return;
+  if (!user) {
+    box.style.display = 'none';
+    box.replaceChildren();
+    return;
+  }
+
+  const pending = getUnsyncedPendingCounts();
+  let mode = '';
+  let title = '';
+  let desc = '';
+  let dismissKey = '';
+  let showRetry = false;
+  let showFlush = false;
+  let showBackup = items.length > 0;
+  let showDismiss = false;
+
+  if (user.isLocal) {
+    mode = 'is-local';
+    dismissKey = 'local';
+    title = '💻 Локальный режим (без облачной синхронизации)';
+    desc = 'Коллекция хранится только в памяти этого браузера (IndexedDB и localStorage). При очистке данных сайта без бэкапа записи пропадут.';
+    showDismiss = true;
+  } else if (cloudAccessError === 'resource-exhausted' || isCloudQuotaBlocked()) {
+    mode = 'is-quota';
+    dismissKey = 'quota_' + Math.floor(cloudQuotaBlockedUntil / 60000);
+    title = '⏳ Исчерпан дневной лимит облака Firebase (Spark)';
+    desc = 'Бесплатный дневной лимит Firestore (50 000 чтений / 20 000 записей) временно исчерпан до суточного сброса (обычно ~10:00–11:00 МСК).'
+      + (items.length
+        ? ` Показана локальная копия (${items.length} тайтлов). Все новые изменения сохраняются в этом браузере.`
+        : ' Твои облачные данные не удалены — они станут доступны после сброса квоты.');
+    if (pending.total > 0) desc += ` В очереди на отправку в облако: ${pending.total}.`;
+    showRetry = true;
+    showDismiss = true;
+  } else if (window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine || cloudAccessError === 'unavailable') {
+    mode = 'is-offline';
+    dismissKey = 'offline';
+    title = '📡 Нет связи с сервером Firebase (офлайн-режим)';
+    desc = 'Приложение работает с локальным кэшем браузера. Новые изменения записываются локально'
+      + (pending.total > 0 ? ` (ожидают синхронизации: ${pending.total})` : '')
+      + ' и будут отправлены в облако при восстановлении связи.';
+    showRetry = true;
+    showDismiss = items.length > 0;
+  } else if (cloudAccessError) {
+    mode = 'is-error';
+    dismissKey = 'err_' + cloudAccessError;
+    title = `⚠ Облачная синхронизация ограничена (${cloudAccessError})`;
+    desc = 'Показана локальная копия коллекции из памяти браузера. Новые изменения сохраняются локально.';
+    showRetry = true;
+    showDismiss = items.length > 0;
+  } else if (pending.total > 0) {
+    mode = 'is-pending';
+    dismissKey = 'pending';
+    title = `⏳ Есть несинхронизированные локальные изменения (${pending.total})`;
+    desc = 'Эти правки были сохранены в браузере, пока облако было недоступно, и готовы к отправке в Firestore.';
+    showFlush = true;
+    showDismiss = true;
+  }
+
+  if (!mode || (_cloudBannerDismissedKey && _cloudBannerDismissedKey === dismissKey)) {
+    box.style.display = 'none';
+    box.replaceChildren();
+    return;
+  }
+
+  box.className = 'cloud-status-banner ' + mode;
+  box.style.display = 'flex';
+
+  const body = el('div', 'cloud-banner-body');
+  body.append(el('div', 'cloud-banner-title', title), el('div', 'cloud-banner-desc', desc));
+
+  const actions = el('div', 'cloud-banner-actions');
+  if (showFlush && typeof window.forceCloudSyncNow === 'function') {
+    const bFlush = el('button', 'btn', '☁ Отправить сейчас');
+    bFlush.type = 'button';
+    bFlush.onclick = () => window.forceCloudSyncNow(true);
+    actions.append(bFlush);
+  }
+  if (showRetry && typeof window.forceCloudSyncNow === 'function') {
+    const bRetry = el('button', 'btn', '↻ Повторить');
+    bRetry.type = 'button';
+    bRetry.onclick = () => window.forceCloudSyncNow(true);
+    actions.append(bRetry);
+  }
+  if (showBackup && typeof window.exportData === 'function') {
+    const bExp = el('button', 'btn btn-s', '⬇ Скачать бэкап');
+    bExp.type = 'button';
+    bExp.onclick = () => window.exportData();
+    actions.append(bExp);
+  }
+  if (showDismiss) {
+    const bHide = el('button', 'btn btn-s', '✕ Скрыть');
+    bHide.type = 'button';
+    bHide.onclick = () => {
+      _cloudBannerDismissedKey = dismissKey;
+      box.style.display = 'none';
+    };
+    actions.append(bHide);
+  }
+
+  box.replaceChildren(body, actions);
+}
+
 const setSync = () => {
   updateAccountBadge();
   const e = $('syncState');
-  if (!e) return;
-  if (user && user.isLocal) { e.className = 'sync'; e.textContent = '💾 Локальный режим'; return; }
-  if (window.__FIREBASE_OFFLINE_FALLBACK) { e.className = 'sync err'; e.textContent = '⚠ Офлайн-режим (только локально)'; return; }
-  if (!navigator.onLine) { e.className = 'sync err'; e.textContent = '⚠ Нет подключения'; }
-  else if (cloudAccessError) { e.className = 'sync err'; e.textContent = '⚠ Нет доступа к облаку: ' + cloudAccessError; }
-  else if (pend) { e.className = 'sync sav'; e.textContent = '⏳ Сохранение...'; }
-  else if (syncBad) { e.className = 'sync err'; e.textContent = '⚠ Ошибка сохранения'; }
-  else { e.className = 'sync'; e.textContent = '☁ Синхронизировано'; }
+  const pending = getUnsyncedPendingCounts();
+  if (e) {
+    e.onclick = () => {
+      _cloudBannerDismissedKey = '';
+      renderCloudStatusBanner();
+      const banner = $('cloudStatusBanner');
+      if (banner && banner.style.display !== 'none') {
+        banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else if (user && !user.isLocal && typeof window.forceCloudSyncNow === 'function') {
+        window.forceCloudSyncNow(true);
+      } else if (user && user.isLocal) {
+        toast('Локальный режим: данные хранятся только в этом браузере.');
+      }
+    };
+    if (user && user.isLocal) {
+      e.className = 'sync warn clickable';
+      e.textContent = '💻 Локально (только браузер)';
+      e.title = 'Данные хранятся только в этом браузере. Нажми для подробностей';
+    } else if (window.__FIREBASE_OFFLINE_FALLBACK) {
+      e.className = 'sync err clickable';
+      e.textContent = '⚠ Офлайн (только локально)';
+      e.title = 'Firebase SDK недоступен, включено локальное сохранение';
+    } else if (!navigator.onLine) {
+      e.className = 'sync err clickable';
+      e.textContent = '⚠ Нет сети (локально)';
+      e.title = 'Нет подключения к интернету. Изменения сохраняются в браузер';
+    } else if (cloudAccessError === 'resource-exhausted' || isCloudQuotaBlocked()) {
+      e.className = 'sync warn clickable';
+      e.textContent = '⏳ Лимит Firebase (локально)';
+      e.title = 'Дневной лимит запросов Spark исчерпан. Изменения сохраняются локально';
+    } else if (cloudAccessError) {
+      e.className = 'sync err clickable';
+      e.textContent = '⚠ Облако: ' + cloudAccessError;
+      e.title = 'Проблема доступа к облаку. Нажми для деталей и повтора';
+    } else if (pend) {
+      e.className = 'sync sav';
+      e.textContent = '⏳ Сохранение...';
+      e.title = 'Идёт запись в Firestore';
+    } else if (pending.total > 0) {
+      e.className = 'sync warn clickable';
+      e.textContent = `⏳ В очереди: ${pending.total}`;
+      e.title = 'Нажми, чтобы отправить локальные изменения в облако';
+    } else if (syncBad) {
+      e.className = 'sync err clickable';
+      e.textContent = '⚠ Ошибка сохранения';
+      e.title = 'Нажми, чтобы повторить синхронизацию';
+    } else {
+      e.className = 'sync clickable';
+      e.textContent = '☁ Синхронизировано';
+      e.title = 'Нажми, чтобы принудительно проверить обновления в облаке';
+    }
+  }
+  renderCloudStatusBanner();
 };
+
 const track = p => {
   pend++; setSync();
   return p.then(res => {
     pend--;
-    if (!pend) { syncBad = false; cloudAccessError = ''; }
+    if (!pend && !isCloudQuotaBlocked()) {
+      syncBad = false;
+      cloudAccessError = '';
+    }
     setSync();
     return res;
   }, e => {
     pend--;
-    syncBad = true;
-    cloudAccessError = e?.code || e?.message || 'error';
-    setSync();
+    handleCloudError(e, true);
     throw e;
   });
 };
-addEventListener('online', setSync); addEventListener('offline', setSync);
+addEventListener('online', () => {
+  setSync();
+  if (user && !user.isLocal && !isCloudQuotaBlocked() && auth.currentUser && typeof flushPendingCloudChanges === 'function') {
+    setTimeout(() => flushPendingCloudChanges(false), 800);
+  }
+});
+addEventListener('offline', setSync);
 
 // Гарантируем, что ID документа тайтла никогда не начинается с зарезервированных префиксов prof_, wall_, rec_, bans_, fr_, dm_
 const getCloudDocId = item => {
@@ -670,12 +1010,54 @@ function deduplicateListByIdAndCleanupCloud(rawList, cleanCloud = false) {
       orphanDocIdsToDelete.push(duplicate._docId);
     }
   });
-  if (cleanCloud && orphanDocIdsToDelete.length && user && !user.isLocal && auth.currentUser) {
-    orphanDocIdsToDelete.forEach(dId => {
-      deleteDoc(doc(db, 'items', dId)).catch(() => {});
-    });
+  if (cleanCloud && orphanDocIdsToDelete.length && user && !user.isLocal) {
+    if (isCloudWriteBlocked()) {
+      addPendingDeletes(orphanDocIdsToDelete, user.uid);
+    } else {
+      (async () => {
+        for (let i = 0; i < orphanDocIdsToDelete.length; i += 350) {
+          const chunk = orphanDocIdsToDelete.slice(i, i + 350);
+          try {
+            const b = writeBatch(db);
+            chunk.forEach(dId => b.delete(doc(db, 'items', dId)));
+            await b.commit();
+          } catch (err) {
+            addPendingDeletes(chunk, user.uid);
+            handleCloudError(err, true);
+            break;
+          }
+        }
+      })();
+    }
   }
   return [...byId.values()];
+}
+
+function scheduleColRevBump() {
+  if (!user || user.isLocal) return;
+  const nextRev = Date.now();
+  prof.colRev = nextRev;
+  prof.colCount = items.length;
+  setCloudSyncMeta({ colRev: nextRev, colCount: items.length, lastFullSyncAt: Date.now() }, user.uid);
+  profSaveLocal();
+  if (isCloudWriteBlocked()) {
+    try { localStorage.setItem('profDirty_' + user.uid, '1'); } catch (e) {}
+    return;
+  }
+  clearTimeout(_colRevBumpTimer);
+  _colRevBumpTimer = setTimeout(() => {
+    if (isCloudWriteBlocked()) return;
+    const revVal = Number(prof.colRev || Date.now());
+    setCloudSyncMeta({ colRev: revVal, colCount: items.length, lastFullSyncAt: Date.now() }, user.uid);
+    setDoc(doc(db, 'items', 'prof_' + user.uid), {
+      kind: 'profile',
+      isProfile: true,
+      userId: user.uid,
+      colRev: revVal,
+      colCount: items.length,
+      schemaMigratedV4: Boolean(prof.schemaMigratedV4)
+    }, { merge: true }).catch(err => handleCloudError(err, true));
+  }, 2600);
 }
 
 const profCloud = (onlyWatchingCheck = false) => {
@@ -698,10 +1080,17 @@ const profCloud = (onlyWatchingCheck = false) => {
   }
 
   prof.nowWatching = nextWatching;
-  prof.lastVisit = Date.now();
+  const nowTs = Date.now();
+  const visitChanged = !prof.lastVisit || (nowTs - Number(prof.lastVisit)) > 6 * 3600 * 1000;
+  if (visitChanged) prof.lastVisit = nowTs;
   profSaveLocal();
 
-  if (!user.isLocal && auth.currentUser && !onlyWatchingCheck) {
+  if (!user.isLocal && !onlyWatchingCheck) {
+    if (isCloudWriteBlocked()) {
+      try { localStorage.setItem('profDirty_' + user.uid, '1'); } catch (e) {}
+      setSync();
+      return;
+    }
     const safeProf = {...prof};
     delete safeProf.email;
     delete safeProf.ownerEmail;
@@ -722,11 +1111,19 @@ const profCloud = (onlyWatchingCheck = false) => {
       isProfile: true,
       userId: user.uid
     });
-    const profFingerprint = JSON.stringify({ ...cleanProfPayload, lastVisit: 0 });
-    if (profFingerprint === _lastSavedProfJson) return;
+    const profFingerprint = JSON.stringify({ ...cleanProfPayload, lastVisit: 0, colRev: 0, colCount: 0 });
+    if (profFingerprint === _lastSavedProfJson) {
+      try { localStorage.removeItem('profDirty_' + user.uid); } catch (e) {}
+      return;
+    }
     _lastSavedProfJson = profFingerprint;
-    track(setDoc(doc(db, 'items', 'prof_' + user.uid), cleanProfPayload, { merge: true })).catch(e => {
-      toast('Ошибка сохранения профиля: ' + e.message, true);
+    track(setDoc(doc(db, 'items', 'prof_' + user.uid), cleanProfPayload, { merge: true })).then(() => {
+      try { localStorage.removeItem('profDirty_' + user.uid); } catch (e) {}
+      setSync();
+    }).catch(e => {
+      _lastSavedProfJson = '';
+      try { localStorage.setItem('profDirty_' + user.uid, '1'); } catch (e2) {}
+      handleCloudError(e, false);
     });
   }
 };
@@ -745,7 +1142,7 @@ const cloudSave = it => {
     setSync();
     return Promise.resolve();
   }
-  if (window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine || !auth.currentUser) {
+  if (isCloudWriteBlocked()) {
     it.dirty = true;
     saveLocalItems();
     setSync();
@@ -764,6 +1161,13 @@ const cloudSave = it => {
     const timer = setTimeout(() => {
       _cloudSaveTimers.delete(docId);
       const latestItem = items.find(x => x.id === it.id) || it;
+      if (isCloudWriteBlocked()) {
+        latestItem.dirty = true;
+        saveLocalItems();
+        setSync();
+        resolve();
+        return;
+      }
       const { payload } = prepareTitleForCloud(latestItem, user.uid);
       const prevChain = _cloudSaveChains.get(docId) || Promise.resolve();
       const nextChain = prevChain
@@ -774,24 +1178,28 @@ const cloudSave = it => {
             delete latestItem.dirty;
             saveLocalItems();
           }
+          scheduleColRevBump();
+          setSync();
         })
         .catch(e => {
           latestItem.dirty = true;
           saveLocalItems();
-          toast('Не удалось сохранить в облако: ' + e.message, true);
+          handleCloudError(e, false);
         })
         .finally(() => {
           if (_cloudSaveChains.get(docId) === nextChain) _cloudSaveChains.delete(docId);
           resolve();
         });
       _cloudSaveChains.set(docId, nextChain);
-    }, 220);
+    }, 450);
     _cloudSaveTimers.set(docId, { timer, resolve });
   });
 };
 
 async function startLocalMode(msg) {
   if (unsub) { unsub(); unsub = null; }
+  _activeCloudSessionUid = '';
+  clearCloudErrorState();
   if (typeof resetSessionMemoryState === 'function') resetSessionMemoryState();
   try { localStorage.setItem('useLocalMode', '1'); } catch (e) {}
   resetProfObjectToDefault();
@@ -900,7 +1308,7 @@ async function checkMigrateLocalItemsToCloud(manual = false) {
     });
 
     const allToSave = [...preparedInsert, ...toMerge];
-    await batchSaveItems(allToSave);
+    await batchSaveItems(allToSave, { requireCloud: true });
 
     toMerge.forEach(m => {
       const idx = items.findIndex(x => x.id === m.id);
@@ -926,6 +1334,10 @@ async function checkMigrateLocalItemsToCloud(manual = false) {
 async function migrateOldDocsToKindSchema(manual = false) {
   if (!user || user.isLocal || !auth.currentUser) {
     if (manual) toast('Миграция доступна только при входе в облачный аккаунт', true);
+    return;
+  }
+  if (isCloudQuotaBlocked()) {
+    if (manual) toast('Миграция невозможна: дневной лимит Firebase исчерпан.', true);
     return;
   }
   try {
@@ -969,8 +1381,16 @@ async function migrateOldDocsToKindSchema(manual = false) {
       }
     });
 
-    if (!ops.length) {
+    const markMigrated = () => {
       try { localStorage.setItem('schemaMigratedV4_' + uid, '1'); } catch (e) {}
+      prof.schemaMigratedV4 = true;
+      setCloudSyncMeta({ schemaMigratedV4: true }, uid);
+      profSaveLocal();
+      setDoc(doc(db, 'items', 'prof_' + uid), { kind: 'profile', isProfile: true, userId: uid, schemaMigratedV4: true }, { merge: true }).catch(() => {});
+    };
+
+    if (!ops.length) {
+      markMigrated();
       if (manual) toast('Все твои записи уже соответствуют актуальной схеме облака ✓');
       return;
     }
@@ -984,35 +1404,213 @@ async function migrateOldDocsToKindSchema(manual = false) {
       });
       await track(b.commit());
     }
-    try { localStorage.setItem('schemaMigratedV4_' + uid, '1'); } catch (e) {}
+    markMigrated();
     toast(`Миграция завершена: выполнено ${ops.length} операций ✓`);
   } catch (e) {
-    cloudAccessError = e?.code || e?.message || 'migration-error';
-    syncBad = true;
-    setSync();
-    toast('Ошибка миграции старых записей: ' + (e.code || e.message), true);
+    handleCloudError(e, false);
+    if (manual) toast('Ошибка миграции старых записей: ' + (e.code || e.message), true);
   }
 }
 
-async function activateCloudUserSession(uObj) {
-  if (unsub) { unsub(); unsub = null; }
-  if (typeof resetSessionMemoryState === 'function') resetSessionMemoryState();
-  user = uObj;
-  cloudAccessError = '';
-  syncBad = false;
-  _cloudProfLoaded = false;
-  const effUid = uObj.uid;
+async function flushPendingCloudChanges(showToast = false) {
+  if (!user || user.isLocal || isCloudWriteBlocked()) return false;
+  const uid = user.uid;
+  const pendingDeletes = getPendingDeletes(uid);
+  const dirtyItems = items.filter(x => x && x.dirty);
+  let dirtyProf = false;
+  try { dirtyProf = localStorage.getItem('profDirty_' + uid) === '1'; } catch (e) {}
+  if (!pendingDeletes.length && !dirtyItems.length && !dirtyProf) return true;
+
   try {
-    localStorage.setItem('lastCloudUid', effUid);
-    if (uObj.email) localStorage.setItem('lastCloudEmail', uObj.email);
-    if (uObj.displayName) localStorage.setItem('lastCloudName', uObj.displayName);
-  } catch (e) {}
-  profTried = false;
+    if (pendingDeletes.length) {
+      for (let i = 0; i < pendingDeletes.length; i += 350) {
+        const chunk = pendingDeletes.slice(i, i + 350);
+        const b = writeBatch(db);
+        chunk.forEach(dId => b.delete(doc(db, 'items', dId)));
+        await track(b.commit());
+        removePendingDeletes(chunk, uid);
+      }
+    }
+    if (dirtyItems.length) {
+      for (let i = 0; i < dirtyItems.length; i += 350) {
+        const chunk = dirtyItems.slice(i, i + 350);
+        const b = writeBatch(db);
+        chunk.forEach(dIt => {
+          const { docId, payload } = prepareTitleForCloud(dIt, uid);
+          b.set(doc(db, 'items', docId), payload);
+        });
+        await track(b.commit());
+        chunk.forEach(dIt => { delete dIt.dirty; });
+      }
+      saveLocalItems();
+    }
+    if (dirtyProf) {
+      _lastSavedProfJson = '';
+      profCloud(false);
+    }
+    if (dirtyItems.length || pendingDeletes.length) {
+      scheduleColRevBump();
+    }
+    setSync();
+    if (showToast) toast('Отложенные локальные изменения отправлены в облако ✓');
+    return true;
+  } catch (err) {
+    handleCloudError(err, !showToast);
+    return false;
+  }
+}
+
+async function syncItemsFromCloud(effUid, force = false) {
+  if (!effUid || !user || user.isLocal) return;
+  if (_cloudSyncInFlight) return _cloudSyncInFlight;
+  if (!force && (isCloudQuotaBlocked() || window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine)) return;
+  if (!auth.currentUser && !window.__FIREBASE_OFFLINE_FALLBACK) return;
+
+  _cloudSyncInFlight = (async () => {
+    try {
+      const snap = await track(getDocs(query(collection(db, 'items'), where('kind', '==', 'title'), where('userId', '==', effUid))));
+      clearCloudErrorState(effUid);
+
+      const pendingDelSet = new Set(getPendingDeletes(effUid));
+      const ownList = deduplicateListByIdAndCleanupCloud(
+        snap.docs
+          .filter(d => {
+            const rawId = d.data()?.id;
+            if (pendingDelSet.has(d.id) || (rawId != null && pendingDelSet.has(String(rawId)))) return false;
+            if (window._recentlyDeletedIds && (window._recentlyDeletedIds.has(d.id) || window._recentlyDeletedIds.has(String(rawId)))) return false;
+            return true;
+          })
+          .map(d => fix({ ...d.data(), _docId: d.id })),
+        false
+      );
+
+      if (ownList.length > 0) {
+        try { localStorage.setItem('cloudHadSynced_' + effUid, '1'); } catch (e) {}
+      }
+
+      // Объединяем несинхронизированные локальные правки (dirty: true), чтобы они не потерялись при загрузке с сервера
+      const dirtyLocalItems = items.filter(x => x && x.dirty);
+      dirtyLocalItems.forEach(dIt => {
+        const oIdx = ownList.findIndex(o => String(o.id) === String(dIt.id));
+        if (oIdx > -1) {
+          if ((dIt.updatedAt || 0) >= (ownList[oIdx].updatedAt || 0)) ownList[oIdx] = dIt;
+        } else {
+          ownList.push(dIt);
+        }
+      });
+
+      const prevCount = items.length;
+      if (!window._explicitEmptyAllowed && prevCount === 0 && ownList.length === 0) {
+        const sb = await idbVault.get(getUidStorageKey('safetyBackup'));
+        if (Array.isArray(sb) && sb.length > 0 && items.length === 0) {
+          items = deduplicateListByIdAndCleanupCloud(sb.filter(isTitleDoc).map(fix), false);
+          loaded = true;
+          refresh();
+          toast(`Восстановлено из локальной страховочной копии: ${items.length} тайтлов`);
+        } else {
+          items = [];
+          loaded = true;
+        }
+      } else if (!window._explicitEmptyAllowed && prevCount > 0 && ownList.length === 0) {
+        // Защита от пустого ответа облака: никогда не затираем существующую локальную коллекцию
+        loaded = true;
+        if (!window._migrationRetriedOnEmpty && !prof.schemaMigratedV4 && !isCloudQuotaBlocked()) {
+          window._migrationRetriedOnEmpty = true;
+          migrateOldDocsToKindSchema(false);
+        }
+      } else {
+        items = ownList;
+        loaded = true;
+        saveLocalItems();
+      }
+
+      setCloudSyncMeta({
+        lastFullSyncAt: Date.now(),
+        colRev: Number(prof.colRev || 0),
+        colCount: items.length
+      }, effUid);
+
+      if (dirtyLocalItems.length || getPendingDeletes(effUid).length) {
+        await flushPendingCloudChanges(false);
+      }
+
+      if (!profTried) {
+        profTried = true;
+        setTimeout(() => checkMigrateLocalItemsToCloud(false), 1200);
+        setTimeout(() => restoreUncertainMatchesFromStorage(), 800);
+      }
+      profPaint();
+      refresh();
+      homeTab();
+      setSync();
+    } catch (err) {
+      // Железобетонная защита: при ошибке квоты или сети НИКОГДА не затираем текущие items (из IDB / памяти)!
+      if (items.length === 0) {
+        const fallbackLocal = await loadLocalItemsAsync(effUid);
+        if (fallbackLocal.length > 0) {
+          items = deduplicateListByIdAndCleanupCloud(fallbackLocal, false);
+        } else {
+          const sb = await idbVault.get(getUidStorageKey('safetyBackup'));
+          if (Array.isArray(sb) && sb.length > 0) {
+            items = deduplicateListByIdAndCleanupCloud(sb.filter(isTitleDoc).map(fix), false);
+          }
+        }
+      }
+      loaded = true;
+      handleCloudError(err, false);
+      profPaint();
+      refresh();
+      homeTab();
+    } finally {
+      _cloudSyncInFlight = null;
+    }
+  })();
+
+  return _cloudSyncInFlight;
+}
+
+window.forceCloudSyncNow = async function forceCloudSyncNow(manual = true) {
+  if (!user || user.isLocal) {
+    if (manual) toast('Сейчас включён локальный режим без облака.');
+    return;
+  }
+  if (!navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK) {
+    setSync();
+    if (manual) toast('Нет подключения к сети — работаем на локальном кэше.', true);
+    return;
+  }
+  if (!auth.currentUser) {
+    if (manual) toast('Сессия авторизации ещё инициализируется, подожди пару секунд.', true);
+    return;
+  }
+  // При ручном клике сбрасываем временный кулдаун, чтобы пользователь мог сразу проверить восстановление квоты
+  clearCloudErrorState(user.uid);
+  try {
+    const pSnap = await track(getDoc(doc(db, 'items', 'prof_' + user.uid)));
+    if (pSnap.exists()) {
+      const pd = pSnap.data();
+      const { isProfile, kind: _k, userId: _u, _docId, statsSummary, friends: _fr, ...rest } = pd;
+      Object.assign(prof, rest);
+      _cloudProfLoaded = true;
+      profSaveLocal();
+    }
+    await flushPendingCloudChanges(false);
+    await syncItemsFromCloud(user.uid, true);
+    if (manual && !cloudAccessError) toast('Синхронизация с облаком завершена ✓');
+  } catch (err) {
+    handleCloudError(err, false);
+  }
+};
+
+async function hydrateLocalSessionView(uObj) {
+  if (!uObj || !uObj.uid) return;
+  const effUid = uObj.uid;
+  user = uObj;
+  loadQuotaCooldownForUid(effUid);
   resetProfObjectToDefault();
   try { Object.assign(prof, JSON.parse(localStorage.getItem('prof_' + effUid) || '{}')); } catch (e) {}
   delete prof.friends;
 
-  // Дополнительно восстанавливаем профиль и коллекцию из IndexedDB (если localStorage был очищен или переполнен)
   const idbProf = await idbVault.get('prof_' + effUid);
   if (idbProf && typeof idbProf === 'object') {
     if (!prof.avatar && idbProf.avatar) prof.avatar = idbProf.avatar;
@@ -1027,155 +1625,137 @@ async function activateCloudUserSession(uObj) {
   $('profName').textContent = prof.name || defaultName;
   $('avatar').src = prof.avatar || uObj.photoURL || FALL;
 
-  let cachedLocal = loadLocalItems(effUid);
-  const idbItems = await idbVault.get('items_' + effUid);
-  if (Array.isArray(idbItems) && idbItems.length >= cachedLocal.length) {
-    cachedLocal = idbItems.filter(isTitleDoc).map(fix);
+  let cachedLocal = await loadLocalItemsAsync(effUid);
+  if (!cachedLocal.length) {
+    const sb = await idbVault.get('safetyBackup_' + effUid);
+    if (Array.isArray(sb) && sb.length) cachedLocal = sb.filter(isTitleDoc).map(fix);
   }
   items = deduplicateListByIdAndCleanupCloud(cachedLocal, false);
   loaded = true;
+  setSync();
   profPaint();
   refresh();
   homeTab();
   if (!cgGrid.children.length) cgLoad(true);
+}
 
-  getDoc(doc(db, 'items', 'prof_' + effUid)).then(pSnap => {
-    const localAvatarBackup = prof.avatar || '';
-    const localCoverBackup = prof.cover || '';
-    const localCoverColBackup = prof.coverColor || 0;
-    if (pSnap.exists()) {
-      const pd = pSnap.data();
-      const {isProfile, kind: _k, userId: _u, _docId, statsSummary, friends: _fr, ...rest} = pd;
-      Object.assign(prof, rest);
-      // Если в облаке аватар/обложка случайно оказались пустыми, а локально они сохранены — восстанавливаем их и синхронизируем обратно
-      let restoredVisuals = false;
-      if (!prof.avatar && localAvatarBackup) { prof.avatar = localAvatarBackup; restoredVisuals = true; }
-      if (!prof.cover && localCoverBackup) { prof.cover = localCoverBackup; restoredVisuals = true; }
-      if (!prof.cover && !prof.coverColor && localCoverColBackup) { prof.coverColor = localCoverColBackup; restoredVisuals = true; }
-      _cloudProfLoaded = true;
-      profSaveLocal();
-      if (restoredVisuals) profCloud();
-      profPaint();
-      refresh();
-    } else {
-      _cloudProfLoaded = true;
-      profCloud();
-    }
-  }).catch(() => { _cloudProfLoaded = true; });
+async function activateCloudUserSession(uObj) {
+  const effUid = uObj?.uid;
+  if (!effUid) return;
+  if (_activeCloudSessionUid === effUid && unsub) {
+    user = uObj;
+    setSync();
+    return;
+  }
+  if (unsub) { unsub(); unsub = null; }
+  _activeCloudSessionUid = effUid;
+  if (typeof resetSessionMemoryState === 'function') resetSessionMemoryState();
+  _cloudProfLoaded = false;
 
+  try {
+    localStorage.setItem('lastCloudUid', effUid);
+    if (uObj.email) localStorage.setItem('lastCloudEmail', uObj.email);
+    if (uObj.displayName) localStorage.setItem('lastCloudName', uObj.displayName);
+  } catch (e) {}
+  profTried = false;
+
+  await hydrateLocalSessionView(uObj);
   loadRuCacheFromCloud(effUid);
 
-  if (!localStorage.getItem('schemaMigratedV4_' + effUid)) {
-    setTimeout(() => migrateOldDocsToKindSchema(false), 1500);
+  if (window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine) {
+    setSync();
+    return;
   }
 
-  unsub = onSnapshot(query(collection(db, 'items'), where('kind', '==', 'title'), where('userId', '==', effUid)),
-    snap => {
-      cloudAccessError = '';
-      syncBad = false;
-      setSync();
+  // Слушаем ТОЛЬКО 1 документ профиля (вместо чтения всей коллекции из тысяч документов при каждом F5!)
+  let initialProfileHandled = false;
+  unsub = onSnapshot(doc(db, 'items', 'prof_' + effUid),
+    async pSnap => {
+      if (!isCloudQuotaBlocked()) clearCloudErrorState(effUid);
+      const localAvatarBackup = prof.avatar || '';
+      const localCoverBackup = prof.cover || '';
+      const localCoverColBackup = prof.coverColor || 0;
+      const localSyncMeta = getCloudSyncMeta(effUid);
+      let remoteColRev = 0;
+      let remoteColCount = null;
 
-      const changes = snap.docChanges();
-      if (profTried && loaded && changes.length > 0 && changes.length <= 3 && changes.every(c => c.type === 'modified')) {
-        let anyExternalDiff = false;
-        const changedIds = [];
-        changes.forEach(c => {
-          const incoming = fix({ ...c.doc.data(), _docId: c.doc.id });
-          const pendingTs = _localPendingWrites.get(c.doc.id) || 0;
-          if (pendingTs && incoming.updatedAt && incoming.updatedAt < pendingTs) return;
-          const idx = items.findIndex(x => String(x.id) === String(incoming.id));
-          if (idx > -1) {
-            const cur = items[idx];
-            if ((cur.updatedAt || 0) <= (incoming.updatedAt || 0)) {
-              if (cur.status !== incoming.status || cur.fav !== incoming.fav || cur.rating !== incoming.rating || cur.title !== incoming.title || cur.archived !== incoming.archived || cur.pin !== incoming.pin) {
-                anyExternalDiff = true;
-              }
-              items[idx] = incoming;
-              changedIds.push(incoming.id);
-            }
-          }
-        });
-        saveLocalItems();
-        if (anyExternalDiff && changedIds.length === 1) {
-          refresh({ itemId: changedIds[0] });
-        } else if (anyExternalDiff) {
-          refresh({ onlyList: true });
+      if (pSnap.exists()) {
+        const pd = pSnap.data();
+        const { isProfile, kind: _k, userId: _u, _docId, statsSummary, friends: _fr, ...rest } = pd;
+        Object.assign(prof, rest);
+        if (pd.schemaMigratedV4) {
+          try { localStorage.setItem('schemaMigratedV4_' + effUid, '1'); } catch (e) {}
+          setCloudSyncMeta({ schemaMigratedV4: true }, effUid);
         }
-        return;
-      }
+        remoteColRev = Number(pd.colRev || 0);
+        remoteColCount = (pd.colCount != null) ? Number(pd.colCount) : null;
 
-      const ownList = deduplicateListByIdAndCleanupCloud(
-        snap.docs
-          .filter(d => !window._recentlyDeletedIds || (!window._recentlyDeletedIds.has(d.id) && !window._recentlyDeletedIds.has(String(d.data()?.id))))
-          .map(d => fix({ ...d.data(), _docId: d.id })),
-        false
-      );
-      if (ownList.length > 0) {
-        try { localStorage.setItem('cloudHadSynced_' + effUid, '1'); } catch (e) {}
-      }
-
-      // Синхронизация локальных изменений (dirty: true), сделанных в офлайне или до подключения к Firestore
-      const dirtyLocalItems = items.filter(x => x && x.dirty);
-      if (dirtyLocalItems.length > 0 && !window.__FIREBASE_OFFLINE_FALLBACK && auth.currentUser) {
-        dirtyLocalItems.forEach(dIt => {
-          delete dIt.dirty;
-          const oIdx = ownList.findIndex(o => String(o.id) === String(dIt.id));
-          if (oIdx > -1) {
-            if ((dIt.updatedAt || 0) >= (ownList[oIdx].updatedAt || 0)) ownList[oIdx] = dIt;
-          } else {
-            ownList.push(dIt);
-          }
-          const { docId, payload } = prepareTitleForCloud(dIt, effUid);
-          setDoc(doc(db, 'items', docId), payload).catch(() => { dIt.dirty = true; });
-        });
-      }
-
-      // ЖЕЛЕЗОБЕТОННАЯ ЗАЩИТА КОЛЛЕКЦИИ (5000–10000+ тайтлов):
-      // Никогда не затираем существующую локальную коллекцию пустым или неполным кэш-ответом облака!
-      const prevCount = items.length;
-      if (!window._explicitEmptyAllowed && prevCount === 0 && ownList.length === 0) {
-        idbVault.get(getUidStorageKey('safetyBackup')).then(sb => {
-          if (Array.isArray(sb) && sb.length > 0 && items.length === 0) {
-            items = deduplicateListByIdAndCleanupCloud(sb.filter(isTitleDoc).map(fix), false);
-            refresh();
-            toast(`Восстановлено из локальной страховочной копии: ${items.length} тайтлов`);
-          }
-        });
-      }
-      if (!window._explicitEmptyAllowed && prevCount > 0 && ownList.length === 0) {
-        loaded = true;
-        if (!window._migrationRetriedOnEmpty) {
-          window._migrationRetriedOnEmpty = true;
-          migrateOldDocsToKindSchema(false);
-        }
-      } else if (!window._explicitEmptyAllowed && prevCount > 20 && ownList.length < prevCount * 0.6 && snap.metadata?.fromCache) {
-        // Если локальный кэш Firestore отдал только часть документов до полной загрузки с сервера — объединяем, не теряя карточки
-        items = deduplicateListByIdAndCleanupCloud([...items, ...ownList], false);
-        loaded = true;
-        saveLocalItems();
-      } else {
-        items = ownList;
-        loaded = true;
-        saveLocalItems();
-      }
-
-      if (!profTried) {
-        profTried = true;
-        setTimeout(() => checkMigrateLocalItemsToCloud(false), 1200);
-        setTimeout(() => restoreUncertainMatchesFromStorage(), 800);
+        let restoredVisuals = false;
+        if (!prof.avatar && localAvatarBackup) { prof.avatar = localAvatarBackup; restoredVisuals = true; }
+        if (!prof.cover && localCoverBackup) { prof.cover = localCoverBackup; restoredVisuals = true; }
+        if (!prof.cover && !prof.coverColor && localCoverColBackup) { prof.coverColor = localCoverColBackup; restoredVisuals = true; }
+        _cloudProfLoaded = true;
+        const safeProfSnapshot = stripUndefinedDeep({ ...prof, kind: 'profile', isProfile: true, userId: effUid });
+        delete safeProfSnapshot.email; delete safeProfSnapshot.ownerEmail; delete safeProfSnapshot.statsSummary; delete safeProfSnapshot.friends;
+        _lastSavedProfJson = JSON.stringify({ ...safeProfSnapshot, lastVisit: 0, colRev: 0, colCount: 0 });
+        profSaveLocal();
+        if (restoredVisuals && !isCloudWriteBlocked()) profCloud();
         profPaint();
+      } else {
+        _cloudProfLoaded = true;
+        if (!isCloudWriteBlocked()) profCloud();
       }
-      refresh();
-      homeTab();
+
+      const lastFullSyncAt = Number(localSyncMeta.lastFullSyncAt || 0);
+      const localRev = Number(localSyncMeta.colRev || 0);
+      const cacheStale = !lastFullSyncAt || (Date.now() - lastFullSyncAt) > FULL_SYNC_RECONCILE_MS;
+      const revChanged = Boolean(remoteColRev && remoteColRev !== localRev);
+      const emptyNeedPull = items.length === 0 && (remoteColCount === null || remoteColCount > 0 || !lastFullSyncAt);
+
+      if ((!initialProfileHandled && (emptyNeedPull || cacheStale || revChanged)) || (initialProfileHandled && revChanged)) {
+        initialProfileHandled = true;
+        await syncItemsFromCloud(effUid, false);
+      } else {
+        initialProfileHandled = true;
+        if (!profTried) {
+          profTried = true;
+          setTimeout(() => checkMigrateLocalItemsToCloud(false), 1200);
+          setTimeout(() => restoreUncertainMatchesFromStorage(), 800);
+        }
+        await flushPendingCloudChanges(false);
+        refresh();
+        homeTab();
+      }
+
+      // Одноразовая проверка миграции схемы: запускаем ТОЛЬКО если нет флага ни локально, ни в облачном профиле, и не было квоты
+      const migratedLocal = localStorage.getItem('schemaMigratedV4_' + effUid) === '1';
+      if (!migratedLocal && !prof.schemaMigratedV4 && !isCloudQuotaBlocked()) {
+        const allItemsClean = items.length > 0 && items.every(x => x.kind === 'title' && String(x._docId || '').startsWith(effUid + '_'));
+        if (allItemsClean) {
+          try { localStorage.setItem('schemaMigratedV4_' + effUid, '1'); } catch (e) {}
+          prof.schemaMigratedV4 = true;
+          setCloudSyncMeta({ schemaMigratedV4: true }, effUid);
+          setDoc(doc(db, 'items', 'prof_' + effUid), { kind: 'profile', isProfile: true, userId: effUid, schemaMigratedV4: true }, { merge: true }).catch(() => {});
+        } else {
+          setTimeout(() => migrateOldDocsToKindSchema(false), 1500);
+        }
+      }
     },
-    err => {
-      // Этап 1 п.5: Показываем явную красную ошибку «⚠ Нет доступа к облаку: <код ошибки>» вместо молчаливого «Синхронизировано»
-      items = deduplicateListByIdAndCleanupCloud(loadLocalItems(effUid), false);
+    async err => {
+      // Никогда не затираем локальную коллекцию из IDB пустым sync-ответом из localStorage!
+      if (items.length === 0) {
+        const fallbackLocal = await loadLocalItemsAsync(effUid);
+        if (fallbackLocal.length > 0) {
+          items = deduplicateListByIdAndCleanupCloud(fallbackLocal, false);
+        } else {
+          const sb = await idbVault.get(getUidStorageKey('safetyBackup'));
+          if (Array.isArray(sb) && sb.length > 0) {
+            items = deduplicateListByIdAndCleanupCloud(sb.filter(isTitleDoc).map(fix), false);
+          }
+        }
+      }
       loaded = true;
-      syncBad = true;
-      cloudAccessError = err?.code || err?.message || 'permission-denied';
-      setSync();
-      toast('Нет доступа к облаку (' + cloudAccessError + '). Показана локальная копия.', true);
+      handleCloudError(err, false);
       profPaint();
       refresh();
       homeTab();
@@ -1262,6 +1842,11 @@ $('emailResetBtn').onclick = async () => {
 function resetSessionMemoryState() {
   window._explicitEmptyAllowed = false;
   window._migrationRetriedOnEmpty = false;
+  _cloudSyncInFlight = null;
+  _lastSavedProfJson = '';
+  _quotaToastShown = false;
+  _cloudBannerDismissedKey = '';
+  clearTimeout(_colRevBumpTimer);
   if (typeof uncertainMatchesQueue !== 'undefined') uncertainMatchesQueue.length = 0;
   if (typeof selSet !== 'undefined') selSet.clear();
   if (typeof reviewSelSet !== 'undefined') reviewSelSet.clear();
@@ -1276,9 +1861,12 @@ $('logoutBtn').onclick = async () => {
     localStorage.removeItem('lastCloudName');
   } catch (e) {}
   if (unsub) { unsub(); unsub = null; }
+  _activeCloudSessionUid = '';
+  clearCloudErrorState();
   resetSessionMemoryState();
   resetProfObjectToDefault();
   user = null; items = []; loaded = false;
+  renderCloudStatusBanner();
   try { await signOut(auth); } catch (e) {}
   $('appScreen').style.display = 'none'; $('authScreen').style.display = 'flex';
 };
@@ -1288,7 +1876,7 @@ window.startApp = function startApp() {
   if (_appStarted) return;
   _appStarted = true;
 
-  // Мгновенный старт из локального кэша без ожидания ответа Firebase Auth при медленном VPN
+  // Мгновенно показываем интерфейс из локального IndexedDB/localStorage БЕЗ дублирующего запуска запросов в Firestore
   if (localStorage.getItem('useLocalMode') === '1') {
     document.body.classList.remove('auth-checking');
     startLocalMode();
@@ -1296,7 +1884,7 @@ window.startApp = function startApp() {
     const cachedUid = localStorage.getItem('lastCloudUid');
     if (cachedUid && !user) {
       document.body.classList.remove('auth-checking');
-      activateCloudUserSession({
+      hydrateLocalSessionView({
         uid: cachedUid,
         email: localStorage.getItem('lastCloudEmail') || '',
         displayName: localStorage.getItem('lastCloudName') || 'Моя коллекция',
@@ -1322,6 +1910,7 @@ window.startApp = function startApp() {
     if (localStorage.getItem('useLocalMode') === '1') return startLocalMode();
     try { localStorage.removeItem('lastCloudUid'); } catch (e) {}
     if (unsub) { unsub(); unsub = null; }
+    _activeCloudSessionUid = '';
     resetSessionMemoryState();
     items = []; loaded = false;
     $('appScreen').style.display = 'none'; $('authScreen').style.display = 'flex';
@@ -1731,13 +2320,39 @@ function render(appendMore = false) {
   if (!loaded) return grid.append(el('div', 'msg', 'Загрузка...'));
   if (!visItems.length) {
     lastList = [];
+    renderStatusAndCategoryBanner();
+    const isQuota = user && !user.isLocal && (cloudAccessError === 'resource-exhausted' || isCloudQuotaBlocked());
+    const isOfflineOrErr = user && !user.isLocal && (cloudAccessError || !navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK);
+    if (isQuota || isOfflineOrErr) {
+      const notice = el('div', 'cloud-empty-notice ' + (isQuota ? 'is-quota' : 'is-offline'));
+      notice.append(
+        el('h3', null, isQuota ? '⏳ Не удалось загрузить коллекцию — исчерпан дневной лимит Firebase' : '📡 Не удалось загрузить коллекцию из облака'),
+        el('p', null, isQuota
+          ? 'В этом браузере пока нет локальной копии (например, после очистки куки/данных сайта), а бесплатный дневной лимит Firestore (50 000 чтений) временно исчерпан. Твои тайтлы в облаке НЕ удалены — они появятся после суточного сброса лимита (обычно ~10:00–11:00 МСК).'
+          : 'Сервер Firebase сейчас недоступен или нет подключения к сети. Твои данные в облаке не затронуты. Можно повторить попытку, загрузить резервную копию .json или временно добавлять тайтлы локально.')
+      );
+      const actRow = el('div', 'row');
+      actRow.style.justifyContent = 'center';
+      actRow.style.marginTop = '4px';
+      const retryBtn = el('button', 'btn', '↻ Повторить загрузку');
+      retryBtn.type = 'button';
+      retryBtn.onclick = () => window.forceCloudSyncNow && window.forceCloudSyncNow(true);
+      const impBtn = el('button', 'btn btn-s', '📂 Загрузить бэкап (.json)');
+      impBtn.type = 'button';
+      impBtn.onclick = () => $('universalImportBtn')?.click();
+      const addBtn = el('button', 'btn btn-s', '＋ Добавить локально');
+      addBtn.type = 'button';
+      addBtn.onclick = () => { openAdd(null); draftRestore(); };
+      actRow.append(retryBtn, impBtn, addBtn);
+      notice.append(actRow);
+      return grid.append(notice);
+    }
     const m = el('div', 'msg', 'Коллекция пока пуста. Добавь первый тайтл — вручную или из каталога.');
     const r = el('div', 'row'), a = el('button', 'btn', '＋ Добавить тайтл'), c = el('button', 'btn btn-s', '🔍 Открыть каталог');
     r.style.justifyContent = 'center'; r.style.marginTop = '14px';
     a.onclick = () => { openAdd(null); draftRestore(); };
     c.onclick = () => document.querySelector('.tab[data-v="catalog"]').click();
     r.append(a, c); m.append(r);
-    renderStatusAndCategoryBanner();
     return grid.append(m);
   }
   const q = $('searchInput').value.toLowerCase().trim(), st = $('statusFilter').value, tg = $('tagFilter').value, so = $('sortSelect').value, lf = $('listFilter').value;
@@ -2314,6 +2929,7 @@ function pickShikiGraphQLPoster(p) {
 }
 const RUC = (() => { try { return JSON.parse(localStorage.getItem('ruCache') || '{}'); } catch (e) { return {}; } })();
 let _ruCloudSaveTimer = 0;
+let _lastRuCloudHash = '';
 function saveRuCacheLocal() {
   try {
     // В localStorage храним только компактные переводы названий (без тяжёлых описаний 'd...'), чтобы никогда не переполнять 5 МБ квоту!
@@ -2324,34 +2940,46 @@ function saveRuCacheLocal() {
 }
 function scheduleSaveRuCacheToCloud() {
   saveRuCacheLocal();
-  if (!user || user.isLocal || !auth.currentUser) return;
+  if (isCloudWriteBlocked()) return;
   clearTimeout(_ruCloudSaveTimer);
   _ruCloudSaveTimer = setTimeout(() => {
-    if (!user || user.isLocal || !auth.currentUser) return;
+    if (isCloudWriteBlocked()) return;
     const entries = Object.entries(RUC).filter(([k, v]) => v && !k.startsWith('d_') && !k.startsWith('d') && typeof v === 'string' && v.length <= 280);
     const titlesPayload = Object.fromEntries(entries.slice(-1200));
+    const sig = String(entries.length) + '_' + (entries[entries.length - 1]?.[0] || '') + '_' + (entries[0]?.[0] || '');
+    if (sig === _lastRuCloudHash) return;
+    _lastRuCloudHash = sig;
     setDoc(doc(db, 'items', 'prof_rucache_' + user.uid), {
       kind: 'profile',
       isProfile: true,
       userId: user.uid,
       updatedAt: Date.now(),
       titles: titlesPayload
-    }, { merge: true }).catch(() => {});
-  }, 1800);
+    }, { merge: true }).catch(err => handleCloudError(err, true));
+  }, 10000);
 }
 async function loadRuCacheFromCloud(uid) {
-  if (!uid || !auth.currentUser) return;
+  if (!uid || !auth.currentUser || isCloudQuotaBlocked() || !navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK) return;
+  const meta = getCloudSyncMeta(uid);
+  if (meta.ruCacheSyncedAt && (Date.now() - Number(meta.ruCacheSyncedAt)) < 12 * 3600 * 1000 && Object.keys(RUC).length > 0) {
+    return;
+  }
   try {
     const snap = await getDoc(doc(db, 'items', 'prof_rucache_' + uid));
+    setCloudSyncMeta({ ruCacheSyncedAt: Date.now() }, uid);
     if (snap.exists()) {
       const data = snap.data();
       if (data && data.titles && typeof data.titles === 'object') {
         Object.assign(RUC, data.titles);
+        const entries = Object.entries(RUC).filter(([k, v]) => v && !k.startsWith('d_') && !k.startsWith('d') && typeof v === 'string' && v.length <= 280);
+        _lastRuCloudHash = String(entries.length) + '_' + (entries[entries.length - 1]?.[0] || '') + '_' + (entries[0]?.[0] || '');
         saveRuCacheLocal();
         if ($('catalogView')?.style.display !== 'none') ruCards();
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    handleCloudError(e, true);
+  }
 }
 let ruWarned = false, ruBusy = false;
 const ruWarn = () => { if (!ruWarned) { ruWarned = true; toast('Не удалось получить русский текст — оставил как есть.', true); } };

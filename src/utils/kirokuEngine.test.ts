@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const KirokuEngine = require('../../kiroku_engine.js');
+const _loadedEngine = require('../../kiroku_engine.js');
+const KirokuEngine = (_loadedEngine && typeof _loadedEngine.packCollectionChunks === 'function')
+  ? _loadedEngine
+  : (globalThis as Record<string, any>).KirokuEngine;
 
 test('packCollectionChunks packs 500 typical items into 1-2 chunks under 680KB each and unpacks losslessly', () => {
   const items = Array.from({ length: 500 }, (_, idx) => ({
@@ -487,4 +490,82 @@ test('splitOperationsIntoBatches splits large flush queues into batches of max 3
   assert.equal(batches[2].length, 100);
 });
 
+test('shouldClearDirtyAfterCommit clears dirty only if updatedAt was not bumped during in-flight commit', () => {
+  assert.equal(KirokuEngine.shouldClearDirtyAfterCommit(1700000001000, 1700000001000), true);
+  assert.equal(KirokuEngine.shouldClearDirtyAfterCommit(1700000002500, 1700000001000), false);
+  assert.equal(KirokuEngine.shouldClearDirtyAfterCommit(0, 0), true);
+});
 
+test('shouldBlockLegacyEmptyInitialSync blocks initial sync completion on empty legacy cache/offline snapshot', () => {
+  // New device on legacy schema, 0 items returned from Firestore cache -> MUST BLOCK
+  assert.equal(
+    KirokuEngine.shouldBlockLegacyEmptyInitialSync({
+      colStorageV2: false,
+      loadedCount: 0,
+      fromCache: true,
+      isOnline: true
+    }),
+    true
+  );
+  // Offline with 0 items on legacy schema -> MUST BLOCK
+  assert.equal(
+    KirokuEngine.shouldBlockLegacyEmptyInitialSync({
+      colStorageV2: false,
+      loadedCount: 0,
+      fromCache: false,
+      isOnline: false
+    }),
+    true
+  );
+  // Online server response with 0 items -> genuinely new empty account, DO NOT BLOCK
+  assert.equal(
+    KirokuEngine.shouldBlockLegacyEmptyInitialSync({
+      colStorageV2: false,
+      loadedCount: 0,
+      fromCache: false,
+      isOnline: true
+    }),
+    false
+  );
+  // Legacy schema with >0 loaded items -> DO NOT BLOCK
+  assert.equal(
+    KirokuEngine.shouldBlockLegacyEmptyInitialSync({
+      colStorageV2: false,
+      loadedCount: 42,
+      fromCache: true,
+      isOnline: true
+    }),
+    false
+  );
+  // Already migrated V2 chunk storage -> DO NOT BLOCK
+  assert.equal(
+    KirokuEngine.shouldBlockLegacyEmptyInitialSync({
+      colStorageV2: true,
+      loadedCount: 0,
+      fromCache: true,
+      isOnline: true
+    }),
+    false
+  );
+});
+
+test('areCategoriesCompatibleForExternalId allows Manga/Ranobe cross-matching while separating Anime from Manga', () => {
+  assert.equal(KirokuEngine.areCategoriesCompatibleForExternalId('Манга', 'Ранобэ'), true);
+  assert.equal(KirokuEngine.areCategoriesCompatibleForExternalId('Ранобэ', 'Манга'), true);
+  assert.equal(KirokuEngine.areCategoriesCompatibleForExternalId('Аниме', 'Манга'), false);
+  assert.equal(KirokuEngine.areCategoriesCompatibleForExternalId('Аниме', 'Ранобэ'), false);
+  assert.equal(KirokuEngine.areCategoriesCompatibleForExternalId('Мультфильм', 'Фильм'), true);
+  assert.equal(KirokuEngine.areCategoriesCompatibleForExternalId('Аниме', 'Аниме'), true);
+});
+
+test('areSeasonMarkersCompatible protects distinct seasons while allowing empty marker without season conflict', () => {
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('', ''), true);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('s2', 's2'), true);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 's2'), false);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('s2', 's3'), false);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'ova'), true);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'фильм'), true);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('ova', 'фильм'), false);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('s2_p2', 's2_p3'), false);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('s2', 's2_p2'), true);
+});

@@ -59,6 +59,9 @@ function getPosterFallbackCandidates(rawPosterUrl, itemRef) {
   return list.slice(0, 6);
 }
 
+const _tmdbPosterCache = new Map();
+let _posterReqSeq = 0;
+
 async function _fetchJikanPoster(malId, category) {
   const idNum = Number(malId);
   if (!idNum || idNum <= 0) return '';
@@ -69,12 +72,37 @@ async function _fetchJikanPoster(malId, category) {
     try {
       const j = await _jikanJson(`https://api.jikan.moe/v4/${ep}/${idNum}`, 6000);
       const u = j?.data?.images?.jpg?.large_image_url || j?.data?.images?.jpg?.image_url || j?.data?.images?.webp?.large_image_url || '';
-      return isValidPosterUrl(u) ? u : '';
+      const valid = isValidPosterUrl(u) ? u : '';
+      if (!valid) _jikanPosterCache.delete(cacheKey);
+      return valid;
     } catch (e) {
+      _jikanPosterCache.delete(cacheKey);
       return '';
     }
   })();
   _jikanPosterCache.set(cacheKey, p);
+  return p;
+}
+
+async function _fetchTmdbFreshPoster(tmdbId) {
+  const rawId = String(tmdbId || '').trim();
+  if (!/^(movie|tv)\/\d+$/i.test(rawId)) return '';
+  if (typeof fetchTmdbJson !== 'function' || typeof getActiveTmdbKey !== 'function') return '';
+  if (_tmdbPosterCache.has(rawId)) return _tmdbPosterCache.get(rawId);
+  const p = (async () => {
+    try {
+      const k = getActiveTmdbKey();
+      const d = await fetchTmdbJson(`https://api.themoviedb.org/3/${rawId}?api_key=${encodeURIComponent(k)}&language=ru-RU`, 5500);
+      const u = d?.poster_path ? ('https://image.tmdb.org/t/p/w342' + d.poster_path) : '';
+      const valid = isValidPosterUrl(u) ? u : '';
+      if (!valid) _tmdbPosterCache.delete(rawId);
+      return valid;
+    } catch (e) {
+      _tmdbPosterCache.delete(rawId);
+      return '';
+    }
+  })();
+  _tmdbPosterCache.set(rawId, p);
   return p;
 }
 
@@ -90,11 +118,23 @@ function safePosterUrl(u) {
   return s;
 }
 
+function _finalizePosterFailure(imgEl) {
+  if (!imgEl) return;
+  imgEl.dataset.posterFailed = '1';
+  imgEl.onerror = null;
+  imgEl.src = FALL;
+  imgEl.classList.add('ld');
+  if (typeof imgEl._onPosterFinalFail === 'function') {
+    try { imgEl._onPosterFinalFail(); } catch (e) {}
+  }
+}
+
 // Многоступенчатый индивидуальный фоллбэк постера для каждого <img>:
 // Для каждого URL из [poster, ...posterFallbacks]: 1) wsrv.nl -> 2) i0.wp.com -> 3) прямой URL
-// При исчерпании всех CDN-кандидатов -> 4) Jikan v4 (cdn.myanimelist.net) -> 5) FALL
+// При исчерпании всех CDN-кандидатов -> 4) Jikan v4 (аниме/манга/ранобэ) или TMDB fresh poster (фильмы/сериалы) -> 5) FALL
 function handlePosterImgError(imgEl, rawPosterUrl, itemRef) {
   if (!imgEl || imgEl.dataset.posterFailed === '1') return;
+  const reqTok = imgEl.dataset.posterReqTok || '';
   let candidates = [];
   try {
     const parsed = JSON.parse(imgEl.dataset.fallbackPosters || '[]');
@@ -150,6 +190,7 @@ function handlePosterImgError(imgEl, rawPosterUrl, itemRef) {
   if (imgEl.dataset.posterJikanTried !== '1' && malId > 0 && ['Аниме', 'Манга', 'Ранобэ'].includes(itemCat)) {
     imgEl.dataset.posterJikanTried = '1';
     _fetchJikanPoster(malId, itemCat).then(jUrl => {
+      if ((imgEl.dataset.posterReqTok || '') !== reqTok) return;
       if (jUrl && isValidPosterUrl(jUrl) && !candidates.includes(jUrl)) {
         if (itemRef && typeof itemRef === 'object') {
           if (!isValidPosterUrl(itemRef.poster)) itemRef.poster = jUrl;
@@ -161,25 +202,45 @@ function handlePosterImgError(imgEl, rawPosterUrl, itemRef) {
         imgEl.dataset.fallbackPosters = JSON.stringify([...candidates, jUrl]);
         imgEl.src = jUrl;
       } else {
-        imgEl.dataset.posterFailed = '1';
-        imgEl.onerror = null;
-        imgEl.src = FALL;
-        imgEl.classList.add('ld');
+        _finalizePosterFailure(imgEl);
       }
     });
     return;
   }
-  imgEl.dataset.posterFailed = '1';
-  imgEl.onerror = null;
-  imgEl.src = FALL;
-  imgEl.classList.add('ld');
+
+  const tmdbId = String(itemRef?.tmdb || imgEl.dataset.tmdbId || '').trim();
+  if (imgEl.dataset.posterTmdbTried !== '1' && /^(movie|tv)\/\d+$/i.test(tmdbId) && ['Фильм', 'Сериал', 'Мультфильм'].includes(itemCat)) {
+    imgEl.dataset.posterTmdbTried = '1';
+    _fetchTmdbFreshPoster(tmdbId).then(tUrl => {
+      if ((imgEl.dataset.posterReqTok || '') !== reqTok) return;
+      if (tUrl && isValidPosterUrl(tUrl) && !candidates.includes(tUrl)) {
+        if (itemRef && typeof itemRef === 'object') {
+          itemRef.poster = tUrl;
+          itemRef.posterFallbacks = [...new Set([tUrl, ...(itemRef.posterFallbacks || [])])].slice(0, 6);
+        }
+        imgEl.dataset.rawPoster = tUrl;
+        imgEl.dataset.posterCandIdx = String(candidates.length);
+        imgEl.dataset.posterStep = '1';
+        imgEl.dataset.fallbackPosters = JSON.stringify([...candidates, tUrl]);
+        imgEl.src = safePosterUrl(tUrl);
+      } else {
+        _finalizePosterFailure(imgEl);
+      }
+    });
+    return;
+  }
+
+  _finalizePosterFailure(imgEl);
 }
 
 function applyPosterImg(imgEl, rawPosterUrl, itemRef) {
   if (!imgEl) return;
+  const reqTok = String(++_posterReqSeq);
+  imgEl.dataset.posterReqTok = reqTok;
   delete imgEl.dataset.posterStep;
   delete imgEl.dataset.posterCandIdx;
   delete imgEl.dataset.posterJikanTried;
+  delete imgEl.dataset.posterTmdbTried;
   delete imgEl.dataset.posterFailed;
   imgEl.referrerPolicy = 'no-referrer';
   imgEl.onload = () => imgEl.classList.add('ld');
@@ -190,7 +251,11 @@ function applyPosterImg(imgEl, rawPosterUrl, itemRef) {
   if (candidates.length) imgEl.dataset.fallbackPosters = JSON.stringify(candidates);
   else delete imgEl.dataset.fallbackPosters;
   if (itemRef?.mal) imgEl.dataset.malId = String(itemRef.mal);
+  else delete imgEl.dataset.malId;
+  if (itemRef?.tmdb) imgEl.dataset.tmdbId = String(itemRef.tmdb);
+  else delete imgEl.dataset.tmdbId;
   if (itemRef?.category) imgEl.dataset.itemCat = String(itemRef.category);
+  else delete imgEl.dataset.itemCat;
   imgEl.onerror = () => handlePosterImgError(imgEl, raw, itemRef);
   const targetSrc = safePosterUrl(raw);
   imgEl.src = targetSrc;
@@ -199,11 +264,22 @@ function applyPosterImg(imgEl, rawPosterUrl, itemRef) {
   }
   if (!raw && Number(itemRef?.mal) > 0 && ['Аниме', 'Манга', 'Ранобэ'].includes(itemRef?.category)) {
     _fetchJikanPoster(itemRef.mal, itemRef.category).then(jUrl => {
+      if ((imgEl.dataset.posterReqTok || '') !== reqTok) return;
       if (jUrl && isValidPosterUrl(jUrl) && (!imgEl.src || imgEl.src === FALL)) {
         if (typeof itemRef === 'object') itemRef.poster = jUrl;
         imgEl.dataset.rawPoster = jUrl;
         imgEl.dataset.fallbackPosters = JSON.stringify([jUrl]);
         imgEl.src = jUrl;
+      }
+    });
+  } else if (!raw && itemRef?.tmdb && /^(movie|tv)\/\d+$/i.test(String(itemRef.tmdb)) && ['Фильм', 'Сериал', 'Мультфильм'].includes(itemRef?.category)) {
+    _fetchTmdbFreshPoster(itemRef.tmdb).then(tUrl => {
+      if ((imgEl.dataset.posterReqTok || '') !== reqTok) return;
+      if (tUrl && isValidPosterUrl(tUrl) && (!imgEl.src || imgEl.src === FALL)) {
+        if (typeof itemRef === 'object') itemRef.poster = tUrl;
+        imgEl.dataset.rawPoster = tUrl;
+        imgEl.dataset.fallbackPosters = JSON.stringify([tUrl]);
+        imgEl.src = safePosterUrl(tUrl);
       }
     });
   }
@@ -829,7 +905,6 @@ let _cloudSyncInFlight = null;
 let _colRevBumpTimer = 0;
 
 const CLOUD_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
-const FULL_SYNC_RECONCILE_MS = 24 * 60 * 60 * 1000;
 
 function isQuotaError(err) {
   if (!err) return false;
@@ -1061,7 +1136,13 @@ function renderCloudStatusBanner() {
   if (showFlush && typeof window.forceCloudSyncNow === 'function') {
     const bFlush = el('button', 'btn', '☁ Отправить сейчас');
     bFlush.type = 'button';
-    bFlush.onclick = () => window.forceCloudSyncNow(true);
+    bFlush.onclick = async () => {
+      if (user && !user.isLocal && isInitialCloudSyncDone(user.uid) && !isInitialCloudSyncBlocked(user.uid) && typeof flushPendingCloudChanges === 'function') {
+        const ok = await flushPendingCloudChanges(true);
+        if (ok) return;
+      }
+      window.forceCloudSyncNow(true);
+    };
     actions.append(bFlush);
   }
   if (showRetry && typeof window.forceCloudSyncNow === 'function') {
@@ -1135,26 +1216,58 @@ const setSync = () => {
   renderCloudStatusBanner();
 };
 
-const track = p => {
-  pend++; setSync();
-  return p.then(res => {
-    pend--;
+const CLOUD_OP_TIMEOUT_MS = 18000;
+
+const withCloudTimeout = (p, timeoutMs = CLOUD_OP_TIMEOUT_MS) => {
+  let timer = 0;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error('Превышено время ожидания ответа Firestore');
+      err.code = 'deadline-exceeded';
+      reject(err);
+    }, timeoutMs);
+  });
+  return Promise.race([Promise.resolve(p), timeoutPromise]).finally(() => {
+    clearTimeout(timer);
+  });
+};
+
+const track = (p, timeoutMs = CLOUD_OP_TIMEOUT_MS) => {
+  pend++;
+  setSync();
+  let settled = false;
+  const donePend = () => {
+    if (settled) return;
+    settled = true;
+    pend = Math.max(0, pend - 1);
+  };
+  return withCloudTimeout(p, timeoutMs).then(res => {
+    donePend();
     if (!pend && !isCloudQuotaBlocked()) {
       syncBad = false;
       cloudAccessError = '';
     }
-    setSync();
     return res;
   }, e => {
-    pend--;
+    donePend();
     handleCloudError(e, true);
     throw e;
+  }).finally(() => {
+    donePend();
+    setSync();
   });
 };
 addEventListener('online', () => {
   setSync();
-  if (user && !user.isLocal && !isCloudQuotaBlocked() && auth.currentUser && typeof flushPendingCloudChanges === 'function') {
-    setTimeout(() => flushPendingCloudChanges(false), 800);
+  if (user && !user.isLocal && !isCloudQuotaBlocked() && auth.currentUser) {
+    setTimeout(() => {
+      if (!user || user.isLocal || isCloudQuotaBlocked() || !auth.currentUser) return;
+      if (!isInitialCloudSyncDone(user.uid) || isInitialCloudSyncBlocked(user.uid)) {
+        if (typeof syncItemsFromCloud === 'function') syncItemsFromCloud(user.uid, false);
+      } else if (typeof flushPendingCloudChanges === 'function') {
+        flushPendingCloudChanges(false);
+      }
+    }, 800);
   }
 });
 addEventListener('offline', setSync);
@@ -1347,6 +1460,10 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
     return false;
   }
 
+  const committedTsMap = new Map();
+  itemsArr.forEach(it => {
+    if (it && it.id != null) committedTsMap.set(String(it.id), Number(it.updatedAt || 0));
+  });
   const chunks = KirokuEngine.packCollectionChunks(itemsArr);
   const prevCount = Math.max(0, Number(prof.colChunkCount || 0));
   const revVal = Date.now();
@@ -1428,21 +1545,35 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
       lastFullSyncAt: Date.now(),
       schemaMigratedV4: true
     }, uid);
-    try { localStorage.removeItem('colChunksDirty_' + uid); } catch (e) {}
     setExplicitEmptyDeletePending(uid, false);
     if (opts.extraProfPayload) {
       try { localStorage.removeItem('profDirty_' + uid); } catch (e) {}
       _lastSavedProfJson = JSON.stringify({ ...opts.extraProfPayload, lastVisit: 0, colRev: 0, colCount: 0 });
     }
-    profSaveLocal();
-    itemsArr.forEach(it => { if (it && it.dirty) delete it.dirty; });
-    saveLocalItems(itemsArr.length === 0 && explicitEmptyAllowed);
+    let hasStillDirty = false;
+    itemsArr.forEach(it => {
+      if (!it || !it.dirty) return;
+      const committedTs = committedTsMap.get(String(it.id));
+      const canClear = (typeof KirokuEngine !== 'undefined' && KirokuEngine.shouldClearDirtyAfterCommit)
+        ? KirokuEngine.shouldClearDirtyAfterCommit(it.updatedAt, committedTs)
+        : Number(it.updatedAt || 0) === Number(committedTs || 0);
+      if (canClear) delete it.dirty;
+      else hasStillDirty = true;
+    });
+    if (hasStillDirty) {
+      try { localStorage.setItem('colChunksDirty_' + uid, '1'); } catch (e) {}
+    } else {
+      try { localStorage.removeItem('colChunksDirty_' + uid); } catch (e) {}
+    }
+    profSaveLocal(true);
+    flushLocalItemsNow(itemsArr.length === 0 && explicitEmptyAllowed);
     setSync();
     return true;
   } catch (err) {
     const code = String(err?.code || '').toLowerCase();
     if (code.includes('permission-denied')) {
       _chunkStorageDenied = true;
+      try { localStorage.removeItem('colChunksDirty_' + uid); } catch (e) {}
       return false;
     }
     try { localStorage.setItem('colChunksDirty_' + uid, '1'); } catch (e) {}
@@ -1456,7 +1587,7 @@ async function loadCollectionChunksFromCloud(uid, chunkCount) {
   const cnt = Math.max(0, Number(chunkCount || 0));
   if (!uid || cnt === 0) return [];
   const snaps = await Promise.all(
-    Array.from({ length: cnt }, (_, idx) => track(getDoc(doc(db, 'items', `prof_col_${uid}_${idx}`))))
+    Array.from({ length: cnt }, (_, idx) => withCloudTimeout(getDoc(doc(db, 'items', `prof_col_${uid}_${idx}`))))
   );
   const docs = snaps.filter(s => s && s.exists()).map(s => s.data());
   if (!docs.length) return null;
@@ -1466,7 +1597,10 @@ async function loadCollectionChunksFromCloud(uid, chunkCount) {
 function scheduleChunkCloudSync(immediate = false) {
   if (!user || user.isLocal || !isChunkStorageEnabled()) return Promise.resolve(false);
   const uid = user.uid;
-  try { localStorage.setItem('colChunksDirty_' + uid, '1'); } catch (e) {}
+  const hasRealChanges = immediate || items.some(x => x && x.dirty) || getPendingDeletes(uid).length > 0;
+  if (hasRealChanges) {
+    try { localStorage.setItem('colChunksDirty_' + uid, '1'); } catch (e) {}
+  }
 
   // Пока первичная синхронизация облака не завершена (или заблокирована), НЕ перезаписываем colRev/colCount и ждём слияния с облаком!
   if (!isInitialCloudSyncDone(uid) || isInitialCloudSyncBlocked(uid)) {
@@ -1530,7 +1664,7 @@ function scheduleColRevBump() {
 }
 
 const profCloud = (onlyWatchingCheck = false) => {
-  if (!user) return;
+  if (!user) return Promise.resolve(false);
   if (!prof.createdAt) {
     const fbTime = !user.isLocal && user.metadata?.creationTime ? new Date(user.metadata.creationTime).getTime() : 0;
     prof.createdAt = fbTime || Date.now();
@@ -1545,7 +1679,7 @@ const profCloud = (onlyWatchingCheck = false) => {
   const nextWatching = watchingNow ? { id: watchingNow.id, title: watchingNow.title, poster: safeNwPoster, category: watchingNow.category } : null;
 
   if (onlyWatchingCheck) {
-    if (JSON.stringify(prof.nowWatching || null) === JSON.stringify(nextWatching)) return;
+    if (JSON.stringify(prof.nowWatching || null) === JSON.stringify(nextWatching)) return Promise.resolve(true);
   }
 
   prof.nowWatching = nextWatching;
@@ -1555,27 +1689,33 @@ const profCloud = (onlyWatchingCheck = false) => {
   profSaveLocal();
 
   if (!user.isLocal && !onlyWatchingCheck) {
+    const uid = user.uid;
     if (isCloudWriteBlocked()) {
-      try { localStorage.setItem('profDirty_' + user.uid, '1'); } catch (e) {}
+      try { localStorage.setItem('profDirty_' + uid, '1'); } catch (e) {}
       setSync();
-      return;
+      return Promise.resolve(false);
     }
-    const cleanProfPayload = buildCleanProfPayloadForCloud(user.uid, true);
+    const cleanProfPayload = buildCleanProfPayloadForCloud(uid, true);
     const profFingerprint = JSON.stringify({ ...cleanProfPayload, lastVisit: 0, colRev: 0, colCount: 0 });
     if (profFingerprint === _lastSavedProfJson) {
-      try { localStorage.removeItem('profDirty_' + user.uid); } catch (e) {}
-      return;
+      try { localStorage.removeItem('profDirty_' + uid); } catch (e) {}
+      setSync();
+      return Promise.resolve(true);
     }
     _lastSavedProfJson = profFingerprint;
-    track(setDoc(doc(db, 'items', 'prof_' + user.uid), cleanProfPayload, { merge: true })).then(() => {
-      try { localStorage.removeItem('profDirty_' + user.uid); } catch (e) {}
+    return track(setDoc(doc(db, 'items', 'prof_' + uid), cleanProfPayload, { merge: true })).then(() => {
+      try { localStorage.removeItem('profDirty_' + uid); } catch (e) {}
+      profSaveLocal(true);
       setSync();
+      return true;
     }).catch(e => {
       _lastSavedProfJson = '';
-      try { localStorage.setItem('profDirty_' + user.uid, '1'); } catch (e2) {}
+      try { localStorage.setItem('profDirty_' + uid, '1'); } catch (e2) {}
       handleCloudError(e, false);
+      return false;
     });
   }
+  return Promise.resolve(true);
 };
 
 // Очередь и дебаунс сохранения документов в Firestore (устраняет гонки запросов при быстрых кликах подряд)
@@ -1632,22 +1772,26 @@ function legacyCloudSaveSingleItem(it) {
         resolve();
         return;
       }
+      const committedUpdatedAt = Number(latestItem.updatedAt || 0);
       const { payload } = prepareTitleForCloud(latestItem, user.uid);
       const prevChain = _cloudSaveChains.get(docId) || Promise.resolve();
       const nextChain = prevChain
         .catch(() => {})
         .then(() => track(setDoc(doc(db, 'items', docId), payload)))
         .then(() => {
-          if (latestItem.dirty) {
+          const canClear = (typeof KirokuEngine !== 'undefined' && KirokuEngine.shouldClearDirtyAfterCommit)
+            ? KirokuEngine.shouldClearDirtyAfterCommit(latestItem.updatedAt, committedUpdatedAt)
+            : Number(latestItem.updatedAt || 0) === committedUpdatedAt;
+          if (latestItem.dirty && canClear) {
             delete latestItem.dirty;
-            saveLocalItems();
+            flushLocalItemsNow(false);
           }
           scheduleColRevBump();
           setSync();
         })
         .catch(e => {
           latestItem.dirty = true;
-          saveLocalItems();
+          flushLocalItemsNow(false);
           handleCloudError(e, false);
         })
         .finally(() => {
@@ -1813,7 +1957,7 @@ async function migrateOldDocsToKindSchema(manual = false) {
   try {
     const ops = [];
     const uid = user.uid;
-    const ownSnap = await track(getDocs(query(collection(db, 'items'), where('userId', '==', uid))));
+    const ownSnap = await withCloudTimeout(getDocs(query(collection(db, 'items'), where('userId', '==', uid))));
     ownSnap.docs.forEach(d => {
       const raw = d.data();
       if (raw.isProfile || d.id === 'prof_' + uid || d.id === 'prof_rucache_' + uid) {
@@ -1917,6 +2061,10 @@ async function flushPendingCloudChanges(showToast = false) {
       }
     }
 
+    if (dirtyChunks && !isChunkStorageEnabled()) {
+      try { localStorage.removeItem('colChunksDirty_' + uid); } catch (e) {}
+    }
+
     if (pendingDeletes.length) {
       for (let i = 0; i < pendingDeletes.length; i += 350) {
         const chunk = pendingDeletes.slice(i, i + 350);
@@ -1929,23 +2077,35 @@ async function flushPendingCloudChanges(showToast = false) {
     if (dirtyItems.length) {
       for (let i = 0; i < dirtyItems.length; i += 350) {
         const chunk = dirtyItems.slice(i, i + 350);
+        const committedTs = new Map(chunk.map(dIt => [String(dIt.id), Number(dIt.updatedAt || 0)]));
         const b = writeBatch(db);
         chunk.forEach(dIt => {
           const { docId, payload } = prepareTitleForCloud(dIt, uid);
           b.set(doc(db, 'items', docId), payload);
         });
         await track(b.commit());
-        chunk.forEach(dIt => { delete dIt.dirty; });
+        chunk.forEach(dIt => {
+          const ts = committedTs.get(String(dIt.id));
+          const canClear = (typeof KirokuEngine !== 'undefined' && KirokuEngine.shouldClearDirtyAfterCommit)
+            ? KirokuEngine.shouldClearDirtyAfterCommit(dIt.updatedAt, ts)
+            : Number(dIt.updatedAt || 0) === Number(ts || 0);
+          if (canClear) delete dIt.dirty;
+        });
       }
-      saveLocalItems();
+      flushLocalItemsNow(false);
     }
     if (dirtyProf) {
       _lastSavedProfJson = '';
-      profCloud(false);
+      const profOk = await profCloud(false);
+      if (!profOk) {
+        setSync();
+        return false;
+      }
     }
     if (dirtyItems.length || pendingDeletes.length) {
       scheduleColRevBump();
     }
+    try { localStorage.removeItem('colChunksDirty_' + uid); } catch (e) {}
     setSync();
     if (showToast) toast('Отложенные локальные изменения отправлены в облако ✓');
     return true;
@@ -1999,13 +2159,16 @@ async function syncItemsFromCloud(effUid, force = false) {
       }
 
       // 2. Однополевой fallback-запрос (БЕЗ составного индекса kind+userId, подхватывает даже старые записи без kind=="title"!)
+      let snapFromCache = false;
       if (!loadedFromChunks) {
         let docsList = [];
         try {
-          const snapAll = await track(getDocs(query(collection(db, 'items'), where('userId', '==', effUid))));
+          const snapAll = await withCloudTimeout(getDocs(query(collection(db, 'items'), where('userId', '==', effUid))));
+          snapFromCache = Boolean(snapAll?.metadata?.fromCache);
           docsList = snapAll.docs;
         } catch (singleErr) {
-          const snapFallback = await track(getDocs(query(collection(db, 'items'), where('kind', '==', 'title'), where('userId', '==', effUid))));
+          const snapFallback = await withCloudTimeout(getDocs(query(collection(db, 'items'), where('kind', '==', 'title'), where('userId', '==', effUid))));
+          snapFromCache = Boolean(snapFallback?.metadata?.fromCache);
           docsList = snapFallback.docs;
         }
         clearCloudErrorState(effUid);
@@ -2041,6 +2204,27 @@ async function syncItemsFromCloud(effUid, force = false) {
         }
       } else {
         clearCloudErrorState(effUid);
+      }
+
+      // Защита legacy-коллекции на новом устройстве: если профиль не переведён на V2, ответ пришёл пустым из кэша/офлайна — блокируем запись чанков!
+      const blockLegacyEmpty = !loadedFromChunks && (
+        typeof KirokuEngine !== 'undefined' && KirokuEngine.shouldBlockLegacyEmptyInitialSync
+          ? KirokuEngine.shouldBlockLegacyEmptyInitialSync({
+              colStorageV2: Boolean(prof.colStorageV2),
+              loadedCount: ownList.length,
+              fromCache: snapFromCache,
+              isOnline: navigator.onLine
+            })
+          : (!prof.colStorageV2 && ownList.length === 0 && (snapFromCache || !navigator.onLine))
+      );
+      if (blockLegacyEmpty) {
+        markInitialCloudSyncBlocked(effUid);
+        loaded = true;
+        profPaint();
+        refresh();
+        homeTab();
+        setSync();
+        return;
       }
 
       if (ownList.length > 0) {
@@ -2157,13 +2341,22 @@ window.forceCloudSyncNow = async function forceCloudSyncNow(manual = true) {
   // При ручном клике сбрасываем временный кулдаун, чтобы пользователь мог сразу проверить восстановление квоты
   clearCloudErrorState(user.uid);
   try {
-    const pSnap = await track(getDoc(doc(db, 'items', 'prof_' + user.uid)));
+    const pSnap = await withCloudTimeout(getDoc(doc(db, 'items', 'prof_' + user.uid)));
     if (pSnap.exists()) {
       const pd = pSnap.data();
       const { isProfile, kind: _k, userId: _u, _docId, statsSummary, friends: _fr, ...rest } = pd;
-      Object.assign(prof, rest);
+      let hasLocalDirtyProf = false;
+      try { hasLocalDirtyProf = localStorage.getItem('profDirty_' + user.uid) === '1'; } catch (e) {}
+      if (hasLocalDirtyProf) {
+        // Не затираем несохранённые локальные поля профиля — забираем только серверные метаданные синхронизации
+        ['colStorageV2', 'colChunkCount', 'colChunkRev', 'colChunkWriter', 'colRev', 'colCount', 'schemaMigratedV4'].forEach(k => {
+          if (rest[k] !== undefined) prof[k] = rest[k];
+        });
+      } else {
+        Object.assign(prof, rest);
+      }
       _cloudProfLoaded = true;
-      profSaveLocal();
+      profSaveLocal(true);
     }
     // Сначала загружаем и сливаем облако с локальными dirty-правками, и только затем syncItemsFromCloud доотправляет изменения!
     await syncItemsFromCloud(user.uid, true);
@@ -2400,8 +2593,6 @@ async function activateCloudUserSession(uObj) {
     setSync();
     return;
   }
-
-  loadRuCacheFromCloud(effUid);
 
   if (window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine) {
     markInitialCloudSyncBlocked(effUid);
@@ -2651,16 +2842,26 @@ function getCachedItemNormMeta(o) {
 const getItemMarkers = o => getCachedItemNormMeta(o).marker;
 const nset = o => getCachedItemNormMeta(o).all;
 
+const sameCatForId = (a, b) => {
+  if (typeof KirokuEngine !== 'undefined' && KirokuEngine.areCategoriesCompatibleForExternalId) {
+    return KirokuEngine.areCategoriesCompatibleForExternalId(a, b);
+  }
+  if (sameCat(a, b)) return true;
+  return (a === 'Манга' && b === 'Ранобэ') || (a === 'Ранобэ' && b === 'Манга');
+};
+
 // Единая функция поиска повторов для ВСЕХ мест
 const same = (a, b) => {
   if (!a || !b) return false;
   if (a.tmdb && b.tmdb && String(a.tmdb) === String(b.tmdb)) return true;
   if (a.imdbId && b.imdbId && String(a.imdbId) === String(b.imdbId)) return true;
+  if (sameCatForId(a.category, b.category)) {
+    if (Number(a.aniId) > 0 && Number(b.aniId) > 0 && Number(a.aniId) === Number(b.aniId)) return true;
+    if (Number(a.mal) > 0 && Number(b.mal) > 0 && Number(a.mal) === Number(b.mal)) return true;
+    if (Number(a.shikiId) > 0 && Number(b.shikiId) > 0 && Number(a.shikiId) === Number(b.shikiId)) return true;
+    if (a.mdId && b.mdId && String(a.mdId) === String(b.mdId)) return true;
+  }
   if (!sameCat(a.category, b.category)) return false;
-  if (Number(a.aniId) > 0 && Number(b.aniId) > 0 && Number(a.aniId) === Number(b.aniId)) return true;
-  if (Number(a.mal) > 0 && Number(b.mal) > 0 && Number(a.mal) === Number(b.mal)) return true;
-  if (Number(a.shikiId) > 0 && Number(b.shikiId) > 0 && Number(a.shikiId) === Number(b.shikiId)) return true;
-  if (a.mdId && b.mdId && String(a.mdId) === String(b.mdId)) return true;
 
   if (Number(a.aniId) > 0 && Number(b.aniId) > 0 && Number(a.aniId) !== Number(b.aniId)) return false;
   if (Number(a.mal) > 0 && Number(b.mal) > 0 && Number(a.mal) !== Number(b.mal)) return false;
@@ -2669,21 +2870,28 @@ const same = (a, b) => {
   if (a.tmdb && b.tmdb && String(a.tmdb) !== String(b.tmdb)) return false;
   if (a.imdbId && b.imdbId && String(a.imdbId) !== String(b.imdbId)) return false;
 
-  const metaA = getCachedItemNormMeta(a);
-  const metaB = getCachedItemNormMeta(b);
-  if (!metaA.primary.length || !metaB.primary.length) return false;
-  if (!metaA.primary.some(n => metaB.primary.includes(n))) return false;
-
   const fa = String(a.format || '').toUpperCase();
   const fb = String(b.format || '').toUpperCase();
   const isSeriesFmt = f => f === 'TV' || f === 'TV_SHORT' || f === 'ONA';
   if ((fa === 'MOVIE' && isSeriesFmt(fb)) || (fb === 'MOVIE' && isSeriesFmt(fa))) return false;
 
-  if (metaA.marker !== metaB.marker) return false;
-
   const ya = parseInt(a.year) || 0, yb = parseInt(b.year) || 0;
   const maxYearDiff = (a.category === 'Манга' || a.category === 'Ранобэ') ? 2 : 1;
   if (ya && yb && Math.abs(ya - yb) > maxYearDiff) return false;
+
+  const metaA = getCachedItemNormMeta(a);
+  const metaB = getCachedItemNormMeta(b);
+  if (!metaA.all.length || !metaB.all.length) return false;
+
+  const primaryMatch = metaA.primary.length && metaB.primary.length && metaA.primary.some(n => metaB.primary.includes(n));
+  const yearConfirmed = Boolean(ya && yb && Math.abs(ya - yb) <= maxYearDiff);
+  const allMatch = !primaryMatch && yearConfirmed && metaA.all.some(n => metaB.all.includes(n));
+  if (!primaryMatch && !allMatch) return false;
+
+  const markerOk = (typeof KirokuEngine !== 'undefined' && KirokuEngine.areSeasonMarkersCompatible)
+    ? KirokuEngine.areSeasonMarkersCompatible(metaA.marker, metaB.marker)
+    : (metaA.marker === metaB.marker);
+  if (!markerOk) return false;
 
   return true;
 };
@@ -2698,7 +2906,9 @@ function createFastDuplicateIndex(pool = []) {
     if (Number(it.mal) > 0) byMal.set(Number(it.mal), it);
     if (Number(it.shikiId) > 0) byShiki.set(Number(it.shikiId), it);
     if (it.mdId) byMd.set(String(it.mdId), it);
-    for (const nt of getCachedItemNormMeta(it).primary) {
+    const meta = getCachedItemNormMeta(it);
+    const allNames = [...new Set([...(meta.primary || []), ...(meta.all || [])])];
+    for (const nt of allNames) {
       let arr = byTitle.get(nt);
       if (!arr) { arr = []; byTitle.set(nt, arr); }
       arr.push(it);
@@ -2713,22 +2923,24 @@ function createFastDuplicateIndex(pool = []) {
       if (cand.imdbId && byImdb.has(String(cand.imdbId))) return byImdb.get(String(cand.imdbId));
       if (Number(cand.aniId) > 0 && byAni.has(Number(cand.aniId))) {
         const h = byAni.get(Number(cand.aniId));
-        if (sameCat(h.category, cand.category)) return h;
+        if (sameCatForId(h.category, cand.category)) return h;
       }
       if (Number(cand.mal) > 0 && byMal.has(Number(cand.mal))) {
         const h = byMal.get(Number(cand.mal));
-        if (sameCat(h.category, cand.category)) return h;
+        if (sameCatForId(h.category, cand.category)) return h;
       }
       if (Number(cand.shikiId) > 0 && byShiki.has(Number(cand.shikiId))) {
         const h = byShiki.get(Number(cand.shikiId));
-        if (sameCat(h.category, cand.category)) return h;
+        if (sameCatForId(h.category, cand.category)) return h;
       }
       if (cand.mdId && byMd.has(String(cand.mdId))) {
         const h = byMd.get(String(cand.mdId));
-        if (sameCat(h.category, cand.category)) return h;
+        if (sameCatForId(h.category, cand.category)) return h;
       }
       const checked = new Set();
-      for (const nt of getCachedItemNormMeta(cand).primary) {
+      const metaCand = getCachedItemNormMeta(cand);
+      const candNames = [...new Set([...(metaCand.primary || []), ...(metaCand.all || [])])];
+      for (const nt of candNames) {
         const bucket = byTitle.get(nt);
         if (!bucket) continue;
         for (const ex of bucket) {
@@ -3268,9 +3480,6 @@ const setSize = (v, showHint = false) => {
       btn.setAttribute('aria-label', 'Размер карточек: ' + meta.fullLabel);
     }
   });
-  document.querySelectorAll('#themeSizeSw button').forEach(b => {
-    b.classList.toggle('on', Number(b.dataset.size) === numV);
-  });
   try { localStorage.setItem('cw', String(numV)); } catch (e) {}
   if (showHint) toast('Карточки: ' + meta.fullLabel);
 };
@@ -3288,9 +3497,6 @@ $('sizeSel').onchange = e => setSize(e.target.value, false);
       setSize(next, true);
     };
   }
-});
-document.querySelectorAll('#themeSizeSw button').forEach(b => {
-  b.onclick = () => setSize(Number(b.dataset.size) || 190, false);
 });
 
 // ---------- Модальные окна ----------
@@ -3404,12 +3610,16 @@ document.addEventListener('keydown', e => {
 });
 
 const _bindPosterPreviewImg = () => {
-  applyPosterImg($('posterPreview'), posterValue, null);
-  const baseErr = $('posterPreview').onerror;
-  $('posterPreview').onerror = () => {
+  const img = $('posterPreview');
+  if (!img) return;
+  img._onPosterFinalFail = pvDraw;
+  applyPosterImg(img, posterValue, null);
+  const baseErr = img.onerror;
+  img.onerror = () => {
     if (baseErr) baseErr();
     pvDraw();
   };
+  pvDraw();
 };
 function setPoster(v) {
   posterValue = v || ''; const data = posterValue.startsWith('data:');
@@ -3427,7 +3637,7 @@ $('inputPosterFile').onchange = e => {
     c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h);
     setPoster(c.toDataURL('image/jpeg', .75)); URL.revokeObjectURL(url); draftSave();
   };
-  img.onerror = () => toast('Не удалось прочитать картинку.');
+  img.onerror = () => { URL.revokeObjectURL(url); toast('Не удалось прочитать картинку.'); };
   img.src = url; e.target.value = '';
 };
 
@@ -3592,7 +3802,11 @@ async function _mangadexJson(url, ms = 6500) {
       } catch (e) {
         if (e?.status === 429) {
           await ruWait(1000);
-          data = await ruJson(url, ms);
+          try {
+            data = await ruJson(url, ms);
+          } catch (retryErr) {
+            data = await tryProxy();
+          }
         } else {
           _mangadexDirectBlockedUntil = Date.now() + 5 * 60 * 1000;
           data = await tryProxy();
@@ -3667,40 +3881,51 @@ async function shikiGraphQL(query, variables = {}, extSignal = null) {
     if (!endpoints.length) throw new Error('Shikimori GraphQL temporarily unavailable');
 
     let lastErr = null;
-    for (const ep of endpoints) {
-      if (extSignal && extSignal.aborted) throw new Error('Aborted');
-      const ctrl = new AbortController();
-      const onExtAbort = () => ctrl.abort();
-      if (extSignal) extSignal.addEventListener('abort', onExtAbort, { once: true });
-      const timer = setTimeout(() => ctrl.abort(), 3200);
-      try {
-        const resp = await fetch(ep, {
-          method: 'POST',
-          signal: ctrl.signal,
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ query, variables })
-        });
-        if (resp.status === 429) {
-          const err429 = new Error('HTTP 429');
-          err429.status = 429;
-          throw err429;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let hit429 = false;
+      for (const ep of endpoints) {
+        if (extSignal && extSignal.aborted) throw new Error('Aborted');
+        const ctrl = new AbortController();
+        const onExtAbort = () => ctrl.abort();
+        if (extSignal) extSignal.addEventListener('abort', onExtAbort, { once: true });
+        const timer = setTimeout(() => ctrl.abort(), 3200);
+        try {
+          const resp = await fetch(ep, {
+            method: 'POST',
+            signal: ctrl.signal,
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ query, variables })
+          });
+          if (resp.status === 429) {
+            const err429 = new Error('HTTP 429');
+            err429.status = 429;
+            err429.isRateLimit = true;
+            throw err429;
+          }
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const j = await resp.json();
+          if (j.errors && !j.data) throw new Error(j.errors[0]?.message || 'Shikimori GraphQL error');
+          return j.data || {};
+        } catch (e) {
+          lastErr = e;
+          if (extSignal && extSignal.aborted) throw e;
+          if (e?.status === 429 || e?.isRateLimit) {
+            hit429 = true;
+            break;
+          } else {
+            _shikiGqlBlockedHosts.set(ep, Date.now() + 5 * 60 * 1000);
+          }
+        } finally {
+          clearTimeout(timer);
+          if (extSignal) extSignal.removeEventListener('abort', onExtAbort);
         }
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const j = await resp.json();
-        if (j.errors && !j.data) throw new Error(j.errors[0]?.message || 'Shikimori GraphQL error');
-        return j.data || {};
-      } catch (e) {
-        lastErr = e;
-        if (extSignal && extSignal.aborted) throw e;
-        if (e?.status !== 429) {
-          _shikiGqlBlockedHosts.set(ep, Date.now() + 5 * 60 * 1000);
-        } else {
-          break;
-        }
-      } finally {
-        clearTimeout(timer);
-        if (extSignal) extSignal.removeEventListener('abort', onExtAbort);
       }
+      if (hit429 && attempt === 0) {
+        if (extSignal && extSignal.aborted) throw new Error('Aborted');
+        await ruWait(1200);
+        continue;
+      }
+      break;
     }
     throw lastErr || new Error('Shikimori GraphQL error');
   });
@@ -3718,12 +3943,6 @@ function saveRuCacheLocal() {
     const trimmed = Object.fromEntries(entries.slice(-500));
     localStorage.setItem('ruCache', JSON.stringify(trimmed));
   } catch (e) {}
-}
-function scheduleSaveRuCacheToCloud() {
-  saveRuCacheLocal();
-}
-async function loadRuCacheFromCloud() {
-  // Кэш русских названий каталога теперь полностью локальный (0 чтений и 0 записей в Firebase)
 }
 let ruWarned = false, ruBusy = false;
 const ruWarn = () => { if (!ruWarned) { ruWarned = true; toast('Не удалось получить русский текст — оставил как есть.', true); } };
@@ -3940,7 +4159,7 @@ async function ensureCardRuDescription(c) {
       if (tr && hasRu(tr)) {
         RUC[dKey] = tr;
         ruSetDesc(c, tr);
-        scheduleSaveRuCacheToCloud();
+        saveRuCacheLocal();
       }
     } catch (e) {}
   })();
@@ -3973,8 +4192,7 @@ async function ruCards() {
         if (ru) RUC[kind + c._r.mal] = ru;
         ruSet(c, ru);
       });
-      if (addedNew) scheduleSaveRuCacheToCloud();
-      else saveRuCacheLocal();
+      saveRuCacheLocal();
     } catch (e) {}
   }
 }
@@ -4016,9 +4234,6 @@ ACC.forEach(([a], k) => { const b = el('button'); b.type = 'button'; b.style.bac
 
 const GRAD = ['linear-gradient(135deg,#6d28d9,#be185d)', 'linear-gradient(135deg,#ff5d8f,#f59e0b)', 'linear-gradient(135deg,#0f766e,#2dd4bf)', 'linear-gradient(135deg,#111827,#4b5563)', 'linear-gradient(135deg,#7c2d12,#f59e0b)', 'linear-gradient(135deg,#1e3a8a,#a78bfa)'];
 
-function rtApply() {
-  document.body.classList.remove('rt-ext', 'rt-mine', 'rt-none');
-}
 if ($('accThemeModalBtn')) {
   $('accThemeModalBtn').onclick = () => {
     $('accMenu')?.classList.remove('open');
@@ -4029,7 +4244,6 @@ if ($('closeThemeModalBtn')) $('closeThemeModalBtn').onclick = () => hideModalEl
 if ($('doneThemeModalBtn')) $('doneThemeModalBtn').onclick = () => hideModalElement('themeModal');
 
 function profPaint() {
-  rtApply();
   if (prof.theme != null && prof.theme !== (document.documentElement.dataset.theme || '')) setTheme(prof.theme, true);
   if (prof.acc != null && prof.acc !== accIdx()) { try { localStorage.setItem('acc', prof.acc); } catch (e) {} }
   applyAccent();

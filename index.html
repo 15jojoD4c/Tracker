@@ -57,7 +57,6 @@
         <input type="file" id="universalImportFile" accept=".csv,.tsv,.txt,.json,.xml,.html,.htm,.xls" style="display:none" onchange="handleUniversalFileImport(event)">
         <input type="file" id="importFile" accept=".json" onchange="importData(event)">
         <input type="file" id="malXmlFile" accept=".xml,.json" onchange="importMalXml(event)">
-        <input type="file" id="kpFile" accept=".csv,.xls,.html,.htm,.json,.txt" style="display:none" onchange="importKinopoiskFile(event)">
         <select id="sizeSel" title="Размер карточек"><option value="150">Карточки: мелкие</option><option value="190">Карточки: средние</option><option value="240">Карточки: крупные</option></select>
         <button class="btn" id="openModalBtn" type="button" aria-label="Добавить тайтл"><span class="add-btn-plus">+</span><span class="add-btn-lbl"> Добавить</span></button>
         <div class="acc">
@@ -620,12 +619,6 @@
   <div class="row" style="justify-content:space-between"><h2 style="margin:0">🎨 Оформление сайта</h2><button class="btn btn-s" id="closeThemeModalBtn" type="button">✕</button></div>
   <div class="fs">Цвет акцента</div>
   <div class="sw" id="accSw" title="Цвет оформления" style="padding:4px 0"></div>
-  <div class="fs">Размер карточек</div>
-  <div class="th" id="themeSizeSw" style="display:flex;flex-wrap:wrap;gap:6px">
-    <button type="button" data-size="150">Мелкие (3 в ряд)</button>
-    <button type="button" data-size="190">Средние (2 в ряд)</button>
-    <button type="button" data-size="240">Крупные (1 в ряд)</button>
-  </div>
   <div class="fs">Тема оформления</div>
   <div class="th" id="accTh" style="display:flex;flex-wrap:wrap;gap:6px"></div>
   <div class="mb" style="justify-content:space-between;margin-top:12px">

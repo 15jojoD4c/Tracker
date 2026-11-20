@@ -60,7 +60,49 @@ function mapAniListMediaNode(m, type = 'ANIME') {
 }
 
 let _anilistDirectBlockedUntil = 0;
-const isAniListBlockedNow = () => Date.now() < _anilistDirectBlockedUntil;
+let _anilistRateLimitUntil = 0;
+const isAniListBlockedNow = () => Date.now() < Math.max(_anilistDirectBlockedUntil, _anilistRateLimitUntil);
+
+const _anilistQueue = [];
+let _anilistActiveCount = 0;
+let _anilistLastStartAt = 0;
+const ANILIST_MAX_CONCURRENCY = 2;
+const ANILIST_MIN_INTERVAL_MS = 260;
+
+function _drainAnilistQueue() {
+  while (_anilistActiveCount < ANILIST_MAX_CONCURRENCY && _anilistQueue.length) {
+    const now = Date.now();
+    const waitMs = Math.max(0, ANILIST_MIN_INTERVAL_MS - (now - _anilistLastStartAt));
+    if (waitMs > 0) {
+      setTimeout(_drainAnilistQueue, waitMs);
+      return;
+    }
+    const job = _anilistQueue.shift();
+    if (!job) break;
+    if (job.extSignal && job.extSignal.aborted) {
+      const ab = new Error('Aborted');
+      ab.name = 'AbortError';
+      job.reject(ab);
+      continue;
+    }
+    _anilistActiveCount++;
+    _anilistLastStartAt = Date.now();
+    Promise.resolve()
+      .then(job.fn)
+      .then(job.resolve, job.reject)
+      .finally(() => {
+        _anilistActiveCount = Math.max(0, _anilistActiveCount - 1);
+        _drainAnilistQueue();
+      });
+  }
+}
+
+function _enqueueAnilist(fn, extSignal = null) {
+  return new Promise((resolve, reject) => {
+    _anilistQueue.push({ fn, resolve, reject, extSignal });
+    _drainAnilistQueue();
+  });
+}
 
 async function fetchAniListGraphQL(query, variables = {}, timeoutMs = 2600, extSignal = null) {
   if (extSignal && extSignal.aborted) {
@@ -71,44 +113,73 @@ async function fetchAniListGraphQL(query, variables = {}, timeoutMs = 2600, extS
   if (isAniListBlockedNow()) {
     const err = new Error('AniList unavailable (cached)');
     err.isAniListBlocked = true;
+    if (Date.now() < _anilistRateLimitUntil) err.isRateLimit = true;
     throw err;
   }
-  const ctrl = new AbortController();
-  const onExtAbort = () => ctrl.abort();
-  if (extSignal) extSignal.addEventListener('abort', onExtAbort, { once: true });
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  let r;
-  try {
-    r = await fetch('https://graphql.anilist.co', {
-      method: 'POST',
-      signal: ctrl.signal,
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ query, variables })
-    });
-  } catch (netErr) {
-    if (extSignal && extSignal.aborted) {
-      const ab = new Error('Aborted');
-      ab.name = 'AbortError';
-      throw ab;
+
+  return _enqueueAnilist(async () => {
+    const execOnce = async () => {
+      if (extSignal && extSignal.aborted) {
+        const ab = new Error('Aborted');
+        ab.name = 'AbortError';
+        throw ab;
+      }
+      const ctrl = new AbortController();
+      const onExtAbort = () => ctrl.abort();
+      if (extSignal) extSignal.addEventListener('abort', onExtAbort, { once: true });
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      let r;
+      try {
+        r = await fetch('https://graphql.anilist.co', {
+          method: 'POST',
+          signal: ctrl.signal,
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ query, variables })
+        });
+      } catch (netErr) {
+        if (extSignal && extSignal.aborted) {
+          const ab = new Error('Aborted');
+          ab.name = 'AbortError';
+          throw ab;
+        }
+        _anilistDirectBlockedUntil = Date.now() + 10 * 60 * 1000;
+        throw netErr;
+      } finally {
+        clearTimeout(timer);
+        if (extSignal) extSignal.removeEventListener('abort', onExtAbort);
+      }
+      if (r.status === 429) {
+        const err429 = new Error('HTTP 429 Too Many Requests');
+        err429.status = 429;
+        err429.isRateLimit = true;
+        throw err429;
+      }
+      if (!r.ok) {
+        if (r.status >= 500 || r.status === 403) _anilistDirectBlockedUntil = Date.now() + 2 * 60 * 1000;
+        throw new Error('HTTP ' + r.status);
+      }
+      const j = await r.json();
+      if (j.errors) throw new Error(j.errors[0].message);
+      return j;
+    };
+
+    try {
+      return await execOnce();
+    } catch (e) {
+      if (e && e.isRateLimit && !(extSignal && extSignal.aborted)) {
+        await new Promise(res => setTimeout(res, 1200));
+        try {
+          return await execOnce();
+        } catch (retryErr) {
+          if (retryErr && retryErr.isRateLimit) {
+            _anilistRateLimitUntil = Date.now() + 30000;
+          }
+          throw retryErr;
+        }
+      }
+      throw e;
     }
-    _anilistDirectBlockedUntil = Date.now() + 10 * 60 * 1000;
-    throw netErr;
-  } finally {
-    clearTimeout(timer);
-    if (extSignal) extSignal.removeEventListener('abort', onExtAbort);
-  }
-  if (r.status === 429) {
-    const err429 = new Error('HTTP 429 Too Many Requests');
-    err429.isRateLimit = true;
-    throw err429;
-  }
-  if (!r.ok) {
-    if (r.status >= 500 || r.status === 403) _anilistDirectBlockedUntil = Date.now() + 2 * 60 * 1000;
-    throw new Error('HTTP ' + r.status);
-  }
-  const j = await r.json();
-  if (j.errors) throw new Error(j.errors[0].message);
-  return j;
+  }, extSignal);
 }
 
 const SHIKI_ANIME_GENRE_IDS = {
@@ -1766,7 +1837,6 @@ function scheduleCgLoad(delayMs = 320) {
 
 // Состояние кликабельных жанров и тегов: Map(key -> 1 (включить, зелёный) | -1 (исключить, красный))
 const cgTagState = new Map();
-const saveCgTagState = () => {};
 
 const cgPass = r => !(cg.hide && has(r)) && (!cg.ongOnly || r.ongoing) && num(r.ext) >= cg.min;
 
@@ -2256,7 +2326,6 @@ function cgGenres() {
           const next = st === 1 ? -1 : 0;
           if (next === 0) cgTagState.delete(valKey);
           else cgTagState.set(valKey, next);
-          saveCgTagState();
           cgGenres();
           scheduleCgLoad(320);
         };
@@ -2305,7 +2374,6 @@ function cgGenres() {
           const next = cur === 0 ? 1 : cur === 1 ? -1 : 0;
           if (next === 0) cgTagState.delete(valKey);
           else cgTagState.set(valKey, next);
-          saveCgTagState();
           rebuildSelectedStrip();
           renderTabsAndChips();
           updateActiveFiltersCounterUI();
@@ -2953,13 +3021,15 @@ const primaryNamesSet = o => {
 };
 
 function buildCollectionLookupIndex(pool = items) {
-  const byTmdb = new Map(), byImdb = new Map(), byAniId = new Map(), byMal = new Map(), byNormTitle = new Map();
+  const byTmdb = new Map(), byImdb = new Map(), byAniId = new Map(), byMal = new Map(), byShikiId = new Map(), byMdId = new Map(), byNormTitle = new Map();
   (pool || []).forEach(it => {
     if (!it) return;
     if (it.tmdb) byTmdb.set(String(it.tmdb), it);
     if (it.imdbId) byImdb.set(String(it.imdbId), it);
     if (Number(it.aniId) > 0) byAniId.set(Number(it.aniId), it);
     if (Number(it.mal) > 0) byMal.set(Number(it.mal), it);
+    if (Number(it.shikiId) > 0) byShikiId.set(Number(it.shikiId), it);
+    if (it.mdId) byMdId.set(String(it.mdId), it);
     const meta = getCachedItemNormMeta(it);
     const allNames = [...new Set([...(meta.primary || []), ...(meta.all || [])])].filter(x => x && x.length >= 2);
     allNames.forEach(nt => {
@@ -2968,7 +3038,7 @@ function buildCollectionLookupIndex(pool = items) {
       arr.push(it);
     });
   });
-  return { byTmdb, byImdb, byAniId, byMal, byNormTitle };
+  return { byTmdb, byImdb, byAniId, byMal, byShikiId, byMdId, byNormTitle };
 }
 
 function findInCollectionWithIndex(r, idx) {
@@ -2976,15 +3046,24 @@ function findInCollectionWithIndex(r, idx) {
   if (r.id && items.some(x => String(x.id) === String(r.id))) {
     return items.find(x => String(x.id) === String(r.id)) || null;
   }
+  const catIdOk = (a, b) => (typeof sameCatForId === 'function' ? sameCatForId(a, b) : sameCat(a, b));
   if (r.tmdb && idx.byTmdb.has(String(r.tmdb))) return idx.byTmdb.get(String(r.tmdb));
   if (r.imdbId && idx.byImdb.has(String(r.imdbId))) return idx.byImdb.get(String(r.imdbId));
   if (Number(r.aniId) > 0 && idx.byAniId.has(Number(r.aniId))) {
     const hit = idx.byAniId.get(Number(r.aniId));
-    if (sameCat(hit.category, r.category)) return hit;
+    if (catIdOk(hit.category, r.category)) return hit;
   }
   if (Number(r.mal) > 0 && idx.byMal.has(Number(r.mal))) {
     const hit = idx.byMal.get(Number(r.mal));
-    if (sameCat(hit.category, r.category)) return hit;
+    if (catIdOk(hit.category, r.category)) return hit;
+  }
+  if (Number(r.shikiId) > 0 && idx.byShikiId && idx.byShikiId.has(Number(r.shikiId))) {
+    const hit = idx.byShikiId.get(Number(r.shikiId));
+    if (catIdOk(hit.category, r.category)) return hit;
+  }
+  if (r.mdId && idx.byMdId && idx.byMdId.has(String(r.mdId))) {
+    const hit = idx.byMdId.get(String(r.mdId));
+    if (catIdOk(hit.category, r.category)) return hit;
   }
   const metaR = getCachedItemNormMeta(r);
   const namesR = [...new Set([...(metaR.primary || []), ...(metaR.all || [])])].filter(x => x && x.length >= 2);
@@ -3529,7 +3608,6 @@ document.querySelectorAll('#cgCats .tb').forEach(b => b.onclick = () => {
 $('cgAge').onchange = () => {
   if ($('cgAge').value === '' && cgTagState.has('g:Hentai')) {
     cgTagState.delete('g:Hentai');
-    saveCgTagState();
     toast('Фильтр «Хентай (18+)» сброшен при переключении в режим «Без 18+»');
   }
   cg.feedSeedPage = 1;
@@ -3557,7 +3635,7 @@ let cgY;
   };
 });
 $('cgReset').onclick = () => {
-  cgTagState.clear(); saveCgTagState();
+  cgTagState.clear();
   _cgTagSearchQuery = '';
   ['cgYear2', 'cgLen', 'cgCountry', 'cgAge'].forEach(i => { if ($(i)) $(i).value = ''; });
   $('cgSearch').value = ''; cg.q = ''; $('cgYear').value = ''; $('cgKind').value = ''; $('cgMode').value = 'actual';
@@ -3628,7 +3706,6 @@ if ($('cgRec')) {
           if (gPair) cgTagState.set(gPair[0], 1);
         }
       });
-      saveCgTagState();
       cgGenres();
     }
     $('cgMode').value = 'top';
@@ -3678,7 +3755,6 @@ function rndTagChips(r) {
       if (!foundKey) return toast('Для этого тега нет быстрого фильтра в текущей категории');
       closeAll();
       cgTagState.set(foundKey, 1);
-      saveCgTagState();
       cgGenres();
       cgLoad(true);
     };

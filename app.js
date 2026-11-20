@@ -54,6 +54,21 @@ async function batchSaveItems(listToSave, opts = {}) {
     return { synced: false, localSaved: true };
   }
 
+  const committedTsMap = new Map();
+  listToSave.forEach(it => {
+    if (it && it.id != null) committedTsMap.set(String(it.id), Number(it.updatedAt || 0));
+  });
+  const clearDirtyIfUnchanged = arr => {
+    arr.forEach(it => {
+      if (!it || !it.dirty) return;
+      const committedTs = committedTsMap.get(String(it.id));
+      const canClear = (typeof KirokuEngine !== 'undefined' && KirokuEngine.shouldClearDirtyAfterCommit)
+        ? KirokuEngine.shouldClearDirtyAfterCommit(it.updatedAt, committedTs)
+        : Number(it.updatedAt || 0) === Number(committedTs || 0);
+      if (canClear) delete it.dirty;
+    });
+  };
+
   try {
     if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
       // Объединяем listToSave с текущим items (на случай вызова batchSaveItems ДО мутации items ради отката при ошибке)
@@ -62,8 +77,9 @@ async function batchSaveItems(listToSave, opts = {}) {
       const mergedForChunks = [...byIdMap.values()];
       const ok = await saveCollectionChunksToCloud(user.uid, mergedForChunks, { throwOnError: requireCloud });
       if (ok) {
-        listToSave.forEach(it => { delete it.dirty; });
-        saveLocalItems();
+        clearDirtyIfUnchanged(listToSave);
+        if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
+        else saveLocalItems();
         setSync();
         return { synced: true, localSaved: true };
       }
@@ -82,14 +98,16 @@ async function batchSaveItems(listToSave, opts = {}) {
         b.set(doc(db, 'items', docId), payload);
       });
       await track(b.commit());
-      chunk.forEach(it => { delete it.dirty; });
+      clearDirtyIfUnchanged(chunk);
     }
-    saveLocalItems();
+    if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
+    else saveLocalItems();
     if (typeof scheduleColRevBump === 'function') scheduleColRevBump();
     setSync();
     return { synced: true, localSaved: true };
   } catch (err) {
-    saveLocalItems();
+    if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
+    else saveLocalItems();
     if (typeof handleCloudError === 'function') handleCloudError(err, true);
     throw err;
   }
@@ -229,11 +247,6 @@ window.exportData = () => {
   a.href = u; a.download = `Kirokucho_FullBackup_${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(u);
   try { localStorage.setItem('lastBackup', String(Date.now())); } catch (e) {}
 };
-
-let nudged = true;
-function backupNudge() {
-  // Автонапоминание о бэкапе отключено по просьбе пользователя
-}
 
 function getSavedImportMeta() {
   try { return JSON.parse(localStorage.getItem(getUidStorageKey('lastImportMeta')) || 'null'); } catch (e) { return null; }
@@ -463,7 +476,7 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
             }
           });
           try {
-            const cloudOwnSnap = await track(getDocs(query(collection(db, 'items'), where('userId', '==', user.uid))));
+            const cloudOwnSnap = await withCloudTimeout(getDocs(query(collection(db, 'items'), where('userId', '==', user.uid))));
             cloudOwnSnap.docs.forEach(d => {
               const raw = d.data() || {};
               if (d.id.startsWith(`prof_col_${user.uid}_`) || raw.isColChunk) {
@@ -517,7 +530,7 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
             }
           });
           try {
-            const cloudOwnSnap = await track(getDocs(query(collection(db, 'items'), where('userId', '==', user.uid))));
+            const cloudOwnSnap = await withCloudTimeout(getDocs(query(collection(db, 'items'), where('userId', '==', user.uid))));
             cloudOwnSnap.docs.forEach(d => {
               const raw = d.data() || {};
               if (d.id.startsWith(`prof_col_${user.uid}_`) || raw.isColChunk) {
@@ -1239,35 +1252,6 @@ window.handleUniversalFileImport = e => {
   })();
 };
 
-window.importKinopoiskFile = e => {
-  const f = e.target.files[0]; if (!f) return;
-  const readWithEncoding = enc => new Promise((res, rej) => {
-    const fr = new FileReader();
-    fr.onload = () => res(fr.result);
-    fr.onerror = rej;
-    fr.readAsText(f, enc);
-  });
-  (async () => {
-    try {
-      let txt = await readWithEncoding('UTF-8');
-      if ((txt.match(/\uFFFD/g) || []).length > 3) {
-        txt = await readWithEncoding('windows-1251');
-      }
-      const fp = await sha256Hex(txt.slice(0, 50000) + '_' + txt.length);
-      const candidates = parseKinopoiskContent(txt);
-      if (!candidates.length) {
-        toast('Не удалось распознать записи в файле Кинопоиска. Поддерживаются CSV, XLS/HTML таблицы, JSON и текстовые списки.', true);
-        e.target.value = '';
-        return;
-      }
-      await previewAndExecuteImport(candidates, 'Кинопоиск', fp, false, null);
-    } catch (err) {
-      toast('Ошибка чтения файла Кинопоиска: ' + err.message, true);
-    }
-    e.target.value = '';
-  })();
-};
-
 // ---------- КНОПКА «🧹 Найти и объединить повторы» (с откатом при ошибке облака — Этап 1 п.1 и п.3) ----------
 function itemCompletenessScore(it) {
   let s = 0;
@@ -1695,6 +1679,8 @@ async function findCatalogMatchForItem(it) {
       return (exactTitle && yearCompatible) || (yearMatch && overlap >= 0.85);
     };
 
+    const isRateLimitErr = e => Boolean(e && (e.isRateLimit || e.status === 429 || /\b429\b/.test(e.message || '')));
+
     // Шаг 3А: Прямой поиск через Shikimori GraphQL (встроенный фоллбэк на Jikan / MangaDex при ошибке)
     let shCandidates = [];
     try {
@@ -1709,12 +1695,17 @@ async function findCatalogMatchForItem(it) {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      if (isRateLimitErr(e)) throw e;
+    }
 
     // Шаг 3Б: Поиск через AniList GraphQL (если доступен)
     const searchEn = it.titleEn || qStr;
     if (!isAniListBlockedNow()) {
-      const candidates = await anilist(searchEn, mType, { per: 6 }).catch(() => []);
+      const candidates = await anilist(searchEn, mType, { per: 6 }).catch(e => {
+        if (isRateLimitErr(e)) throw e;
+        return [];
+      });
       if (candidates.length) {
         try { await ruFull(candidates[0]); } catch (e) {}
         for (const c of candidates) {
@@ -1730,10 +1721,16 @@ async function findCatalogMatchForItem(it) {
     // Шаг 3В: Дополнительный фоллбэк Jikan v4 (+ MangaDex для манги/ранобэ), если Shikimori/AniList не дали точного совпадения
     const extraTasks = [];
     if (typeof _jikanCatalogRaw === 'function') {
-      extraTasks.push(_jikanCatalogRaw(searchEn, mType, { per: 6, format: it.category === 'Ранобэ' ? 'NOVEL' : undefined }).catch(() => []));
+      extraTasks.push(_jikanCatalogRaw(searchEn, mType, { per: 6, format: it.category === 'Ранобэ' ? 'NOVEL' : undefined }).catch(e => {
+        if (isRateLimitErr(e)) throw e;
+        return [];
+      }));
     }
     if (mType === 'MANGA' && typeof _mangadexCatalogRaw === 'function') {
-      extraTasks.push(_mangadexCatalogRaw(searchEn, { per: 6, format: it.category === 'Ранобэ' ? 'NOVEL' : undefined }).catch(() => []));
+      extraTasks.push(_mangadexCatalogRaw(searchEn, { per: 6, format: it.category === 'Ранобэ' ? 'NOVEL' : undefined }).catch(e => {
+        if (isRateLimitErr(e)) throw e;
+        return [];
+      }));
     }
     if (extraTasks.length) {
       const extraLists = await Promise.all(extraTasks);
@@ -1859,7 +1856,6 @@ function updateCatalogLinkProgressUI(text, showStop = true) {
 
 // Догрузка полных метаданных (описание, жанры, студия, автор, aniId) для совпадений из Shikimori
 // пачками по 35 штук за 1 запрос к AniList (ускорение в 20–30 раз без 429) и фоллбэком на детальный API Shikimori
-const SHIKI_STUDIO_DESC_CACHE = new Map();
 async function enrichItemsByMalIdsBatch(itemsWithMal) {
   const valid = (itemsWithMal || []).filter(i => i && Number(i.mal) > 0 && ['Аниме', 'Манга', 'Ранобэ'].includes(i.category));
   if (!valid.length) return;
@@ -1963,17 +1959,29 @@ async function startCatalogLinkingForList(targetList, manualTrigger = false) {
   let linkedCount = 0;
   let cloudBlockedNotified = false;
   const dirtyBatch = [];
-  const flushDirtyBatch = async () => {
+  const cloudPendingBatch = [];
+  const CLOUD_LINK_BATCH_THRESHOLD = 120;
+
+  const flushLocalDirtyBatch = () => {
     if (!dirtyBatch.length) return;
-    const toSave = dirtyBatch.splice(0, dirtyBatch.length);
-    toSave.forEach(it => { it.dirty = true; });
+    const toLocal = dirtyBatch.splice(0, dirtyBatch.length);
+    toLocal.forEach(it => {
+      it.dirty = true;
+      if (!cloudPendingBatch.includes(it)) cloudPendingBatch.push(it);
+    });
     saveLocalItems();
+  };
+
+  const flushCloudPendingBatch = async () => {
+    flushLocalDirtyBatch();
+    if (!cloudPendingBatch.length) return;
+    const toCloud = cloudPendingBatch.splice(0, cloudPendingBatch.length);
     if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
       setSync();
       return;
     }
     try {
-      await batchSaveItems(toSave);
+      await batchSaveItems(toCloud);
     } catch (e) {
       if (!cloudBlockedNotified && typeof isCloudQuotaBlocked === 'function' && isCloudQuotaBlocked()) {
         cloudBlockedNotified = true;
@@ -1993,7 +2001,10 @@ async function startCatalogLinkingForList(targetList, manualTrigger = false) {
       linkedCount++;
       updateSingleItemCardInDOM(it.id);
     });
-    await flushDirtyBatch();
+    flushLocalDirtyBatch();
+    if (cloudPendingBatch.length >= CLOUD_LINK_BATCH_THRESHOLD) {
+      await flushCloudPendingBatch();
+    }
   }
 
   // Шаг 2: Оставшиеся без ID тайтлы ищем по названию с защитой от 429 и последующим пакетным обогащением
@@ -2029,7 +2040,7 @@ async function startCatalogLinkingForList(targetList, manualTrigger = false) {
           else uncertainMatchesQueue.push({ item: it, candidates: res.candidates.slice(0, 4) });
         }
       } catch (e) {
-        if (e && (e.isRateLimit || /429/.test(e.message || ''))) {
+        if (e && (e.isRateLimit || e.status === 429 || /429/.test(e.message || ''))) {
           hitRateLimit = true;
         }
       }
@@ -2047,8 +2058,11 @@ async function startCatalogLinkingForList(targetList, manualTrigger = false) {
     }
 
     if (dirtyBatch.length >= 25) {
-      await flushDirtyBatch();
+      flushLocalDirtyBatch();
       saveUncertainMatchesCache();
+      if (cloudPendingBatch.length >= CLOUD_LINK_BATCH_THRESHOLD) {
+        await flushCloudPendingBatch();
+      }
     }
     await ruWait(360);
   }
@@ -2059,7 +2073,7 @@ async function startCatalogLinkingForList(targetList, manualTrigger = false) {
     pendingMalEnrich.forEach(it => { if (!dirtyBatch.includes(it)) dirtyBatch.push(it); });
   }
 
-  await flushDirtyBatch();
+  await flushCloudPendingBatch();
   catalogLinkingActive = false;
   try { localStorage.removeItem(getUidStorageKey('catalogLinkPending')); } catch (e) {}
   saveUncertainMatchesCache();
@@ -3492,7 +3506,7 @@ async function wipeAllUserDataFromFirestore(targetUid) {
   const maxChunks = Math.max(Number(prof?.colChunkCount) || 0, 6);
   for (let i = 0; i < maxChunks; i++) docIds.add(`prof_col_${targetUid}_${i}`);
   try {
-    const s = await track(getDocs(query(collection(db, 'items'), where('userId', '==', targetUid))));
+    const s = await withCloudTimeout(getDocs(query(collection(db, 'items'), where('userId', '==', targetUid))));
     s.docs.forEach(d => docIds.add(d.id));
   } catch (e) {}
   const allIds = [...docIds];
@@ -4121,7 +4135,7 @@ async function runCloudDiagnostics() {
   const now = Date.now();
 
   await runStep('1. Загрузка своих документов (userId==uid, без составного индекса)', async () => {
-    const s1 = await track(getDocs(query(collection(db, 'items'), where('userId', '==', uid), limit(5))));
+    const s1 = await withCloudTimeout(getDocs(query(collection(db, 'items'), where('userId', '==', uid), limit(5))));
     return `ОК (прочитано документов: ${s1.docs.length})`;
   });
 
@@ -4142,13 +4156,10 @@ async function runCloudDiagnostics() {
   });
 
   await runStep('3. Запись и чтение документа профиля (prof_' + uid.slice(0, 6) + '…)', async () => {
-    await setDoc(doc(db, 'items', 'prof_' + uid), {
-      kind: 'profile',
-      isProfile: true,
-      userId: uid,
-      lastVisit: Date.now()
-    }, { merge: true });
-    profCloud(false);
+    const cleanProf = buildCleanProfPayloadForCloud(uid, false);
+    cleanProf.lastVisit = Date.now();
+    await withCloudTimeout(setDoc(doc(db, 'items', 'prof_' + uid), cleanProf, { merge: true }));
+    try { localStorage.removeItem('profDirty_' + uid); } catch (e) {}
     return 'ОК (профиль синхронизирован)';
   });
 
@@ -4451,7 +4462,6 @@ function refresh(opts = {}) {
   renderMyListsFolderBlock();
   updateLastImportBatchBarUI();
   if ($('reviewItemsBox')?.style.display !== 'none') renderReviewItemsTab();
-  setTimeout(backupNudge, 4000);
 }
 
 // Синхронизация прокрутки и кнопки закрытия в модальных окнах
@@ -4541,6 +4551,16 @@ window.addEventListener('visibilitychange', () => {
     }
     if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
     if (typeof profSaveLocal === 'function') profSaveLocal(true);
+  }
+});
+
+window.addEventListener('beforeunload', e => {
+  const pendingTotal = (typeof getUnsyncedPendingCounts === 'function') ? getUnsyncedPendingCounts().total : 0;
+  if (pend > 0 || pendingTotal > 0) {
+    if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
+    if (typeof profSaveLocal === 'function') profSaveLocal(true);
+    e.preventDefault();
+    e.returnValue = '';
   }
 });
 

@@ -513,6 +513,69 @@
     });
   }
 
+  // Очищаем item.dirty только если тайтл не был изменён пользователем пока запрос шёл в Firestore
+  function shouldClearDirtyAfterCommit(currentUpdatedAt, committedUpdatedAt) {
+    const cur = Number(currentUpdatedAt || 0);
+    const committed = Number(committedUpdatedAt || 0);
+    return cur === committed;
+  }
+
+  // Защита legacy-коллекции на новом устройстве: если профиль не на V2-чанках, локально/серверно 0 записей,
+  // но ответ пришёл из офлайн-кэша или нет сети — блокируем запись, чтобы 1 новый тайтл не перезатёр старую коллекцию
+  function shouldBlockLegacyEmptyInitialSync(opts) {
+    const {
+      colStorageV2 = false,
+      loadedCount = 0,
+      fromCache = false,
+      isOnline = true
+    } = opts || {};
+    if (colStorageV2) return false;
+    if (Number(loadedCount || 0) > 0) return false;
+    return Boolean(fromCache || !isOnline);
+  }
+
+  // Совместимость категорий при совпадении внешнего ID (aniId/mal/shikiId/mdId): допускаем пару Манга <-> Ранобэ
+  function areCategoriesCompatibleForExternalId(catA, catB) {
+    if (!catA || !catB) return false;
+    if (catA === catB) return true;
+    const kino = ['Фильм', 'Сериал', 'Мультфильм'];
+    if ((catA === 'Мультфильм' || catB === 'Мультфильм') && kino.includes(catA) && kino.includes(catB)) {
+      return true;
+    }
+    const readPair = ['Манга', 'Ранобэ'];
+    if (readPair.includes(catA) && readPair.includes(catB)) {
+      return true;
+    }
+    return false;
+  }
+
+  function _parseSeasonMarker(marker) {
+    const parts = String(marker || '').split('_').filter(Boolean);
+    let season = '';
+    let part = '';
+    let fmt = '';
+    for (const tok of parts) {
+      if (/^s\d+$/.test(tok)) season = tok;
+      else if (/^p\d+$/.test(tok)) part = tok;
+      else fmt = fmt ? (fmt + '_' + tok) : tok;
+    }
+    return { season, part, fmt };
+  }
+
+  // Проверка совместимости маркеров сезона/части/формата:
+  // строго различаем разные сезоны (s2 != '' и s2 != s3), но не отсекаем жёстко пустой marker при отсутствии конфликтующих сезонов
+  function areSeasonMarkersCompatible(markerA, markerB) {
+    const mA = String(markerA || '');
+    const mB = String(markerB || '');
+    if (mA === mB) return true;
+    const a = _parseSeasonMarker(mA);
+    const b = _parseSeasonMarker(mB);
+    if (a.season !== b.season) return false;
+    if (a.part && b.part && a.part !== b.part) return false;
+    if (a.fmt && b.fmt && a.fmt !== b.fmt) return false;
+    return true;
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -534,7 +597,11 @@
     splitChunksIntoBatches,
     splitOperationsIntoBatches,
     pickFresherLocalItems,
-    filterUnpackedItemsByDeletes
+    filterUnpackedItemsByDeletes,
+    shouldClearDirtyAfterCommit,
+    shouldBlockLegacyEmptyInitialSync,
+    areCategoriesCompatibleForExternalId,
+    areSeasonMarkersCompatible
   };
 
   if (typeof module !== 'undefined' && module.exports) {

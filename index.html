@@ -692,18 +692,46 @@
 </div>
 
 <script type="module">
-const importWithTimeout = (url, ms = 4500) => Promise.race([
+const importWithTimeout = (url, ms = 12000) => Promise.race([
   import(url),
   new Promise((_, rej) => setTimeout(() => rej(new Error("Firebase load timeout")), ms))
 ]);
 
-const APP_VER = "20261121";
+const APP_VER = "20261122";
+
+window.retryFirebaseBootstrap = async function retryFirebaseBootstrap(manual = true) {
+  if (!navigator.onLine) {
+    if (manual && typeof window.toast === "function") {
+      window.toast("Нет подключения к сети — работаем на локальном кэше.", true);
+    }
+    return false;
+  }
+  try {
+    if (manual && typeof window.toast === "function") {
+      window.toast("Проверяем подключение к серверу Firebase...");
+    }
+    await importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js", 12000);
+    // Сохраняем все локальные правки перед перезагрузкой для инициализации настоящего SDK
+    try { if (typeof window.flushLocalItemsNow === "function") window.flushLocalItemsNow(false); } catch (e) {}
+    try { if (typeof window.profSaveLocal === "function") window.profSaveLocal(true); } catch (e) {}
+    if (manual && typeof window.toast === "function") {
+      window.toast("Связь с Firebase восстановлена — перезагружаем сессию...");
+    }
+    setTimeout(() => location.reload(), 250);
+    return true;
+  } catch (err) {
+    if (manual && typeof window.toast === "function") {
+      window.toast("Сервер Firebase по-прежнему недоступен. Данные сохранены локально.", true);
+    }
+    return false;
+  }
+};
 
 try {
   const [fbApp, fbAuth, fbDb] = await Promise.all([
-    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"),
-    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js"),
-    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js")
+    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js", 12000),
+    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js", 12000),
+    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js", 12000)
   ]);
   window.__FIREBASE_OFFLINE_FALLBACK = false;
   Object.assign(window, fbApp, fbAuth, fbDb);
@@ -711,6 +739,7 @@ try {
   console.warn("Firebase недоступен или медленный VPN (включён быстрый офлайн-фоллбэк):", e);
   window.__FIREBASE_OFFLINE_FALLBACK = true;
   const noop = () => Promise.resolve();
+  const offlineErr = () => Promise.reject(Object.assign(new Error("Firebase SDK недоступен (офлайн-режим)"), { code: "unavailable" }));
   Object.assign(window, {
     initializeApp: () => ({}),
     getAuth: () => ({ currentUser: null }),
@@ -738,10 +767,12 @@ try {
     signInWithEmailAndPassword: noop, createUserWithEmailAndPassword: noop,
     sendPasswordResetEmail: noop, sendEmailVerification: noop, deleteUser: noop,
     collection: () => ({}), doc: () => ({}), setDoc: noop, deleteDoc: noop,
-    getDoc: () => Promise.resolve({ exists: () => false }),
-    getDocFromCache: () => Promise.resolve({ exists: () => false }),
-    getDocs: () => Promise.resolve({ docs: [] }),
-    getDocsFromCache: () => Promise.resolve({ docs: [] }),
+    getDoc: () => Promise.resolve({ exists: () => false, metadata: { fromCache: true } }),
+    getDocFromCache: () => Promise.resolve({ exists: () => false, metadata: { fromCache: true } }),
+    getDocFromServer: offlineErr,
+    getDocs: () => Promise.resolve({ docs: [], metadata: { fromCache: true } }),
+    getDocsFromCache: () => Promise.resolve({ docs: [], metadata: { fromCache: true } }),
+    getDocsFromServer: offlineErr,
     query: () => ({}), where: () => ({}), orderBy: () => ({}), limit: () => ({}),
     serverTimestamp: () => Date.now(), deleteField: () => undefined,
     onSnapshot: () => () => {},

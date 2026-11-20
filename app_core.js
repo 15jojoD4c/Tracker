@@ -304,7 +304,10 @@ const auth = getAuth(app);
 const db = (() => {
   try {
     if (typeof initializeFirestore === 'function') {
-      const opts = { ignoreUndefinedProperties: true };
+      const opts = {
+        ignoreUndefinedProperties: true,
+        experimentalAutoDetectLongPolling: true
+      };
       if (typeof persistentLocalCache === 'function') {
         try {
           opts.localCache = typeof persistentMultipleTabManager === 'function'
@@ -1029,6 +1032,16 @@ function handleCloudError(err, silent = false) {
     }
     return;
   }
+  const errCode = String(err?.code || '').toLowerCase();
+  if (errCode.includes('deadline-exceeded') && navigator.onLine) {
+    cloudAccessError = 'timeout';
+    syncBad = true;
+    setSync();
+    if (!silent) {
+      toast('Сервер Firebase отвечает слишком долго. Изменения сохранены локально — можно повторить синхронизацию.', true);
+    }
+    return;
+  }
   if (isNetworkError(err) || !navigator.onLine) {
     cloudAccessError = 'unavailable';
     syncBad = true;
@@ -1104,6 +1117,15 @@ function renderCloudStatusBanner() {
       + ' и будут отправлены в облако при восстановлении связи.';
     showRetry = true;
     showDismiss = items.length > 0;
+  } else if (cloudAccessError === 'timeout') {
+    mode = 'is-error';
+    dismissKey = 'timeout';
+    title = '⏱ Сервер Firebase отвечает слишком долго';
+    desc = 'Запрос к облаку превысил время ожидания, но интернет активен. Локальные изменения сохранены в браузере'
+      + (pending.total > 0 ? ` (в очереди: ${pending.total})` : '')
+      + ' — нажми «Повторить» или продолжи работу: следующая успешная операция автоматически снимет предупреждение.';
+    showRetry = true;
+    showDismiss = true;
   } else if (cloudAccessError) {
     mode = 'is-error';
     dismissKey = 'err_' + cloudAccessError;
@@ -1137,11 +1159,20 @@ function renderCloudStatusBanner() {
     const bFlush = el('button', 'btn', '☁ Отправить сейчас');
     bFlush.type = 'button';
     bFlush.onclick = async () => {
-      if (user && !user.isLocal && isInitialCloudSyncDone(user.uid) && !isInitialCloudSyncBlocked(user.uid) && typeof flushPendingCloudChanges === 'function') {
+      const needServerRecovery = !user || user.isLocal
+        || !isInitialCloudSyncDone(user.uid)
+        || isInitialCloudSyncBlocked(user.uid)
+        || cloudAccessError === 'unavailable'
+        || cloudAccessError === 'timeout';
+      if (needServerRecovery) {
+        await window.forceCloudSyncNow(true);
+        return;
+      }
+      if (typeof flushPendingCloudChanges === 'function') {
         const ok = await flushPendingCloudChanges(true);
         if (ok) return;
       }
-      window.forceCloudSyncNow(true);
+      await window.forceCloudSyncNow(true);
     };
     actions.append(bFlush);
   }
@@ -1201,6 +1232,8 @@ const setSync = () => {
       renderSyncLabel('sync err clickable', '⚠', 'Нет сети (локально)', 'Нет подключения к интернету. Изменения сохраняются в браузер');
     } else if (cloudAccessError === 'resource-exhausted' || isCloudQuotaBlocked()) {
       renderSyncLabel('sync warn clickable', '⏳', 'Лимит Firebase (локально)', 'Дневной лимит запросов Spark исчерпан. Изменения сохраняются локально');
+    } else if (cloudAccessError === 'timeout') {
+      renderSyncLabel('sync warn clickable', '⏱', 'Таймаут облака', 'Ответ Firestore задержался. Нажми, чтобы повторить синхронизацию');
     } else if (cloudAccessError) {
       renderSyncLabel('sync err clickable', '⚠', 'Облако: ' + cloudAccessError, 'Проблема доступа к облаку. Нажми для деталей и повтора');
     } else if (pend) {
@@ -1259,10 +1292,25 @@ const track = (p, timeoutMs = CLOUD_OP_TIMEOUT_MS) => {
 };
 addEventListener('online', () => {
   setSync();
+  if (window.__FIREBASE_OFFLINE_FALLBACK) {
+    if (typeof window.retryFirebaseBootstrap === 'function') {
+      setTimeout(() => {
+        if (navigator.onLine && window.__FIREBASE_OFFLINE_FALLBACK) {
+          window.retryFirebaseBootstrap(false);
+        }
+      }, 1000);
+    }
+    return;
+  }
   if (user && !user.isLocal && !isCloudQuotaBlocked() && auth.currentUser) {
     setTimeout(() => {
       if (!user || user.isLocal || isCloudQuotaBlocked() || !auth.currentUser) return;
-      if (!isInitialCloudSyncDone(user.uid) || isInitialCloudSyncBlocked(user.uid)) {
+      if (!unsub && _activeCloudSessionUid === user.uid) {
+        attachCloudProfileListener(user.uid, _cloudSessionToken);
+      }
+      if (typeof window.forceCloudSyncNow === 'function') {
+        window.forceCloudSyncNow(false);
+      } else if (!isInitialCloudSyncDone(user.uid) || isInitialCloudSyncBlocked(user.uid)) {
         if (typeof syncItemsFromCloud === 'function') syncItemsFromCloud(user.uid, false);
       } else if (typeof flushPendingCloudChanges === 'function') {
         flushPendingCloudChanges(false);
@@ -1513,9 +1561,17 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
       }
     }
 
-    // 3. Финальный writeBatch: удаление оставшихся лишних чанков + единая запись метаданных prof_${uid} (и грязных полей профиля, если переданы)
+    // 3. Финальный writeBatch: удаление оставшихся лишних чанков + единая запись метаданных prof_${uid} (и грязных полей профиля, если есть)
+    let autoDirtyProf = false;
+    if (!opts.extraProfPayload) {
+      try { autoDirtyProf = localStorage.getItem('profDirty_' + uid) === '1'; } catch (e) {}
+    }
+    const effectiveExtraProf = (opts.extraProfPayload && typeof opts.extraProfPayload === 'object')
+      ? opts.extraProfPayload
+      : (autoDirtyProf ? buildCleanProfPayloadForCloud(uid, false) : null);
+
     const profMetaUpdate = {
-      ...(opts.extraProfPayload && typeof opts.extraProfPayload === 'object' ? opts.extraProfPayload : {}),
+      ...(effectiveExtraProf || {}),
       kind: 'profile',
       isProfile: true,
       userId: uid,
@@ -1546,9 +1602,9 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
       schemaMigratedV4: true
     }, uid);
     setExplicitEmptyDeletePending(uid, false);
-    if (opts.extraProfPayload) {
+    if (effectiveExtraProf) {
       try { localStorage.removeItem('profDirty_' + uid); } catch (e) {}
-      _lastSavedProfJson = JSON.stringify({ ...opts.extraProfPayload, lastVisit: 0, colRev: 0, colCount: 0 });
+      _lastSavedProfJson = JSON.stringify({ ...effectiveExtraProf, lastVisit: 0, colRev: 0, colCount: 0 });
     }
     let hasStillDirty = false;
     itemsArr.forEach(it => {
@@ -1568,6 +1624,13 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
     profSaveLocal(true);
     flushLocalItemsNow(itemsArr.length === 0 && explicitEmptyAllowed);
     setSync();
+    if (hasStillDirty && !isCloudWriteBlocked()) {
+      setTimeout(() => {
+        if (user && !user.isLocal && user.uid === uid && !isCloudWriteBlocked()) {
+          scheduleChunkCloudSync(false);
+        }
+      }, 400);
+    }
     return true;
   } catch (err) {
     const code = String(err?.code || '').toLowerCase();
@@ -1583,15 +1646,30 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
   }
 }
 
-async function loadCollectionChunksFromCloud(uid, chunkCount) {
+async function loadCollectionChunksFromCloud(uid, chunkCount, forceServer = false) {
   const cnt = Math.max(0, Number(chunkCount || 0));
   if (!uid || cnt === 0) return [];
-  const snaps = await Promise.all(
-    Array.from({ length: cnt }, (_, idx) => withCloudTimeout(getDoc(doc(db, 'items', `prof_col_${uid}_${idx}`))))
-  );
-  const docs = snaps.filter(s => s && s.exists()).map(s => s.data());
-  if (!docs.length) return null;
-  return KirokuEngine.unpackCollectionChunks(docs).map(fix);
+  const canReadServer = Boolean(navigator.onLine && typeof getDocFromServer === 'function');
+  const fetchAll = async useServer => {
+    const reader = (useServer && canReadServer) ? getDocFromServer : getDoc;
+    const snaps = await Promise.all(
+      Array.from({ length: cnt }, (_, idx) => withCloudTimeout(reader(doc(db, 'items', `prof_col_${uid}_${idx}`))))
+    );
+    const docs = snaps.filter(s => s && s.exists()).map(s => s.data());
+    const anyFromCache = snaps.some(s => Boolean(s?.metadata?.fromCache));
+    const check = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.validateLoadedChunks === 'function')
+      ? KirokuEngine.validateLoadedChunks(docs, cnt)
+      : { valid: docs.length === cnt, missingIndices: [] };
+    return { docs, anyFromCache, valid: check.valid };
+  };
+
+  let res = await fetchAll(Boolean(forceServer));
+  if ((!res.valid || (forceServer && res.anyFromCache)) && !forceServer && canReadServer) {
+    // Если кэш/обычный getDoc вернул неполный набор чанков — дочитываем строго с сервера
+    res = await fetchAll(true);
+  }
+  if (!res.valid || !res.docs.length) return null;
+  return KirokuEngine.unpackCollectionChunks(res.docs).map(fix);
 }
 
 function scheduleChunkCloudSync(immediate = false) {
@@ -2141,7 +2219,7 @@ async function syncItemsFromCloud(effUid, force = false) {
           loadedFromChunks = true;
         } else {
           try {
-            const unpacked = await loadCollectionChunksFromCloud(effUid, chunkCnt);
+            const unpacked = await loadCollectionChunksFromCloud(effUid, chunkCnt, Boolean(force));
             if (Array.isArray(unpacked)) {
               // Фильтруем распакованные чанки по pendingDeletes и _recentlyDeletedIds, чтобы удалённые офлайн тайтлы не воскресали!
               const filteredUnpacked = (typeof KirokuEngine !== 'undefined' && KirokuEngine.filterUnpackedItemsByDeletes)
@@ -2161,29 +2239,46 @@ async function syncItemsFromCloud(effUid, force = false) {
       // 2. Однополевой fallback-запрос (БЕЗ составного индекса kind+userId, подхватывает даже старые записи без kind=="title"!)
       let snapFromCache = false;
       if (!loadedFromChunks) {
+        const readDocsFn = (force && navigator.onLine && typeof getDocsFromServer === 'function')
+          ? getDocsFromServer
+          : getDocs;
         let docsList = [];
         try {
-          const snapAll = await withCloudTimeout(getDocs(query(collection(db, 'items'), where('userId', '==', effUid))));
+          const snapAll = await withCloudTimeout(readDocsFn(query(collection(db, 'items'), where('userId', '==', effUid))));
           snapFromCache = Boolean(snapAll?.metadata?.fromCache);
           docsList = snapAll.docs;
         } catch (singleErr) {
-          const snapFallback = await withCloudTimeout(getDocs(query(collection(db, 'items'), where('kind', '==', 'title'), where('userId', '==', effUid))));
+          const snapFallback = await withCloudTimeout(readDocsFn(query(collection(db, 'items'), where('kind', '==', 'title'), where('userId', '==', effUid))));
           snapFromCache = Boolean(snapFallback?.metadata?.fromCache);
           docsList = snapFallback.docs;
         }
-        clearCloudErrorState(effUid);
+        if (!snapFromCache) clearCloudErrorState(effUid);
 
-        // Если в ответе userId==effUid уже есть чанки prof_col_*, распаковываем их напрямую (страховка, если prof.colStorageV2 ещё не загрузился)
+        // Если в ответе userId==effUid уже есть чанки prof_col_*, распаковываем их только если набор чанков полный!
         const discoveredChunks = docsList
           .filter(d => d.id.startsWith(`prof_col_${effUid}_`) || Boolean(d.data()?.isColChunk))
           .map(d => d.data());
         if (discoveredChunks.length > 0 && isChunkStorageEnabled()) {
+          const expectedChunks = Math.max(Number(prof.colChunkCount || 0), ...discoveredChunks.map(c => Number(c?.chunkTotal || 0)), 1);
+          const validDiscovered = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.validateLoadedChunks === 'function')
+            ? KirokuEngine.validateLoadedChunks(discoveredChunks, expectedChunks).valid
+            : discoveredChunks.length >= expectedChunks;
+          if (!validDiscovered) {
+            const err = new Error('Получен неполный набор облачных чанков коллекции');
+            err.code = 'unavailable';
+            throw err;
+          }
           const unpackedFromFallback = KirokuEngine.unpackCollectionChunks(discoveredChunks).map(fix);
           const filteredFromFallback = (typeof KirokuEngine !== 'undefined' && KirokuEngine.filterUnpackedItemsByDeletes)
             ? KirokuEngine.filterUnpackedItemsByDeletes(unpackedFromFallback, pendingDeletesArr, window._recentlyDeletedIds, effUid)
             : unpackedFromFallback;
           ownList = deduplicateListByIdAndCleanupCloud(filteredFromFallback, false);
           loadedFromChunks = true;
+        } else if (prof.colStorageV2 && Number(prof.colChunkCount || 0) > 0 && isChunkStorageEnabled()) {
+          // Профиль ожидает V2-чанки, но они не прочитались полностью — не допускаем обрезку коллекции!
+          const err = new Error('Не удалось загрузить облачные чанки коллекции');
+          err.code = 'unavailable';
+          throw err;
         } else {
           const pendingDelSet = new Set(pendingDeletesArr);
           ownList = deduplicateListByIdAndCleanupCloud(
@@ -2324,24 +2419,40 @@ async function syncItemsFromCloud(effUid, force = false) {
   return _cloudSyncInFlight;
 }
 
+window.flushLocalItemsNow = flushLocalItemsNow;
+window.profSaveLocal = profSaveLocal;
+
 window.forceCloudSyncNow = async function forceCloudSyncNow(manual = true) {
   if (!user || user.isLocal) {
     if (manual) toast('Сейчас включён локальный режим без облака.');
     return;
   }
-  if (!navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK) {
+  if (!navigator.onLine) {
     setSync();
     if (manual) toast('Нет подключения к сети — работаем на локальном кэше.', true);
+    return;
+  }
+  if (window.__FIREBASE_OFFLINE_FALLBACK) {
+    setSync();
+    if (typeof window.retryFirebaseBootstrap === 'function') {
+      await window.retryFirebaseBootstrap(manual);
+    } else if (manual) {
+      toast('Firebase SDK не загрузился при старте — обнови страницу для подключения к облаку.', true);
+    }
     return;
   }
   if (!auth.currentUser) {
     if (manual) toast('Сессия авторизации ещё инициализируется, подожди пару секунд.', true);
     return;
   }
-  // При ручном клике сбрасываем временный кулдаун, чтобы пользователь мог сразу проверить восстановление квоты
+  // При ручном клике сбрасываем временный кулдаун, чтобы пользователь мог сразу проверить восстановление связи/квоты
   clearCloudErrorState(user.uid);
   try {
-    const pSnap = await withCloudTimeout(getDoc(doc(db, 'items', 'prof_' + user.uid)));
+    const readProfFn = (navigator.onLine && typeof getDocFromServer === 'function') ? getDocFromServer : getDoc;
+    const pSnap = await withCloudTimeout(readProfFn(doc(db, 'items', 'prof_' + user.uid)));
+    if (pSnap && !pSnap.metadata?.fromCache) {
+      clearCloudErrorState(user.uid);
+    }
     if (pSnap.exists()) {
       const pd = pSnap.data();
       const { isProfile, kind: _k, userId: _u, _docId, statsSummary, friends: _fr, ...rest } = pd;
@@ -2358,11 +2469,20 @@ window.forceCloudSyncNow = async function forceCloudSyncNow(manual = true) {
       _cloudProfLoaded = true;
       profSaveLocal(true);
     }
-    // Сначала загружаем и сливаем облако с локальными dirty-правками, и только затем syncItemsFromCloud доотправляет изменения!
+    // Сначала загружаем и сливаем облако с локальными dirty-правками, затем гарантируем отправку оставшейся очереди
     await syncItemsFromCloud(user.uid, true);
     if (!unsub && _activeCloudSessionUid === user.uid && !isCloudQuotaBlocked()) {
       attachCloudProfileListener(user.uid, _cloudSessionToken);
     }
+    if (isInitialCloudSyncDone(user.uid) && !isInitialCloudSyncBlocked(user.uid)) {
+      const pendingLeft = getUnsyncedPendingCounts();
+      let dirtyChunksLeft = false;
+      try { dirtyChunksLeft = localStorage.getItem('colChunksDirty_' + user.uid) === '1'; } catch (e) {}
+      if (pendingLeft.total > 0 || dirtyChunksLeft) {
+        await flushPendingCloudChanges(false);
+      }
+    }
+    setSync();
     if (manual && !cloudAccessError) toast('Синхронизация с облаком завершена ✓');
   } catch (err) {
     markInitialCloudSyncBlocked(user.uid);
@@ -2442,9 +2562,9 @@ function attachCloudProfileListener(effUid, sessionToken) {
   unsub = onSnapshot(doc(db, 'items', 'prof_' + effUid),
     async pSnap => {
       if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
-      if (!isCloudQuotaBlocked()) clearCloudErrorState(effUid);
-
       const isFromCache = Boolean(pSnap.metadata && pSnap.metadata.fromCache);
+      if (!isFromCache && !isCloudQuotaBlocked()) clearCloudErrorState(effUid);
+
       const localAvatarBackup = prof.avatar || '';
       const localCoverBackup = prof.cover || '';
       const localCoverColBackup = prof.coverColor || 0;
@@ -2455,7 +2575,18 @@ function attachCloudProfileListener(effUid, sessionToken) {
       if (pSnap.exists()) {
         const pd = pSnap.data();
         const { isProfile, kind: _k, userId: _u, _docId, statsSummary, friends: _fr, ...rest } = pd;
-        Object.assign(prof, rest);
+        let hasLocalDirtyProf = false;
+        try { hasLocalDirtyProf = localStorage.getItem('profDirty_' + effUid) === '1'; } catch (e) {}
+
+        if (hasLocalDirtyProf) {
+          // Сохраняем локальные несохранённые правки профиля (имя, аватар, обложка, тема, акцент, подборки) — обновляем только облачные метаданные
+          ['colStorageV2', 'colChunkCount', 'colChunkRev', 'colChunkWriter', 'colRev', 'colCount', 'schemaMigratedV4'].forEach(k => {
+            if (rest[k] !== undefined) prof[k] = rest[k];
+          });
+        } else {
+          Object.assign(prof, rest);
+        }
+
         if (pd.schemaMigratedV4) {
           try { localStorage.setItem('schemaMigratedV4_' + effUid, '1'); } catch (e) {}
           setCloudSyncMeta({ schemaMigratedV4: true }, effUid);
@@ -2464,13 +2595,17 @@ function attachCloudProfileListener(effUid, sessionToken) {
         remoteColCount = (pd.colCount != null) ? Number(pd.colCount) : null;
 
         let restoredVisuals = false;
-        if (!prof.avatar && localAvatarBackup) { prof.avatar = localAvatarBackup; restoredVisuals = true; }
-        if (!prof.cover && localCoverBackup) { prof.cover = localCoverBackup; restoredVisuals = true; }
-        if (!prof.cover && !prof.coverColor && localCoverColBackup) { prof.coverColor = localCoverColBackup; restoredVisuals = true; }
+        if (!hasLocalDirtyProf) {
+          if (!prof.avatar && localAvatarBackup) { prof.avatar = localAvatarBackup; restoredVisuals = true; }
+          if (!prof.cover && localCoverBackup) { prof.cover = localCoverBackup; restoredVisuals = true; }
+          if (!prof.cover && !prof.coverColor && localCoverColBackup) { prof.coverColor = localCoverColBackup; restoredVisuals = true; }
+        }
         _cloudProfLoaded = true;
-        const safeProfSnapshot = stripUndefinedDeep({ ...prof, kind: 'profile', isProfile: true, userId: effUid });
-        delete safeProfSnapshot.email; delete safeProfSnapshot.ownerEmail; delete safeProfSnapshot.statsSummary; delete safeProfSnapshot.friends;
-        _lastSavedProfJson = JSON.stringify({ ...safeProfSnapshot, lastVisit: 0, colRev: 0, colCount: 0 });
+        if (!hasLocalDirtyProf) {
+          const safeProfSnapshot = stripUndefinedDeep({ ...prof, kind: 'profile', isProfile: true, userId: effUid });
+          delete safeProfSnapshot.email; delete safeProfSnapshot.ownerEmail; delete safeProfSnapshot.statsSummary; delete safeProfSnapshot.friends;
+          _lastSavedProfJson = JSON.stringify({ ...safeProfSnapshot, lastVisit: 0, colRev: 0, colCount: 0 });
+        }
         profSaveLocal();
         if (restoredVisuals && !isCloudWriteBlocked() && !isFromCache) profCloud();
         profPaint();
@@ -2538,6 +2673,8 @@ function attachCloudProfileListener(effUid, sessionToken) {
     },
     async err => {
       if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
+      // Firestore навсегда завершает onSnapshot после ошибки — обязательно сбрасываем unsub, чтобы можно было переподключиться!
+      unsub = null;
       markInitialCloudSyncBlocked(effUid);
       let restored = false;
       // Никогда не затираем локальную коллекцию из IDB пустым sync-ответом из localStorage!
@@ -3026,10 +3163,61 @@ function getAnimeSubKind(item) {
   return (num(item.eps) === 1 && num(item.dur) >= 50) ? 'Фильм' : 'Сериал';
 }
 
+function matchesSelectedCategory(i) {
+  if (!i) return false;
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.matchesCategoryFilter === 'function') {
+    return KirokuEngine.matchesCategoryFilter(i, {
+      cat,
+      kind,
+      animeSubKind,
+      videoSubKind,
+      kinoCategories: KINO,
+      getMangaSubKind,
+      getAnimeSubKind
+    });
+  }
+  const catMatch = cat === 'Всё'
+    ? true
+    : cat === 'Кино и сериалы'
+      ? (KINO.includes(i.category) && (videoSubKind === 'Все' || i.category === videoSubKind))
+      : i.category === cat;
+  const kindMatch = (cat !== 'Манга' || kind === 'Все' || getMangaSubKind(i) === kind)
+    && (cat !== 'Аниме' || animeSubKind === 'Все' || getAnimeSubKind(i) === animeSubKind);
+  return catMatch && kindMatch;
+}
+
 function syncHybridStatusTabsUI() {
   const vis = getVisibleItems().filter(i => !i.archived);
   const curSt = $('statusFilter').value;
-  const reviewCount = items.filter(i => !i.archived && i.needsReview).length;
+
+  const computed = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.computeCategoryStatusCounts === 'function')
+    ? KirokuEngine.computeCategoryStatusCounts(vis, {
+        cat,
+        kind,
+        animeSubKind,
+        videoSubKind,
+        kinoCategories: KINO,
+        getMangaSubKind,
+        getAnimeSubKind
+      })
+    : (() => {
+        const catVis = vis.filter(matchesSelectedCategory);
+        return {
+          counts: {
+            'Все': catVis.length,
+            'Смотрю/Читаю': catVis.filter(i => i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю').length,
+            'В планах': catVis.filter(i => i.status === 'В планах').length,
+            'Просмотрено/Прочитано': catVis.filter(i => i.status === 'Просмотрено/Прочитано').length,
+            'Отложено': catVis.filter(i => i.status === 'Отложено').length,
+            'Брошено': catVis.filter(i => i.status === 'Брошено').length,
+            'Любимое': catVis.filter(i => i.fav).length
+          },
+          reviewCount: catVis.filter(i => i.needsReview).length
+        };
+      })();
+
+  const counts = computed.counts;
+  const reviewCount = items.filter(i => !i.archived && i.needsReview && matchesSelectedCategory(i)).length;
 
   const revBtn = $('reviewTabBtn');
   if (revBtn) {
@@ -3037,15 +3225,6 @@ function syncHybridStatusTabsUI() {
     revBtn.textContent = `📥 Разобрать (${reviewCount})`;
   }
 
-  const counts = {
-    'Все': vis.length,
-    'Смотрю/Читаю': vis.filter(i => i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю').length,
-    'В планах': vis.filter(i => i.status === 'В планах').length,
-    'Просмотрено/Прочитано': vis.filter(i => i.status === 'Просмотрено/Прочитано').length,
-    'Отложено': vis.filter(i => i.status === 'Отложено').length,
-    'Брошено': vis.filter(i => i.status === 'Брошено').length,
-    'Любимое': vis.filter(i => i.fav).length
-  };
   const labels = {
     'Все': 'Все',
     'Смотрю/Читаю': getStatusLabelForCategory('Смотрю/Читаю', cat),
@@ -3202,8 +3381,6 @@ function patchCollectionCardNode(card, i) {
 function itemMatchesCurrentCollectionFilter(i) {
   if (!i) return false;
   const q = $('searchInput').value.toLowerCase().trim(), st = $('statusFilter').value, tg = $('tagFilter').value, lf = $('listFilter').value;
-  const catMatch = cat === 'Всё' ? true : cat === 'Кино и сериалы' ? (KINO.includes(i.category) && (videoSubKind === 'Все' || i.category === videoSubKind)) : i.category === cat;
-  const kindMatch = (cat !== 'Манга' || kind === 'Все' || getMangaSubKind(i) === kind) && (cat !== 'Аниме' || animeSubKind === 'Все' || getAnimeSubKind(i) === animeSubKind);
   const stMatch = st === 'Архив' ? !!i.archived
     : !i.archived && (
       st === 'Все' ? true
@@ -3211,7 +3388,7 @@ function itemMatchesCurrentCollectionFilter(i) {
       : st === 'Смотрю/Читаю' ? (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю')
       : i.status === st
     );
-  return (!q || names(i).includes(q)) && catMatch && kindMatch && (!ongOnly || i.ongoing) && (!xf || xmatch(i)) &&
+  return (!q || names(i).includes(q)) && matchesSelectedCategory(i) && (!ongOnly || i.ongoing) && (!xf || xmatch(i)) &&
     stMatch &&
     (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) &&
     (lf === 'Все' || (i.lists || []).some(t => t.toLowerCase() === lf));
@@ -3301,8 +3478,6 @@ function render(appendMore = false) {
   }
   const q = $('searchInput').value.toLowerCase().trim(), st = $('statusFilter').value, tg = $('tagFilter').value, so = $('sortSelect').value, lf = $('listFilter').value;
   const list = visItems.filter(i => {
-    const catMatch = cat === 'Всё' ? true : cat === 'Кино и сериалы' ? (KINO.includes(i.category) && (videoSubKind === 'Все' || i.category === videoSubKind)) : i.category === cat;
-    const kindMatch = (cat !== 'Манга' || kind === 'Все' || getMangaSubKind(i) === kind) && (cat !== 'Аниме' || animeSubKind === 'Все' || getAnimeSubKind(i) === animeSubKind);
     const stMatch = st === 'Архив' ? !!i.archived
       : !i.archived && (
         st === 'Все' ? true
@@ -3310,7 +3485,7 @@ function render(appendMore = false) {
         : st === 'Смотрю/Читаю' ? (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю')
         : i.status === st
       );
-    return (!q || names(i).includes(q)) && catMatch && kindMatch && (!ongOnly || i.ongoing) && (!xf || xmatch(i)) &&
+    return (!q || names(i).includes(q)) && matchesSelectedCategory(i) && (!ongOnly || i.ongoing) && (!xf || xmatch(i)) &&
       stMatch &&
       (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) &&
       (lf === 'Все' || (i.lists || []).some(t => t.toLowerCase() === lf));

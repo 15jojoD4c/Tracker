@@ -576,6 +576,98 @@
     return true;
   }
 
+  // Единая фильтрация тайтла по выбранной категории и подкатегориям («Моя коллекция» и счётчики статусов)
+  function matchesCategoryFilter(item, opts) {
+    if (!item || typeof item !== 'object') return false;
+    const {
+      cat = 'Всё',
+      kind = 'Все',
+      animeSubKind = 'Все',
+      videoSubKind = 'Все',
+      kinoCategories = ['Фильм', 'Сериал', 'Мультфильм'],
+      getMangaSubKind = null,
+      getAnimeSubKind = null
+    } = opts || {};
+
+    const catMatch = cat === 'Всё'
+      ? true
+      : cat === 'Кино и сериалы'
+        ? (kinoCategories.includes(item.category) && (videoSubKind === 'Все' || item.category === videoSubKind))
+        : item.category === cat;
+
+    if (!catMatch) return false;
+
+    if (cat === 'Манга' && kind !== 'Все') {
+      const mKind = typeof getMangaSubKind === 'function' ? getMangaSubKind(item) : (item.mangaSubKind || 'Манга');
+      if (mKind !== kind) return false;
+    }
+    if (cat === 'Аниме' && animeSubKind !== 'Все') {
+      const aKind = typeof getAnimeSubKind === 'function' ? getAnimeSubKind(item) : (item.animeSubKind || 'Сериал');
+      if (aKind !== animeSubKind) return false;
+    }
+    return true;
+  }
+
+  // Подсчёт статусных вкладок («Все», «Смотрю/Читаю», «В планах», «Просмотрено/Прочитано», «Отложено», «Брошено», «Любимое», «Разобрать»)
+  // строго в рамках выбранной категории/подкатегории
+  function computeCategoryStatusCounts(itemsList, opts) {
+    const list = (Array.isArray(itemsList) ? itemsList : [])
+      .filter(i => i && !i.archived && matchesCategoryFilter(i, opts));
+
+    const counts = {
+      'Все': list.length,
+      'Смотрю/Читаю': 0,
+      'В планах': 0,
+      'Просмотрено/Прочитано': 0,
+      'Отложено': 0,
+      'Брошено': 0,
+      'Любимое': 0
+    };
+    let reviewCount = 0;
+
+    for (const i of list) {
+      if (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю') counts['Смотрю/Читаю']++;
+      else if (i.status === 'В планах') counts['В планах']++;
+      else if (i.status === 'Просмотрено/Прочитано') counts['Просмотрено/Прочитано']++;
+      else if (i.status === 'Отложено') counts['Отложено']++;
+      else if (i.status === 'Брошено') counts['Брошено']++;
+      if (i.fav) counts['Любимое']++;
+      if (i.needsReview) reviewCount++;
+    }
+
+    return { counts, reviewCount, total: list.length };
+  }
+
+  // Проверка целостности загруженных облачных чанков (не допускаем тихую потерю части коллекции при неполном чтении)
+  function validateLoadedChunks(chunkDocs, expectedCount) {
+    const expected = Math.max(0, Number(expectedCount || 0));
+    const list = (Array.isArray(chunkDocs) ? chunkDocs : []).filter(Boolean);
+    if (expected === 0) {
+      return { valid: true, missingIndices: [], expectedCount: 0, loadedCount: list.length };
+    }
+    const present = new Set();
+    let inferredTotal = expected;
+    for (const ch of list) {
+      const idx = Number(ch.chunkIdx);
+      const hasPayload = typeof ch.payloadJson === 'string' || Array.isArray(ch.items);
+      if (Number.isInteger(idx) && idx >= 0 && hasPayload) {
+        present.add(idx);
+      }
+      const chTotal = Number(ch.chunkTotal || 0);
+      if (chTotal > inferredTotal) inferredTotal = chTotal;
+    }
+    const missingIndices = [];
+    for (let idx = 0; idx < inferredTotal; idx++) {
+      if (!present.has(idx)) missingIndices.push(idx);
+    }
+    return {
+      valid: missingIndices.length === 0 && present.size >= inferredTotal,
+      missingIndices,
+      expectedCount: inferredTotal,
+      loadedCount: present.size
+    };
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -601,7 +693,10 @@
     shouldClearDirtyAfterCommit,
     shouldBlockLegacyEmptyInitialSync,
     areCategoriesCompatibleForExternalId,
-    areSeasonMarkersCompatible
+    areSeasonMarkersCompatible,
+    matchesCategoryFilter,
+    computeCategoryStatusCounts,
+    validateLoadedChunks
   };
 
   if (typeof module !== 'undefined' && module.exports) {

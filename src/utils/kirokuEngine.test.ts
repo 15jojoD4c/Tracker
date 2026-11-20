@@ -569,3 +569,130 @@ test('areSeasonMarkersCompatible protects distinct seasons while allowing empty 
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('s2_p2', 's2_p3'), false);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('s2', 's2_p2'), true);
 });
+
+test('computeCategoryStatusCounts filters status tab counts strictly by selected category and subkind', () => {
+  const sample = [
+    { id: 1, title: 'Anime 1', category: 'Аниме', status: 'Смотрю/Читаю', fav: true, format: 'TV' },
+    { id: 2, title: 'Anime 2', category: 'Аниме', status: 'Пересматриваю', format: 'MOVIE' },
+    { id: 3, title: 'Anime 3', category: 'Аниме', status: 'В планах', needsReview: true, format: 'TV' },
+    { id: 4, title: 'Manga 1', category: 'Манга', status: 'Просмотрено/Прочитано', country: 'JP' },
+    { id: 5, title: 'Manhwa 1', category: 'Манга', status: 'Отложено', country: 'KR', fav: true },
+    { id: 6, title: 'Movie 1', category: 'Фильм', status: 'Просмотрено/Прочитано' },
+    { id: 7, title: 'Series 1', category: 'Сериал', status: 'Брошено' },
+    { id: 8, title: 'Archived Movie', category: 'Фильм', status: 'В планах', archived: true }
+  ];
+  const getMangaSubKind = (it: { country?: string }) => (it.country === 'KR' ? 'Манхва' : 'Манга');
+  const getAnimeSubKind = (it: { format?: string }) => (it.format === 'MOVIE' ? 'Фильм' : 'Сериал');
+
+  // Категория «Всё» считает всю неархивную коллекцию (7 записей)
+  const allRes = KirokuEngine.computeCategoryStatusCounts(sample, {
+    cat: 'Всё',
+    getMangaSubKind,
+    getAnimeSubKind
+  });
+  assert.equal(allRes.counts['Все'], 7);
+  assert.equal(allRes.counts['Смотрю/Читаю'], 2);
+  assert.equal(allRes.counts['В планах'], 1);
+  assert.equal(allRes.counts['Просмотрено/Прочитано'], 2);
+  assert.equal(allRes.counts['Отложено'], 1);
+  assert.equal(allRes.counts['Брошено'], 1);
+  assert.equal(allRes.counts['Любимое'], 2);
+  assert.equal(allRes.reviewCount, 1);
+
+  // Категория «Ранобэ» (0 тайтлов) -> все счётчики должны быть 0!
+  const ranobeRes = KirokuEngine.computeCategoryStatusCounts(sample, {
+    cat: 'Ранобэ',
+    getMangaSubKind,
+    getAnimeSubKind
+  });
+  assert.deepEqual(ranobeRes.counts, {
+    'Все': 0,
+    'Смотрю/Читаю': 0,
+    'В планах': 0,
+    'Просмотрено/Прочитано': 0,
+    'Отложено': 0,
+    'Брошено': 0,
+    'Любимое': 0
+  });
+  assert.equal(ranobeRes.reviewCount, 0);
+
+  // Категория «Кино и сериалы» + подтип «Фильм» (1 неархивный фильм)
+  const kinoAll = KirokuEngine.computeCategoryStatusCounts(sample, {
+    cat: 'Кино и сериалы',
+    videoSubKind: 'Все',
+    getMangaSubKind,
+    getAnimeSubKind
+  });
+  assert.equal(kinoAll.counts['Все'], 2);
+  assert.equal(kinoAll.counts['Просмотрено/Прочитано'], 1);
+  assert.equal(kinoAll.counts['Брошено'], 1);
+
+  const kinoMoviesOnly = KirokuEngine.computeCategoryStatusCounts(sample, {
+    cat: 'Кино и сериалы',
+    videoSubKind: 'Фильм',
+    getMangaSubKind,
+    getAnimeSubKind
+  });
+  assert.equal(kinoMoviesOnly.counts['Все'], 1);
+  assert.equal(kinoMoviesOnly.counts['Просмотрено/Прочитано'], 1);
+  assert.equal(kinoMoviesOnly.counts['Брошено'], 0);
+
+  // Подтип Манги: только «Манхва»
+  const manhwaOnly = KirokuEngine.computeCategoryStatusCounts(sample, {
+    cat: 'Манга',
+    kind: 'Манхва',
+    getMangaSubKind,
+    getAnimeSubKind
+  });
+  assert.equal(manhwaOnly.counts['Все'], 1);
+  assert.equal(manhwaOnly.counts['Отложено'], 1);
+  assert.equal(manhwaOnly.counts['Любимое'], 1);
+  assert.equal(manhwaOnly.counts['Просмотрено/Прочитано'], 0);
+
+  // Подтип Аниме: только «Фильм»
+  const animeMovieOnly = KirokuEngine.computeCategoryStatusCounts(sample, {
+    cat: 'Аниме',
+    animeSubKind: 'Фильм',
+    getMangaSubKind,
+    getAnimeSubKind
+  });
+  assert.equal(animeMovieOnly.counts['Все'], 1);
+  assert.equal(animeMovieOnly.counts['Смотрю/Читаю'], 1);
+  assert.equal(animeMovieOnly.reviewCount, 0);
+});
+
+test('validateLoadedChunks detects incomplete or missing cloud chunks so partial reads never truncate collection', () => {
+  const fullChunks = [
+    { chunkIdx: 0, chunkTotal: 3, payloadJson: '[{"id":1}]' },
+    { chunkIdx: 1, chunkTotal: 3, payloadJson: '[{"id":2}]' },
+    { chunkIdx: 2, chunkTotal: 3, payloadJson: '[{"id":3}]' }
+  ];
+  assert.deepEqual(KirokuEngine.validateLoadedChunks(fullChunks, 3), {
+    valid: true,
+    missingIndices: [],
+    expectedCount: 3,
+    loadedCount: 3
+  });
+
+  // Missing chunk #1 -> invalid
+  const missingMiddle = [fullChunks[0], fullChunks[2]];
+  const resMissing = KirokuEngine.validateLoadedChunks(missingMiddle, 3);
+  assert.equal(resMissing.valid, false);
+  assert.deepEqual(resMissing.missingIndices, [1]);
+
+  // Expected 0 chunks -> valid empty
+  assert.equal(KirokuEngine.validateLoadedChunks([], 0).valid, true);
+
+  // Declared chunkTotal higher than expectedCount -> still detects missing tail chunk
+  const resMismatchTotal = KirokuEngine.validateLoadedChunks([fullChunks[0], fullChunks[1]], 2);
+  assert.equal(resMismatchTotal.valid, false);
+  assert.deepEqual(resMismatchTotal.missingIndices, [2]);
+
+  // Corrupted chunk without payloadJson/items -> invalid
+  const corrupted = [
+    { chunkIdx: 0, chunkTotal: 2, payloadJson: '[{"id":1}]' },
+    { chunkIdx: 1, chunkTotal: 2 }
+  ];
+  assert.equal(KirokuEngine.validateLoadedChunks(corrupted, 2).valid, false);
+});
+

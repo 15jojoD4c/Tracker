@@ -44,6 +44,7 @@ async function batchSaveItems(listToSave, opts = {}) {
   }
 
   if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
+    try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
     setSync();
     if (requireCloud) {
       const err = new Error('Облако временно недоступно (' + (cloudAccessError || 'offline') + ')');
@@ -55,7 +56,11 @@ async function batchSaveItems(listToSave, opts = {}) {
 
   try {
     if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
-      const ok = await saveCollectionChunksToCloud(user.uid, items, { throwOnError: requireCloud });
+      // Объединяем listToSave с текущим items (на случай вызова batchSaveItems ДО мутации items ради отката при ошибке)
+      const byIdMap = new Map(items.map(x => [String(x.id), x]));
+      listToSave.forEach(it => { if (it && it.id != null) byIdMap.set(String(it.id), it); });
+      const mergedForChunks = [...byIdMap.values()];
+      const ok = await saveCollectionChunksToCloud(user.uid, mergedForChunks, { throwOnError: requireCloud });
       if (ok) {
         listToSave.forEach(it => { delete it.dirty; });
         saveLocalItems();
@@ -131,15 +136,25 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
   try {
     if (user && !user.isLocal) {
       const allDelIds = [...docIdsToRemove].filter(Boolean);
+      const isNowEmpty = items.length === 0;
+      if (isNowEmpty && typeof setExplicitEmptyDeletePending === 'function') {
+        setExplicitEmptyDeletePending(user.uid, true);
+      }
       if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
         if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
+        try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
         setSync();
       } else if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
         try {
-          const ok = await saveCollectionChunksToCloud(user.uid, items, { silent: true });
-          if (!ok && typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
+          const ok = await saveCollectionChunksToCloud(user.uid, items, { silent: true, explicitEmptyAllowed: isNowEmpty });
+          if (!ok) {
+            if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
+            try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
+            setSync();
+          }
         } catch (e) {
           if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
+          try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e2) {}
           if (typeof handleCloudError === 'function') handleCloudError(e, true);
         }
       } else {
@@ -149,6 +164,9 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
             const b = writeBatch(db);
             chunk.forEach(dId => b.delete(doc(db, 'items', dId)));
             await track(b.commit());
+          }
+          if (isNowEmpty && typeof setExplicitEmptyDeletePending === 'function') {
+            setExplicitEmptyDeletePending(user.uid, false);
           }
           if (typeof scheduleColRevBump === 'function') scheduleColRevBump();
         } catch (e) {
@@ -175,8 +193,9 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
           if (it._docId) window._recentlyDeletedIds.delete(String(it._docId));
           if (!items.some(x => String(x.id) === String(it.id))) items.push(fix(it));
         });
-        if (user && !user.isLocal && typeof removePendingDeletes === 'function') {
-          removePendingDeletes(undoIds, user.uid);
+        if (user && !user.isLocal) {
+          if (typeof removePendingDeletes === 'function') removePendingDeletes(undoIds, user.uid);
+          if (typeof setExplicitEmptyDeletePending === 'function') setExplicitEmptyDeletePending(user.uid, false);
         }
         saveLocalItems();
         refresh();
@@ -396,11 +415,22 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
     return cleaned;
   });
 
-  // Этап 1 п.2 и п.3: Сначала выполняем облачную транзакцию (при replaceAll удаляем ВСЕ старые документы по их реальным docId, включая старые без префикса uid_), и только после успеха обновляем локальный список и кэш!
+  // Готовим итоговый список коллекции заранее, чтобы при активном чанковом хранилище записать его через saveCollectionChunksToCloud
+  const enrichedById = new Map(enrichedExisting.map(c => [String(c.id), c]));
+  const nextCollectionPreview = deduplicateListByIdAndCleanupCloud(
+    replaceAll
+      ? finalAdd
+      : [...items.map(it => enrichedById.has(String(it.id)) ? { ...it, ...enrichedById.get(String(it.id)) } : it), ...finalAdd],
+    false
+  );
+
+  // Этап 1 п.2 и п.3: Единый путь сохранения через чанки (при isChunkStorageEnabled) или legacy-документы, с откатом при ошибке
+  let deferredChunkImport = false;
   if (user && !user.isLocal && auth.currentUser) {
     if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
       const saveAsLocalDirty = [...finalAdd, ...enrichedExisting];
       saveAsLocalDirty.forEach(it => { it.dirty = true; });
+      try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
       if (!replaceAll) {
         if (enrichedExisting.length) applyEnrichedCopiesToMainCollection();
         items = deduplicateListByIdAndCleanupCloud([...items, ...finalAdd], false);
@@ -414,44 +444,108 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
       toast('Массовая замена коллекции недоступна, пока исчерпан лимит Firebase или нет сети.', true);
       return;
     }
+
     try {
-      if (replaceAll) {
-        const oldDocIdsSet = new Set();
-        prevItemsSnapshot.forEach(old => {
-          oldDocIdsSet.add(getCloudDocId(old));
-          if (old._docId) oldDocIdsSet.add(String(old._docId));
-          if (old.id) {
-            oldDocIdsSet.add(String(old.id));
-            oldDocIdsSet.add(user.uid + '_' + String(old.id));
-          }
-        });
-        try {
-          const cloudOwnSnap = await getDocs(query(collection(db, 'items'), where('userId', '==', user.uid)));
-          cloudOwnSnap.docs.forEach(d => {
-            const raw = d.data();
-            if (!raw.isProfile && d.id !== 'prof_' + user.uid && raw.kind !== 'wall' && raw.kind !== 'rec' && raw.kind !== 'friendReq' && raw.kind !== 'dm') {
-              oldDocIdsSet.add(d.id);
+      const useChunkMode = typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled();
+      let chunkSaved = false;
+
+      if (useChunkMode) {
+        let extraOldChunkDocIds = [];
+        if (replaceAll) {
+          const oldLegacyDocIdsSet = new Set();
+          const discoveredChunkDocs = [];
+          prevItemsSnapshot.forEach(old => {
+            oldLegacyDocIdsSet.add(getCloudDocId(old));
+            if (old._docId) oldLegacyDocIdsSet.add(String(old._docId));
+            if (old.id) {
+              oldLegacyDocIdsSet.add(String(old.id));
+              oldLegacyDocIdsSet.add(user.uid + '_' + String(old.id));
             }
           });
-        } catch (e) {}
-        const allOldDocIds = [...oldDocIdsSet];
-        for (let i = 0; i < allOldDocIds.length; i += 350) {
-          const bDel = writeBatch(db);
-          allOldDocIds.slice(i, i + 350).forEach(dId => bDel.delete(doc(db, 'items', dId)));
-          await track(bDel.commit());
+          try {
+            const cloudOwnSnap = await track(getDocs(query(collection(db, 'items'), where('userId', '==', user.uid))));
+            cloudOwnSnap.docs.forEach(d => {
+              const raw = d.data() || {};
+              if (d.id.startsWith(`prof_col_${user.uid}_`) || raw.isColChunk) {
+                discoveredChunkDocs.push(d.id);
+              } else if (!raw.isProfile && d.id !== 'prof_' + user.uid && d.id !== 'prof_rucache_' + user.uid && raw.kind !== 'wall' && raw.kind !== 'rec' && raw.kind !== 'friendReq' && raw.kind !== 'dm') {
+                oldLegacyDocIdsSet.add(d.id);
+              }
+            });
+          } catch (e) {}
+
+          const plannedChunksCount = (typeof KirokuEngine !== 'undefined' && KirokuEngine.packCollectionChunks)
+            ? KirokuEngine.packCollectionChunks(nextCollectionPreview).length
+            : 0;
+          const keepChunkIds = new Set(Array.from({ length: plannedChunksCount }, (_, idx) => `prof_col_${user.uid}_${idx}`));
+          extraOldChunkDocIds = discoveredChunkDocs.filter(dId => !keepChunkIds.has(dId));
+
+          const legacyToDelete = [...oldLegacyDocIdsSet].filter(dId => dId && !dId.startsWith('prof_'));
+          for (let i = 0; i < legacyToDelete.length; i += 350) {
+            const bDel = writeBatch(db);
+            legacyToDelete.slice(i, i + 350).forEach(dId => bDel.delete(doc(db, 'items', dId)));
+            await track(bDel.commit());
+          }
+        }
+
+        const ok = await saveCollectionChunksToCloud(user.uid, nextCollectionPreview, {
+          throwOnError: replaceAll,
+          forceAllowOverwrite: replaceAll,
+          explicitEmptyAllowed: replaceAll && nextCollectionPreview.length === 0,
+          extraOldChunkDocIds
+        });
+        if (ok) {
+          chunkSaved = true;
+        } else if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
+          // Первичная синхронизация ещё не завершена или облако временно заблокировано: сохраняем локально с dirty: true и colChunksDirty
+          deferredChunkImport = true;
+          [...finalAdd, ...enrichedExisting].forEach(it => { it.dirty = true; });
+          try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
+          chunkSaved = true;
         }
       }
 
-      const allCloudWrites = [...finalAdd, ...enrichedExisting];
-      for (let i = 0; i < allCloudWrites.length; i += 350) {
-        const bSet = writeBatch(db);
-        allCloudWrites.slice(i, i + 350).forEach(it => {
-          const { docId, payload } = prepareTitleForCloud(it, user.uid);
-          bSet.set(doc(db, 'items', docId), payload);
-        });
-        await track(bSet.commit());
+      if (!chunkSaved) {
+        if (replaceAll) {
+          const oldDocIdsSet = new Set();
+          prevItemsSnapshot.forEach(old => {
+            oldDocIdsSet.add(getCloudDocId(old));
+            if (old._docId) oldDocIdsSet.add(String(old._docId));
+            if (old.id) {
+              oldDocIdsSet.add(String(old.id));
+              oldDocIdsSet.add(user.uid + '_' + String(old.id));
+            }
+          });
+          try {
+            const cloudOwnSnap = await track(getDocs(query(collection(db, 'items'), where('userId', '==', user.uid))));
+            cloudOwnSnap.docs.forEach(d => {
+              const raw = d.data() || {};
+              if (d.id.startsWith(`prof_col_${user.uid}_`) || raw.isColChunk) {
+                oldDocIdsSet.add(d.id);
+              } else if (!raw.isProfile && d.id !== 'prof_' + user.uid && d.id !== 'prof_rucache_' + user.uid && raw.kind !== 'wall' && raw.kind !== 'rec' && raw.kind !== 'friendReq' && raw.kind !== 'dm') {
+                oldDocIdsSet.add(d.id);
+              }
+            });
+          } catch (e) {}
+          const allOldDocIds = [...oldDocIdsSet];
+          for (let i = 0; i < allOldDocIds.length; i += 350) {
+            const bDel = writeBatch(db);
+            allOldDocIds.slice(i, i + 350).forEach(dId => bDel.delete(doc(db, 'items', dId)));
+            await track(bDel.commit());
+          }
+        }
+
+        const allCloudWrites = [...finalAdd, ...enrichedExisting];
+        for (let i = 0; i < allCloudWrites.length; i += 350) {
+          const bSet = writeBatch(db);
+          allCloudWrites.slice(i, i + 350).forEach(it => {
+            const { docId, payload } = prepareTitleForCloud(it, user.uid);
+            bSet.set(doc(db, 'items', docId), payload);
+          });
+          await track(bSet.commit());
+        }
+        if (typeof scheduleColRevBump === 'function') scheduleColRevBump();
       }
-      if (typeof scheduleColRevBump === 'function') scheduleColRevBump();
     } catch (cloudErr) {
       if (typeof handleCloudError === 'function') handleCloudError(cloudErr, true);
       items = prevItemsSnapshot;
@@ -474,8 +568,8 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
     applyEnrichedCopiesToMainCollection();
   }
   if (replaceAll && !finalAdd.length) { window._explicitEmptyAllowed = true; setTimeout(() => { window._explicitEmptyAllowed = false; }, 1500); }
-  items = deduplicateListByIdAndCleanupCloud(replaceAll ? finalAdd : [...items, ...finalAdd], true);
-  saveLocalItems();
+  items = deduplicateListByIdAndCleanupCloud(replaceAll ? finalAdd : [...items, ...finalAdd], !deferredChunkImport);
+  saveLocalItems(replaceAll && !items.length);
   setSavedImportMeta({ batchId, source: sourceName, count: finalAdd.length, fingerprint: fileFingerprint, ts: Date.now() });
   refresh();
   hideModalElement('dataModal');
@@ -1313,40 +1407,78 @@ async function findAndMergeDuplicatesModal() {
     toUpdate.push(winner);
   });
 
-  // Этап 1 п.3: Сначала записываем изменения и удаления в облако, а при сбое откатываем и сообщаем причину!
+  const delIdSet = new Set(toDelete.map(x => String(x.id)));
+  const winnerById = new Map(toUpdate.map(w => [String(w.id), w]));
+  const nextMergedItems = deduplicateListByIdAndCleanupCloud(
+    items
+      .filter(i => !delIdSet.has(String(i.id)))
+      .map(i => winnerById.get(String(i.id)) || i),
+    false
+  );
+  const removedDocIds = [];
+  toDelete.forEach(it => {
+    const pId = getCloudDocId(it);
+    if (pId) removedDocIds.push(pId);
+    if (it._docId && String(it._docId) !== pId) removedDocIds.push(String(it._docId));
+  });
+
+  // Единое сохранение объединённой коллекции через чанки (или legacy-батчи, если чанки отключены)
   if (user && !user.isLocal && auth.currentUser) {
-    try {
-      const ops = [...toUpdate.map(i => ['s', i]), ...toDelete.map(i => ['d', i])];
-      for (let i = 0; i < ops.length; i += 380) {
-        const b = writeBatch(db);
-        ops.slice(i, i + 380).forEach(([mode, it]) => {
-          if (mode === 'd') {
-            b.delete(doc(db, 'items', getCloudDocId(it)));
-            if (it._docId && it._docId !== getCloudDocId(it)) b.delete(doc(db, 'items', String(it._docId)));
-          } else {
-            const { docId, payload } = prepareTitleForCloud(it, user.uid);
-            b.set(doc(db, 'items', docId), payload);
+    if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
+      toUpdate.forEach(w => { w.dirty = true; });
+      if (typeof addPendingDeletes === 'function') addPendingDeletes(removedDocIds, user.uid);
+      try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
+      setSync();
+    } else {
+      try {
+        let savedViaChunks = false;
+        if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
+          const ok = await saveCollectionChunksToCloud(user.uid, nextMergedItems, { throwOnError: false });
+          if (ok) {
+            savedViaChunks = true;
+          } else if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
+            // Отложено (например, до завершения первичной синхронизации)
+            toUpdate.forEach(w => { w.dirty = true; });
+            if (typeof addPendingDeletes === 'function') addPendingDeletes(removedDocIds, user.uid);
+            try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
+            setSync();
+            savedViaChunks = true;
           }
-        });
-        await track(b.commit());
+        }
+        if (!savedViaChunks) {
+          const ops = [
+            ...toUpdate.map(i => ['s', i]),
+            ...removedDocIds.map(dId => ['d', dId])
+          ];
+          for (let i = 0; i < ops.length; i += 350) {
+            const b = writeBatch(db);
+            ops.slice(i, i + 350).forEach(([mode, val]) => {
+              if (mode === 'd') {
+                b.delete(doc(db, 'items', val));
+              } else {
+                const { docId, payload } = prepareTitleForCloud(val, user.uid);
+                b.set(doc(db, 'items', docId), payload);
+              }
+            });
+            await track(b.commit());
+          }
+          if (typeof scheduleColRevBump === 'function') scheduleColRevBump();
+        }
+      } catch (cloudErr) {
+        if (typeof handleCloudError === 'function') handleCloudError(cloudErr, true);
+        items = snapshotBeforeMerge;
+        saveLocalItems();
+        refresh();
+        toast('Объединение повторов отменено — ошибка облака: ' + (cloudErr.code || cloudErr.message), true);
+        return;
       }
-    } catch (cloudErr) {
-      if (typeof handleCloudError === 'function') handleCloudError(cloudErr, true);
-      items = snapshotBeforeMerge;
-      saveLocalItems();
-      refresh();
-      toast('Объединение повторов отменено — ошибка облака: ' + (cloudErr.code || cloudErr.message), true);
-      return;
     }
   }
 
-  toUpdate.forEach(winner => {
-    const idx = items.findIndex(x => x.id === winner.id);
-    if (idx > -1) items[idx] = winner;
-  });
-  const delSet = new Set(toDelete.map(x => x.id));
-  items = deduplicateListByIdAndCleanupCloud(items.filter(i => !delSet.has(i.id)), false);
-  saveLocalItems();
+  window._userInitiatedDelete = true;
+  items = nextMergedItems;
+  flushLocalItemsNow(false);
+  setTimeout(() => { window._userInitiatedDelete = false; }, 1500);
   refresh();
 
   toast(`Объединено групп: ${groups.length}, удалено лишних дублей: ${toDelete.length}!`, false, {
@@ -3357,10 +3489,10 @@ if ($('openFullPageFromRndBtn')) $('openFullPageFromRndBtn').onclick = () => { i
 async function wipeAllUserDataFromFirestore(targetUid) {
   if (!targetUid || !auth.currentUser) return 0;
   const docIds = new Set(['prof_' + targetUid, 'prof_rucache_' + targetUid]);
-  const maxChunks = Math.max(Number(prof?.colChunks) || 0, 6);
+  const maxChunks = Math.max(Number(prof?.colChunkCount) || 0, 6);
   for (let i = 0; i < maxChunks; i++) docIds.add(`prof_col_${targetUid}_${i}`);
   try {
-    const s = await getDocs(query(collection(db, 'items'), where('userId', '==', targetUid)));
+    const s = await track(getDocs(query(collection(db, 'items'), where('userId', '==', targetUid))));
     s.docs.forEach(d => docIds.add(d.id));
   } catch (e) {}
   const allIds = [...docIds];
@@ -3375,7 +3507,14 @@ async function wipeAllUserDataFromFirestore(targetUid) {
 async function purgeUserLocalCaches(uid) {
   const keys = [
     'items_' + uid,
+    'items_' + uid + '_meta',
     'prof_' + uid,
+    'profDirty_' + uid,
+    'colChunksDirty_' + uid,
+    'explicitEmptyDelete_' + uid,
+    'pendingCloudDeletes_' + uid,
+    'cloudSyncMeta_' + uid,
+    'cloudQuotaUntil_' + uid,
     'safetyBackup_' + uid,
     'lastImportMeta_' + uid,
     'linkAttemptsMap_' + uid,
@@ -3390,7 +3529,11 @@ async function purgeUserLocalCaches(uid) {
   keys.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
   await Promise.allSettled([
     idbVault.del('items_' + uid),
+    idbVault.del('items_' + uid + '_meta'),
     idbVault.del('prof_' + uid),
+    idbVault.del('explicitEmptyDelete_' + uid),
+    idbVault.del('pendingCloudDeletes_' + uid),
+    idbVault.del('cloudSyncMeta_' + uid),
     idbVault.del('safetyBackup_' + uid),
     idbVault.del('uncertainMatchesCache_' + uid)
   ]);
@@ -3977,9 +4120,9 @@ async function runCloudDiagnostics() {
   const uid = user.uid;
   const now = Date.now();
 
-  await runStep('1. Загрузка своей коллекции (kind=="title" && userId==uid)', async () => {
-    const s1 = await getDocs(query(collection(db, 'items'), where('kind', '==', 'title'), where('userId', '==', uid), limit(5)));
-    return `ОК (прочитано тайтлов: ${s1.docs.length})`;
+  await runStep('1. Загрузка своих документов (userId==uid, без составного индекса)', async () => {
+    const s1 = await track(getDocs(query(collection(db, 'items'), where('userId', '==', uid), limit(5))));
+    return `ОК (прочитано документов: ${s1.docs.length})`;
   });
 
   await runStep('2. Запись и удаление тестового тайтла', async () => {
@@ -4371,19 +4514,29 @@ window.addEventListener('visibilitychange', () => {
       _cloudSaveTimers.clear();
 
       if (pendingFlush.length && user && !user.isLocal && !(typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked())) {
-        const b = writeBatch(db);
-        pendingFlush.forEach(it => {
-          const { docId, payload } = prepareTitleForCloud(it, user.uid);
-          b.set(doc(db, 'items', docId), payload);
-        });
-        b.commit()
-          .then(() => {
-            pendingFlush.forEach(it => { delete it.dirty; });
+        const flushBatches = (typeof KirokuEngine !== 'undefined' && KirokuEngine.splitOperationsIntoBatches)
+          ? KirokuEngine.splitOperationsIntoBatches(pendingFlush, 350)
+          : (() => {
+              const res = [];
+              for (let i = 0; i < pendingFlush.length; i += 350) res.push(pendingFlush.slice(i, i + 350));
+              return res;
+            })();
+        (async () => {
+          try {
+            for (const slice of flushBatches) {
+              const b = writeBatch(db);
+              slice.forEach(it => {
+                const { docId, payload } = prepareTitleForCloud(it, user.uid);
+                b.set(doc(db, 'items', docId), payload);
+              });
+              await track(b.commit());
+              slice.forEach(it => { delete it.dirty; });
+            }
             if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
-          })
-          .catch(err => {
+          } catch (err) {
             if (typeof handleCloudError === 'function') handleCloudError(err, true);
-          });
+          }
+        })();
       }
     }
     if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);

@@ -373,6 +373,146 @@
     };
   }
 
+  // Защита облачных чанков от перезаписи до завершения первичной синхронизации или при ошибке/блокировке загрузки
+  function canWriteCollectionChunksToCloud(opts) {
+    const {
+      initialCloudSyncDone = false,
+      initialCloudSyncBlocked = false,
+      localCount = 0,
+      knownCloudCount = null,
+      explicitEmptyAllowed = false,
+      forceAllowOverwrite = false
+    } = opts || {};
+
+    if (forceAllowOverwrite) {
+      return { allowed: true, reason: 'force_overwrite' };
+    }
+    if (!initialCloudSyncDone) {
+      return { allowed: false, reason: 'initial_sync_pending' };
+    }
+    if (initialCloudSyncBlocked) {
+      return { allowed: false, reason: 'initial_sync_blocked' };
+    }
+    const cnt = Math.max(0, Number(localCount) || 0);
+    const cloudCnt = knownCloudCount === null || knownCloudCount === undefined ? null : Number(knownCloudCount);
+    if (cnt === 0 && !explicitEmptyAllowed && (cloudCnt === null || cloudCnt > 0)) {
+      return { allowed: false, reason: 'empty_overwrite_blocked' };
+    }
+    return { allowed: true, reason: 'ok' };
+  }
+
+  // Разбиение чанков на несколько writeBatch-пакетов с безопасным запасом ниже 10 МиБ лимита Firestore
+  function splitChunksIntoBatches(chunks, maxChunksPerBatch = 8, maxBytesPerBatch = 5500000) {
+    const list = Array.isArray(chunks) ? chunks.filter(Boolean) : [];
+    if (!list.length) return [];
+    const maxCnt = Math.max(1, Number(maxChunksPerBatch) || 8);
+    const maxBytes = Math.max(1000, Number(maxBytesPerBatch) || 5500000);
+
+    const batches = [];
+    let current = [];
+    let currentBytes = 0;
+
+    for (const ch of list) {
+      const chBytes = utf8ByteLength(ch.payloadJson || '') + 512;
+      if (current.length > 0 && (current.length >= maxCnt || currentBytes + chBytes > maxBytes)) {
+        batches.push(current);
+        current = [ch];
+        currentBytes = chBytes;
+      } else {
+        current.push(ch);
+        currentBytes += chBytes;
+      }
+    }
+    if (current.length > 0) {
+      batches.push(current);
+    }
+    return batches;
+  }
+
+  // Разбиение произвольного списка операций на безопасные пакеты (<= 350 операций на writeBatch)
+  function splitOperationsIntoBatches(ops, maxOpsPerBatch = 350) {
+    const list = Array.isArray(ops) ? ops : [];
+    if (!list.length) return [];
+    const size = Math.max(1, Number(maxOpsPerBatch) || 350);
+    const out = [];
+    for (let i = 0; i < list.length; i += size) {
+      out.push(list.slice(i, i + size));
+    }
+    return out;
+  }
+
+  // Выбор самой свежей локальной копии (IndexedDB vs localStorage) по timestamp обновления, а не по длине массива
+  function pickFresherLocalItems(opts) {
+    const {
+      idbItems = null,
+      idbUpdatedAt = 0,
+      lsItems = null,
+      lsUpdatedAt = 0,
+      lsMetaCount = null
+    } = opts || {};
+
+    const hasIdb = Array.isArray(idbItems);
+    const hasLs = Array.isArray(lsItems);
+
+    if (!hasIdb && !hasLs) return { items: [], source: 'empty', updatedAt: 0 };
+    if (hasIdb && !hasLs) return { items: idbItems, source: 'idb', updatedAt: Number(idbUpdatedAt) || 0 };
+    if (!hasIdb && hasLs) return { items: lsItems, source: 'ls', updatedAt: Number(lsUpdatedAt) || 0 };
+
+    const idbTs = Math.max(0, Number(idbUpdatedAt) || 0);
+    const lsTs = Math.max(0, Number(lsUpdatedAt) || 0);
+    const expectedLsCnt = (lsMetaCount === null || lsMetaCount === undefined) ? null : Number(lsMetaCount);
+
+    // Если данные localStorage повреждены/очищены, а метаданные ожидали >0 записей — доверяем IndexedDB
+    if (lsItems.length === 0 && expectedLsCnt !== null && expectedLsCnt > 0 && idbItems.length > 0) {
+      return { items: idbItems, source: 'idb', updatedAt: idbTs };
+    }
+
+    if (lsTs > idbTs) {
+      // При первом апгрейде со старой версии (idbTs === 0) для огромной коллекции >1500 записей
+      // с одинаковой длиной предпочитаем полную копию из IndexedDB (в LS описания обрезаются)
+      if (idbTs === 0 && idbItems.length > 1500 && idbItems.length === lsItems.length) {
+        return { items: idbItems, source: 'idb', updatedAt: lsTs };
+      }
+      return { items: lsItems, source: 'ls', updatedAt: lsTs };
+    }
+
+    if (idbTs > lsTs) {
+      return { items: idbItems, source: 'idb', updatedAt: idbTs };
+    }
+
+    // Одинаковые timestamps (или оба 0 — миграция со старых данных без метаданных)
+    if (idbTs > 0) {
+      return { items: idbItems, source: 'idb', updatedAt: idbTs };
+    }
+    if (idbItems.length >= lsItems.length) {
+      return { items: idbItems, source: 'idb', updatedAt: 0 };
+    }
+    return { items: lsItems, source: 'ls', updatedAt: 0 };
+  }
+
+  // Фильтрация распакованных из облачных чанков тайтлов по pendingDeletes и recentlyDeletedIds
+  function filterUnpackedItemsByDeletes(itemsList, pendingDeleteIds, recentlyDeletedIds, uid) {
+    const list = Array.isArray(itemsList) ? itemsList : [];
+    const pendingSet = new Set(Array.isArray(pendingDeleteIds) ? pendingDeleteIds.map(String) : [...(pendingDeleteIds || [])].map(String));
+    const recentSet = new Set(Array.isArray(recentlyDeletedIds) ? recentlyDeletedIds.map(String) : [...(recentlyDeletedIds || [])].map(String));
+    if (!pendingSet.size && !recentSet.size) return list.slice();
+
+    const prefix = uid ? String(uid) + '_' : '';
+    return list.filter(it => {
+      if (!it || it.id === undefined || it.id === null) return false;
+      const idStr = String(it.id);
+      const docIdStr = it._docId ? String(it._docId) : '';
+      const prefixedId = prefix ? prefix + idStr : '';
+      if (pendingSet.has(idStr) || (docIdStr && pendingSet.has(docIdStr)) || (prefixedId && pendingSet.has(prefixedId))) {
+        return false;
+      }
+      if (recentSet.has(idStr) || (docIdStr && recentSet.has(docIdStr)) || (prefixedId && recentSet.has(prefixedId))) {
+        return false;
+      }
+      return true;
+    });
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -389,7 +529,12 @@
     getGridSizeMobileMeta,
     isManualTitleItem,
     resolveBestTitleDescription,
-    filterAndListCollections
+    filterAndListCollections,
+    canWriteCollectionChunksToCloud,
+    splitChunksIntoBatches,
+    splitOperationsIntoBatches,
+    pickFresherLocalItems,
+    filterUnpackedItemsByDeletes
   };
 
   if (typeof module !== 'undefined' && module.exports) {

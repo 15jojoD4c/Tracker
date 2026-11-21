@@ -291,39 +291,40 @@ function safeCssBgUrl(u) {
   return `url("${clean.replace(/["\\()\r\n]/g, '')}")`;
 }
 
-const _fbCfg = (typeof window !== 'undefined' && window.__FIREBASE_CONFIG__ && typeof window.__FIREBASE_CONFIG__ === 'object')
-  ? window.__FIREBASE_CONFIG__
-  : {};
-const app = initializeApp({
-  apiKey: _fbCfg.apiKey || "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
-  authDomain: _fbCfg.authDomain || "mymediatracker-6e179.firebaseapp.com",
-  projectId: _fbCfg.projectId || "mymediatracker-6e179",
-  storageBucket: _fbCfg.storageBucket || "mymediatracker-6e179.firebasestorage.app",
-  messagingSenderId: _fbCfg.messagingSenderId || "642718397694",
-  appId: _fbCfg.appId || "1:642718397694:web:7a4e175ed593cc364961af",
-  measurementId: _fbCfg.measurementId || "G-NKNYFSP981"
-});
+const firebaseConfig = {
+  apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
+  authDomain: "mymediatracker-6e179.firebaseapp.com",
+  projectId: "mymediatracker-6e179",
+  storageBucket: "mymediatracker-6e179.firebasestorage.app",
+  messagingSenderId: "642718397694",
+  appId: "1:642718397694:web:7a4e175ed593cc364961af",
+  measurementId: "G-NKNYFSP981"
+};
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = (() => {
   try {
     if (typeof initializeFirestore === 'function') {
       const opts = {
         ignoreUndefinedProperties: true,
-        experimentalAutoDetectLongPolling: true
+        experimentalForceLongPolling: true,
+        useFetchStreams: false
       };
-      if (typeof persistentLocalCache === 'function') {
-        try {
-          opts.localCache = typeof persistentMultipleTabManager === 'function'
-            ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-            : persistentLocalCache();
-        } catch (cacheErr) {
-          try { opts.localCache = persistentLocalCache(); } catch (e2) {}
-        }
+      if (typeof memoryLocalCache === 'function') {
+        opts.localCache = memoryLocalCache();
       }
       return initializeFirestore(app, opts);
     }
   } catch (fsErr) {
-    console.warn('Firestore persistent cache init fallback:', fsErr);
+    console.warn('Firestore long-polling init fallback:', fsErr);
+    try {
+      if (typeof initializeFirestore === 'function') {
+        return initializeFirestore(app, {
+          ignoreUndefinedProperties: true,
+          experimentalForceLongPolling: true
+        });
+      }
+    } catch (fsErr2) {}
   }
   return getFirestore(app);
 })();
@@ -1285,6 +1286,34 @@ const withCloudTimeout = (p, timeoutMs = CLOUD_OP_TIMEOUT_MS) => {
   });
 };
 
+function isColdUnavailableErr(err) {
+  const c = String(err?.code || '').toLowerCase();
+  const m = String(err?.message || '').toLowerCase();
+  return c.includes('unavailable') || c.includes('failed-precondition') || /offline|failed to get document/i.test(m);
+}
+
+async function readDocResilient(docRef, forceServer = false, timeoutMs = CLOUD_OP_TIMEOUT_MS) {
+  if (forceServer && navigator.onLine && typeof getDocFromServer === 'function') {
+    try {
+      return await withCloudTimeout(getDocFromServer(docRef), timeoutMs);
+    } catch (srvErr) {
+      if (!isColdUnavailableErr(srvErr)) throw srvErr;
+    }
+  }
+  return await withCloudTimeout(getDoc(docRef), timeoutMs);
+}
+
+async function readDocsResilient(qRef, forceServer = false, timeoutMs = CLOUD_OP_TIMEOUT_MS) {
+  if (forceServer && navigator.onLine && typeof getDocsFromServer === 'function') {
+    try {
+      return await withCloudTimeout(getDocsFromServer(qRef), timeoutMs);
+    } catch (srvErr) {
+      if (!isColdUnavailableErr(srvErr)) throw srvErr;
+    }
+  }
+  return await withCloudTimeout(getDocs(qRef), timeoutMs);
+}
+
 const track = (p, timeoutMs = CLOUD_OP_TIMEOUT_MS) => {
   pend++;
   setSync();
@@ -1669,11 +1698,9 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
 async function loadCollectionChunksFromCloud(uid, chunkCount, forceServer = false) {
   const cnt = Math.max(0, Number(chunkCount || 0));
   if (!uid || cnt === 0) return [];
-  const canReadServer = Boolean(navigator.onLine && typeof getDocFromServer === 'function');
   const fetchAll = async useServer => {
-    const reader = (useServer && canReadServer) ? getDocFromServer : getDoc;
     const snaps = await Promise.all(
-      Array.from({ length: cnt }, (_, idx) => withCloudTimeout(reader(doc(db, 'items', `prof_col_${uid}_${idx}`))))
+      Array.from({ length: cnt }, (_, idx) => readDocResilient(doc(db, 'items', `prof_col_${uid}_${idx}`), useServer, CLOUD_OP_TIMEOUT_MS))
     );
     const docs = snaps.filter(s => s && s.exists()).map(s => s.data());
     const anyFromCache = snaps.some(s => Boolean(s?.metadata?.fromCache));
@@ -1684,7 +1711,7 @@ async function loadCollectionChunksFromCloud(uid, chunkCount, forceServer = fals
   };
 
   let res = await fetchAll(Boolean(forceServer));
-  if ((!res.valid || (forceServer && res.anyFromCache)) && !forceServer && canReadServer) {
+  if ((!res.valid || (forceServer && res.anyFromCache)) && !forceServer && navigator.onLine) {
     // Если кэш/обычный getDoc вернул неполный набор чанков — дочитываем строго с сервера
     res = await fetchAll(true);
   }
@@ -2268,7 +2295,8 @@ async function syncItemsFromCloud(effUid, force = false) {
           } catch (chunkErr) {
             const code = String(chunkErr?.code || '').toLowerCase();
             if (code.includes('permission-denied')) _chunkStorageDenied = true;
-            else throw chunkErr;
+            else if (isQuotaError(chunkErr)) throw chunkErr;
+            // При временной ошибке чтения чанка пробуем fallback-запрос по userId ниже вместо мгновенного падения
           }
         }
       }
@@ -2276,15 +2304,14 @@ async function syncItemsFromCloud(effUid, force = false) {
       // 2. Однополевой fallback-запрос (БЕЗ составного индекса kind+userId, подхватывает даже старые записи без kind=="title"!)
       let snapFromCache = false;
       if (!loadedFromChunks) {
-        const mustReadServer = Boolean((force || checkingLegacyAfterEmptyV2) && navigator.onLine && typeof getDocsFromServer === 'function');
-        const readDocsFn = mustReadServer ? getDocsFromServer : getDocs;
+        const mustReadServer = Boolean((force || checkingLegacyAfterEmptyV2) && navigator.onLine);
         let docsList = [];
         try {
-          const snapAll = await withCloudTimeout(readDocsFn(query(collection(db, 'items'), where('userId', '==', effUid))));
+          const snapAll = await readDocsResilient(query(collection(db, 'items'), where('userId', '==', effUid)), mustReadServer, CLOUD_OP_TIMEOUT_MS);
           snapFromCache = Boolean(snapAll?.metadata?.fromCache);
           docsList = snapAll.docs;
         } catch (singleErr) {
-          const snapFallback = await withCloudTimeout(readDocsFn(query(collection(db, 'items'), where('kind', '==', 'title'), where('userId', '==', effUid))));
+          const snapFallback = await readDocsResilient(query(collection(db, 'items'), where('kind', '==', 'title'), where('userId', '==', effUid)), mustReadServer, CLOUD_OP_TIMEOUT_MS);
           snapFromCache = Boolean(snapFallback?.metadata?.fromCache);
           docsList = snapFallback.docs;
         }
@@ -2501,8 +2528,7 @@ window.forceCloudSyncNow = async function forceCloudSyncNow(manual = true) {
     render();
   }
   try {
-    const readProfFn = (navigator.onLine && typeof getDocFromServer === 'function') ? getDocFromServer : getDoc;
-    const pSnap = await withCloudTimeout(readProfFn(doc(db, 'items', 'prof_' + user.uid)));
+    const pSnap = await readDocResilient(doc(db, 'items', 'prof_' + user.uid), navigator.onLine, CLOUD_OP_TIMEOUT_MS);
     if (pSnap && !pSnap.metadata?.fromCache) {
       clearCloudErrorState(user.uid);
     }
@@ -2645,19 +2671,21 @@ function applyServerProfileDocToLocal(effUid, pd, isFromCache = false) {
 async function forcePullProfileAndCollectionFromServer(effUid, sessionToken) {
   if (!effUid || !navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK || isCloudQuotaBlocked()) return false;
   if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+  if (auth.currentUser && typeof auth.currentUser.getIdToken === 'function') {
+    try { await withCloudTimeout(auth.currentUser.getIdToken(), 10000); } catch (tokErr) {}
+    if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+  }
   let serverProfReadOk = false;
-  if (typeof getDocFromServer === 'function') {
-    try {
-      const sProfSnap = await withCloudTimeout(getDocFromServer(doc(db, 'items', 'prof_' + effUid)), CLOUD_OP_TIMEOUT_MS);
-      if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
-      serverProfReadOk = true;
-      if (sProfSnap && sProfSnap.exists()) {
-        clearCloudErrorState(effUid);
-        applyServerProfileDocToLocal(effUid, sProfSnap.data(), false);
-      }
-    } catch (profErr) {
-      // Если профиль не прочитался с сервера, всё равно пробуем подтянуть коллекцию с сервера ниже
+  try {
+    const sProfSnap = await readDocResilient(doc(db, 'items', 'prof_' + effUid), true, CLOUD_OP_TIMEOUT_MS);
+    if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+    serverProfReadOk = true;
+    if (sProfSnap && sProfSnap.exists()) {
+      clearCloudErrorState(effUid);
+      applyServerProfileDocToLocal(effUid, sProfSnap.data(), false);
     }
+  } catch (profErr) {
+    // Если профиль не прочитался с сервера, всё равно пробуем подтянуть коллекцию с сервера ниже
   }
   if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
   const syncedOk = await syncItemsFromCloud(effUid, true);

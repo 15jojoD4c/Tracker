@@ -15,11 +15,11 @@
 <meta property="og:title" content="Kirokucho">
 <meta property="og:description" content="Kirokucho — трекер фильмов, сериалов, аниме, манги и ранобэ с каталогом и облачной синхронизацией">
 <meta property="og:type" content="website">
-<link rel="preload" href="./kiroku_engine.js?v=20261125" as="script">
-<link rel="preload" href="./app_core.js?v=20261125" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261125" as="script">
-<link rel="preload" href="./app.js?v=20261125" as="script">
-<link rel="stylesheet" href="./style.css?v=20261125">
+<link rel="preload" href="./kiroku_engine.js?v=20261126" as="script">
+<link rel="preload" href="./app_core.js?v=20261126" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261126" as="script">
+<link rel="preload" href="./app.js?v=20261126" as="script">
+<link rel="stylesheet" href="./style.css?v=20261126">
 <style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
 </head>
 <body class="auth-checking">
@@ -680,13 +680,13 @@
 </div>
 
 <script type="module">
-const importWithTimeout = (url, ms = 12000) => Promise.race([
+const importWithTimeout = (url, ms = 25000) => Promise.race([
   import(url),
   new Promise((_, rej) => setTimeout(() => rej(new Error("Firebase load timeout")), ms))
 ]);
 
-const APP_VER = "20261125";
-window.__FIREBASE_CONFIG__ = Object.assign({
+const APP_VER = "20261126";
+window.__FIREBASE_CONFIG__ = {
   apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
   authDomain: "mymediatracker-6e179.firebaseapp.com",
   projectId: "mymediatracker-6e179",
@@ -694,7 +694,7 @@ window.__FIREBASE_CONFIG__ = Object.assign({
   messagingSenderId: "642718397694",
   appId: "1:642718397694:web:7a4e175ed593cc364961af",
   measurementId: "G-NKNYFSP981"
-}, window.__FIREBASE_CONFIG__ || {});
+};
 
 window.retryFirebaseBootstrap = async function retryFirebaseBootstrap(manual = true) {
   if (!navigator.onLine) {
@@ -707,7 +707,7 @@ window.retryFirebaseBootstrap = async function retryFirebaseBootstrap(manual = t
     if (manual && typeof window.toast === "function") {
       window.toast("Проверяем подключение к серверу Firebase...");
     }
-    await importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js", 12000);
+    await importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js", 25000);
     // Сохраняем все локальные правки перед перезагрузкой для инициализации настоящего SDK
     try { if (typeof window.flushLocalItemsNow === "function") window.flushLocalItemsNow(false); } catch (e) {}
     try { if (typeof window.profSaveLocal === "function") window.profSaveLocal(true); } catch (e) {}
@@ -726,9 +726,9 @@ window.retryFirebaseBootstrap = async function retryFirebaseBootstrap(manual = t
 
 try {
   const [fbApp, fbAuth, fbDb] = await Promise.all([
-    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js", 12000),
-    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js", 12000),
-    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js", 12000)
+    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js", 25000),
+    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js", 25000),
+    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js", 25000)
   ]);
   window.__FIREBASE_OFFLINE_FALLBACK = false;
   Object.assign(window, fbApp, fbAuth, fbDb);

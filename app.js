@@ -799,6 +799,24 @@ function buildKinopoiskCandidateFromRecord(rec, defaultCat = 'Фильм', isFiv
   const isMangaHint = /манга|манхва|маньхуа|manga|manhwa|manhua|комикс/i.test(typeAndCatStr);
   const isAnimeHint = defaultCat === 'Аниме' || /(?:аниме|anime|anixart|shikimori|озвучка|серий|эпизод|\b(?:mal|ova|ona)\b|тв-\d)/i.test(typeAndCatStr + ' ' + String(rec.status || ''));
   const isSeriesHint = /сериал|мини-сериал|season|сезон/i.test(titleRu + ' ' + typeAndCatStr);
+  const rawTitleRuBeforeStrip = titleRu;
+  const inferredFormat = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.inferNormalizedFormat === 'function')
+    ? KirokuEngine.inferNormalizedFormat({
+        format: rec.format || '',
+        type: rec.type || '',
+        titleRu: rawTitleRuBeforeStrip,
+        titleOrig
+      })
+    : (() => {
+        const bag = [rec.format, rec.type, rawTitleRuBeforeStrip, titleOrig].filter(Boolean).join(' ').toLowerCase().replace(/ё/g, 'е');
+        if (/(?:^|[^a-zа-я0-9])(gekijouban|theatrical|полнометраж[а-я]*|фильм|movie)(?=$|[^a-zа-я0-9])/i.test(bag)) return 'MOVIE';
+        if (/(?:^|[^a-zа-я0-9])(ova|oad)(?=$|[^a-zа-я0-9])/i.test(bag)) return 'OVA';
+        if (/(?:^|[^a-zа-я0-9])(tv\s*special|спецвыпуск[а-я]*|recap|рекап|спешл|special)(?=$|[^a-zа-я0-9])/i.test(bag)) return 'SPECIAL';
+        if (/(?:^|[^a-zа-я0-9])ona(?=$|[^a-zа-я0-9])/i.test(bag)) return 'ONA';
+        if (/(?:^|[^a-zа-я0-9])(tv|тв|сериал|series)(?=$|[^a-zа-я0-9])/i.test(bag)) return 'TV';
+        return '';
+      })();
+
   if (yrInTitle && !year) year = yrInTitle[1];
   // Убираем в конце только чистый год (2014) или общую пометку (сериал)/(фильм) без номера сезона/части, чтобы НЕ терять (ТВ-2), (Фильм 1), (OVA) и т.д.
   titleRu = titleRu.replace(/\s*\((?:(?:мини-)?сериал|фильм|\d{4})\)\s*$/i, '').trim();
@@ -847,6 +865,7 @@ function buildKinopoiskCandidateFromRecord(rec, defaultCat = 'Фильм', isFiv
     alt: altClean,
     year: year.slice(0, 4),
     category: cat,
+    format: inferredFormat,
     status,
     fav: isFav,
     needsReview: Boolean(!knownSt && !imdbId),
@@ -975,7 +994,14 @@ function parseKinopoiskContent(text) {
     return out;
   };
 
-  const isAnixartSlashTxt = lines.slice(0, Math.min(10, lines.length)).some(l => splitAnixartSlashRow(l).length >= 4 && (/^\d+\s+\/\s+/.test(l) || /смотрю|в планах|просмотрено|отложено|брошено|в избранном|название/i.test(l)));
+  // Не перенаправляем файл в ветку isAnixartSlashTxt, если первая строка явно является CSV/TSV-заголовком (чтобы « / » внутри колонки альтернативных названий не ломал разбор CSV)
+  const firstCsvSep = first.includes(';') ? ';' : first.includes('\t') ? '\t' : first.includes(',') ? ',' : '';
+  const isExplicitCsvTsvHeader = Boolean(firstCsvSep && (() => {
+    const hdrCells = splitCsvRow(first, firstCsvSep).map(h => h.replace(/^[\uFEFF"'\s]+|["'\s]+$/g, '').toLowerCase());
+    return hdrCells.length >= 2 && hdrCells.some(h => /название|оригинальн|альтернативн|title|name|фильм|аниме|релиз|тайтл|год|year|оценка|rating|score|статус|status|список|закладк|избранн|imdb|тип|формат|type|format/i.test(h));
+  })());
+
+  const isAnixartSlashTxt = !isExplicitCsvTsvHeader && lines.slice(0, Math.min(10, lines.length)).some(l => splitAnixartSlashRow(l).length >= 4 && (/^\d+\s+\/\s+/.test(l) || /смотрю|в планах|просмотрено|отложено|брошено|в избранном|название/i.test(l)));
   if (isAnixartSlashTxt) {
     const firstCols = splitAnixartSlashRow(first).map(h => h.replace(/^[\uFEFF"'\s]+|["'\s]+$/g, '').toLowerCase());
     const hasTxtHeader = firstCols.some(h => /название|оригинал|альтернатив|статус|список|избранн|оценка/i.test(h));
@@ -1299,9 +1325,35 @@ function mergeTwoDuplicateItems(best, other) {
     merged.posterFallbacks = allFallbacks.slice(0, 6);
   }
 
-  ['aniId', 'mal', 'shikiId', 'mdId', 'tmdb', 'imdbId', 'poster', 'titleEn', 'titleOrig', 'alt', 'year', 'extRating', 'extSrc', 'description', 'author', 'studio', 'cast', 'source', 'eps', 'vols', 'dur', 'format', 'subKind', 'recBy', 'trailerId'].forEach(k => {
-    if (!merged[k] && other[k]) merged[k] = other[k];
-  });
+  const mergedHasId = hasExternalCatalogId(merged);
+  const otherHasId = hasExternalCatalogId(other);
+  const formatsCompatible = typeof areItemsFormatAndEpsCompatible === 'function'
+    ? areItemsFormatAndEpsCompatible(merged, other)
+    : true;
+  const mergedProtectedMeta = mergedHasId && num(merged.eps) > 0;
+
+  if (formatsCompatible) {
+    // Если merged не имел ID, а other имеет привязанный ID каталога и у merged заголовок от фильма/спешла конфликтует с форматом other (например, TV-сериал) — синхронизируем title/titleEn из other
+    if (!mergedHasId && otherHasId) {
+      const mFmtFromTitle = (typeof KirokuEngine !== 'undefined' && KirokuEngine.inferNormalizedFormat)
+        ? KirokuEngine.inferNormalizedFormat({ title: merged.title, titleEn: merged.titleEn })
+        : '';
+      const otherFmt = typeof getEffectiveFormatForMatch === 'function'
+        ? getEffectiveFormatForMatch(other)
+        : String(other.format || '').toUpperCase();
+      const titleConflictsWithOther = Boolean(mFmtFromTitle && otherFmt && mFmtFromTitle !== otherFmt);
+      if (titleConflictsWithOther) {
+        if (other.title) merged.title = other.title;
+        if (other.titleEn) merged.titleEn = other.titleEn;
+      }
+    }
+
+    const keysToFill = ['aniId', 'mal', 'shikiId', 'mdId', 'tmdb', 'imdbId', 'poster', 'titleEn', 'titleOrig', 'alt', 'year', 'extRating', 'extSrc', 'description', 'author', 'studio', 'cast', 'source', 'eps', 'vols', 'dur', 'format', 'subKind', 'recBy', 'trailerId'];
+    keysToFill.forEach(k => {
+      if (mergedProtectedMeta && !otherHasId && (k === 'titleEn' || k === 'titleOrig' || k === 'format' || k === 'eps')) return;
+      if (!merged[k] && other[k]) merged[k] = other[k];
+    });
+  }
   merged.needsReview = Boolean(!hasExternalCatalogId(merged) && merged.needsReview && other.needsReview);
   delete merged._knownStatusFromImport;
   return fix(merged);
@@ -1545,8 +1597,26 @@ async function restoreUncertainMatchesFromStorage() {
   } catch (e) {}
 }
 
-// Этап 1 п.11: НЕ перезаписываем уже существующие aniId, mal и tmdb!
-function applyCatalogMatchToItem(it, match, allowFillMissingIds = true) {
+// Этап 1 п.11: НЕ перезаписываем уже существующие aniId, mal и tmdb, и не допускаем смешивания формата/названий (ТВ vs Фильм/OVA/Спешл)
+function applyCatalogMatchToItem(it, match, allowFillMissingIds = true, forceManual = false) {
+  if (!it || !match) return;
+  const itHasId = hasExternalCatalogId(it);
+  const matchHasId = hasExternalCatalogId(match);
+  const sameExternalId = Boolean(
+    (Number(it.aniId) > 0 && Number(match.aniId) > 0 && Number(it.aniId) === Number(match.aniId))
+    || (Number(it.mal) > 0 && Number(match.mal) > 0 && Number(it.mal) === Number(match.mal))
+    || (Number(it.shikiId) > 0 && Number(match.shikiId) > 0 && Number(it.shikiId) === Number(match.shikiId))
+    || (it.mdId && match.mdId && String(it.mdId) === String(match.mdId))
+    || (it.tmdb && match.tmdb && String(it.tmdb) === String(match.tmdb))
+    || (it.imdbId && match.imdbId && String(it.imdbId) === String(match.imdbId))
+  );
+  const formatsCompatible = typeof areItemsFormatAndEpsCompatible === 'function'
+    ? areItemsFormatAndEpsCompatible(it, match)
+    : true;
+
+  // Защита: если привязка не по точному совпадающему ID и не ручной выбор, а форматы/серии несовместимы (напр. ТВ-сериал против фильма/OVA/спешла) — не привязываем!
+  if (!forceManual && !sameExternalId && !formatsCompatible) return;
+
   if (allowFillMissingIds) {
     if (match.aniId && !Number(it.aniId)) it.aniId = match.aniId;
     if (match.mal && !Number(it.mal)) it.mal = match.mal;
@@ -1555,7 +1625,7 @@ function applyCatalogMatchToItem(it, match, allowFillMissingIds = true) {
     if (match.tmdb && !it.tmdb) it.tmdb = match.tmdb;
     if (match.imdbId && !it.imdbId) it.imdbId = match.imdbId;
   }
-  if (match.format && !it.format) it.format = match.format;
+  if (match.format && (!it.format || (forceManual && !formatsCompatible))) it.format = match.format;
   if (match.isAdult) it.isAdult = true;
   if (match.subKind && it.category === 'Манга' && (!it.subKind || it.subKind === 'Манга')) it.subKind = match.subKind;
 
@@ -1574,11 +1644,35 @@ function applyCatalogMatchToItem(it, match, allowFillMissingIds = true) {
 
   const cleanedTrailer = cleanYoutubeId(match.trailerId);
   if (cleanedTrailer && !cleanYoutubeId(it.trailerId)) it.trailerId = cleanedTrailer;
-  if (match.title && hasRu(match.title) && !hasRu(it.title)) {
-    if (!it.titleEn) it.titleEn = it.title;
-    it.title = match.title;
+
+  // Защита title / titleEn:
+  // 1) Если у записи уже есть привязанный ID и корректное число серий — не позволяем кандидату без ID или с другим форматом/названием перетирать title/titleEn.
+  // 2) Если привязка по ID/каталогу выявила, что локальные title/titleEn содержали ошибочный маркер фильма/спешла при совпавшем ТВ-сериале (или наоборот), приводим title/titleEn в соответствие с match.
+  const itProtected = !forceManual && itHasId && num(it.eps) > 0 && (!matchHasId || !sameExternalId);
+  const titleFmtHint = (typeof KirokuEngine !== 'undefined' && KirokuEngine.inferNormalizedFormat)
+    ? KirokuEngine.inferNormalizedFormat({ title: it.title, titleEn: it.titleEn })
+    : '';
+  const matchFmt = typeof getEffectiveFormatForMatch === 'function'
+    ? getEffectiveFormatForMatch(match)
+    : String(match.format || '').toUpperCase();
+  const staleTitleFormatConflict = Boolean(
+    (sameExternalId || forceManual)
+    && matchHasId
+    && ((titleFmtHint && matchFmt && titleFmtHint !== matchFmt) || (forceManual && !formatsCompatible))
+  );
+
+  if (!itProtected) {
+    if (staleTitleFormatConflict) {
+      if (match.title && (hasRu(match.title) || !hasRu(it.title))) it.title = match.title;
+      if (match.en) it.titleEn = match.en;
+    } else {
+      if (match.title && hasRu(match.title) && !hasRu(it.title)) {
+        if (!it.titleEn) it.titleEn = it.title;
+        it.title = match.title;
+      }
+      if (match.en && !it.titleEn) it.titleEn = match.en;
+    }
   }
-  if (match.en && !it.titleEn) it.titleEn = match.en;
   if (match.romaji && !it.romaji) it.romaji = match.romaji;
   if (match.orig && !it.titleOrig) it.titleOrig = match.orig;
   if (match.alt && !it.alt) it.alt = match.alt;
@@ -1666,6 +1760,11 @@ async function findCatalogMatchForItem(it) {
     };
 
     const isConfidentTitleOrYearMatch = c => {
+      if (!c) return false;
+      const fmtAndEpsOk = typeof areItemsFormatAndEpsCompatible === 'function'
+        ? areItemsFormatAndEpsCompatible(it, c)
+        : true;
+      if (!fmtAndEpsOk) return false;
       const candNames = nset(c);
       const exactTitle = itemNames.some(n => candNames.includes(n));
       const overlap = Math.max(calcWordOverlap(it.title, c.title), calcWordOverlap(it.titleEn || it.title, c.en));
@@ -1674,7 +1773,10 @@ async function findCatalogMatchForItem(it) {
       const yearDiffLimit = (it.category === 'Манга' || it.category === 'Ранобэ') ? 2 : 1;
       const yearMatch = hasBothYears && Math.abs(itemYear - cYear) <= yearDiffLimit;
       const yearCompatible = !hasBothYears || Math.abs(itemYear - cYear) <= yearDiffLimit;
-      const markerOk = getItemMarkers(c) === itemMarker;
+      const candMarker = getItemMarkers(c);
+      const markerOk = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.areSeasonMarkersCompatible === 'function')
+        ? KirokuEngine.areSeasonMarkersCompatible(itemMarker, candMarker)
+        : (candMarker === itemMarker);
       if (!markerOk) return false;
       return (exactTitle && yearCompatible) || (yearMatch && overlap >= 0.85);
     };
@@ -2181,7 +2283,7 @@ async function openUncertainMatchesConfirmDialog() {
         inf.append(el('b', null, cand.title), el('div', 'meta', `${catLabel(cand)} · ${cand.year || '?'} · ★ ${cand.ext || '—'}`));
         const pickB = el('button', 'btn', 'Выбрать'); pickB.type = 'button'; pickB.style.padding = '5px 10px'; pickB.style.fontSize = '12px';
         pickB.onclick = async () => {
-          applyCatalogMatchToItem(entry.item, cand, true);
+          applyCatalogMatchToItem(entry.item, cand, true, true);
           entry.item.needsReview = false;
           if (Number(entry.item.mal) > 0 && (!entry.item.description || !(entry.item.tags || []).length)) {
             await enrichItemsByMalIdsBatch([entry.item]);

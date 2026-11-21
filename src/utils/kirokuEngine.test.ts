@@ -558,16 +558,48 @@ test('areCategoriesCompatibleForExternalId allows Manga/Ranobe cross-matching wh
   assert.equal(KirokuEngine.areCategoriesCompatibleForExternalId('Аниме', 'Аниме'), true);
 });
 
-test('areSeasonMarkersCompatible protects distinct seasons while allowing empty marker without season conflict', () => {
+test('areSeasonMarkersCompatible strictly separates distinct seasons and empty fmt (TV) vs non-empty fmt (movie/ova/ona/special)', () => {
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('', ''), true);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('s2', 's2'), true);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 's2'), false);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('s2', 's3'), false);
-  assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'ova'), true);
-  assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'фильм'), true);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'ova'), false);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'фильм'), false);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'ona'), false);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'спешл'), false);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('фильм', 'фильм'), true);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('ova', 'ova'), true);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('ova', 'фильм'), false);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('s2_p2', 's2_p3'), false);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('s2', 's2_p2'), true);
+});
+
+test('inferNormalizedFormat and areFormatsAndEpisodesCompatible prevent TV series from merging with Movies/OVA/Specials', () => {
+  assert.equal(KirokuEngine.inferNormalizedFormat({ title: 'Kimetsu no Yaiba Gekijouban: Mugen Ressha-hen' }), 'MOVIE');
+  assert.equal(KirokuEngine.inferNormalizedFormat({ title: 'Атака титанов: Полнометражный фильм' }), 'MOVIE');
+  assert.equal(KirokuEngine.inferNormalizedFormat({ title: 'Re:Zero Theatrical Edition' }), 'MOVIE');
+  assert.equal(KirokuEngine.inferNormalizedFormat({ title: 'Блич: Спецвыпуск' }), 'SPECIAL');
+  assert.equal(KirokuEngine.inferNormalizedFormat({ title: 'One Piece TV Special' }), 'SPECIAL');
+  assert.equal(KirokuEngine.inferNormalizedFormat({ title: 'Naruto Recap' }), 'SPECIAL');
+  assert.equal(KirokuEngine.inferNormalizedFormat({ type: 'OVA' }), 'OVA');
+  assert.equal(KirokuEngine.inferNormalizedFormat({ format: 'TV' }), 'TV');
+
+  // MOVIE/OVA/SPECIAL vs TV/TV_SHORT/ONA -> incompatible
+  assert.equal(KirokuEngine.areFormatsAndEpisodesCompatible({ category: 'Аниме', format: 'MOVIE' }, { category: 'Аниме', format: 'TV' }), false);
+  assert.equal(KirokuEngine.areFormatsAndEpisodesCompatible({ category: 'Аниме', format: 'OVA' }, { category: 'Аниме', format: 'TV' }), false);
+  assert.equal(KirokuEngine.areFormatsAndEpisodesCompatible({ category: 'Аниме', format: 'SPECIAL' }, { category: 'Аниме', format: 'ONA' }), false);
+  assert.equal(KirokuEngine.areFormatsAndEpisodesCompatible({ category: 'Аниме', title: 'Берсерк Gekijouban' }, { category: 'Аниме', format: 'TV', eps: 25 }), false);
+  assert.equal(KirokuEngine.areFormatsAndEpisodesCompatible({ category: 'Аниме', format: 'MOVIE' }, { category: 'Аниме', format: 'OVA' }), false);
+
+  // Critical episode count mismatch: 1-2 eps vs >= 6 eps -> incompatible
+  assert.equal(KirokuEngine.areFormatsAndEpisodesCompatible({ category: 'Аниме', eps: 1 }, { category: 'Аниме', eps: 12 }), false);
+  assert.equal(KirokuEngine.areFormatsAndEpisodesCompatible({ category: 'Аниме', eps: 2 }, { category: 'Аниме', eps: 24 }), false);
+  assert.equal(KirokuEngine.areFormatsAndEpisodesCompatible({ category: 'Аниме', format: 'MOVIE', eps: 1 }, { category: 'Аниме', eps: 12 }), false);
+
+  // Compatible cases
+  assert.equal(KirokuEngine.areFormatsAndEpisodesCompatible({ category: 'Аниме', format: 'TV', eps: 12 }, { category: 'Аниме', format: 'TV', eps: 12 }), true);
+  assert.equal(KirokuEngine.areFormatsAndEpisodesCompatible({ category: 'Аниме', format: 'MOVIE', eps: 1 }, { category: 'Аниме', format: 'MOVIE', eps: 1 }), true);
+  assert.equal(KirokuEngine.areFormatsAndEpisodesCompatible({ category: 'Манга', eps: 1 }, { category: 'Манга', eps: 120 }), true);
 });
 
 test('computeCategoryStatusCounts filters status tab counts strictly by selected category and subkind', () => {

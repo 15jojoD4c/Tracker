@@ -697,7 +697,7 @@ const importWithTimeout = (url, ms = 12000) => Promise.race([
   new Promise((_, rej) => setTimeout(() => rej(new Error("Firebase load timeout")), ms))
 ]);
 
-const APP_VER = "20261122";
+const APP_VER = "20261123";
 
 window.retryFirebaseBootstrap = async function retryFirebaseBootstrap(manual = true) {
   if (!navigator.onLine) {

@@ -563,7 +563,7 @@
   }
 
   // Проверка совместимости маркеров сезона/части/формата:
-  // строго различаем разные сезоны (s2 != '' и s2 != s3), но не отсекаем жёстко пустой marker при отсутствии конфликтующих сезонов
+  // строго различаем разные сезоны (s2 != '' и s2 != s3) и запрещаем смешивать пустой fmt (ТВ-сериал) с непустым fmt (фильм/ova/ona/спешл)
   function areSeasonMarkersCompatible(markerA, markerB) {
     const mA = String(markerA || '');
     const mB = String(markerB || '');
@@ -571,8 +571,76 @@
     const a = _parseSeasonMarker(mA);
     const b = _parseSeasonMarker(mB);
     if (a.season !== b.season) return false;
+    if (a.fmt !== b.fmt) return false;
     if (a.part && b.part && a.part !== b.part) return false;
-    if (a.fmt && b.fmt && a.fmt !== b.fmt) return false;
+    return true;
+  }
+
+  // Нормализация формата (TV, TV_SHORT, MOVIE, OVA, ONA, SPECIAL) из явных полей format/type и маркеров названия
+  function inferNormalizedFormat(itemOrFields) {
+    if (!itemOrFields || typeof itemOrFields !== 'object') return '';
+    const explicitRaw = String(itemOrFields.format || itemOrFields.type || '').trim().toUpperCase();
+    const mapExplicit = s => {
+      if (!s) return '';
+      if (s === 'MOVIE' || s === 'FILM' || /(?:^|[^A-ZА-Я0-9])(MOVIE|FILM|THEATRICAL|GEKIJOUBAN|ФИЛЬМ|ПОЛНОМЕТРАЖ[А-Я]*)(?=$|[^A-ZА-Я0-9])/i.test(s)) return 'MOVIE';
+      if (s === 'OVA' || s === 'OAD' || /(?:^|[^A-ZА-Я0-9])(OVA|OAD)(?=$|[^A-ZА-Я0-9])/i.test(s)) return 'OVA';
+      if (s === 'SPECIAL' || s === 'TV_SPECIAL' || /(?:^|[^A-ZА-Я0-9])(TV\s*SPECIAL|SPECIAL|RECAP|СПЕШЛ|СПЕЦВЫПУСК[А-Я]*|РЕКАП)(?=$|[^A-ZА-Я0-9])/i.test(s)) return 'SPECIAL';
+      if (s === 'ONA' || /(?:^|[^A-ZА-Я0-9])ONA(?=$|[^A-ZА-Я0-9])/i.test(s)) return 'ONA';
+      if (s === 'TV_SHORT') return 'TV_SHORT';
+      if (s === 'TV' || s === 'SERIES' || /(?:^|[^A-ZА-Я0-9])(TV|TV[\s_-]*SERIES|ТВ|ТВ[\s_-]*СЕРИАЛ|СЕРИАЛ)(?=$|[^A-ZА-Я0-9])/i.test(s)) return 'TV';
+      return '';
+    };
+    const fromExplicit = mapExplicit(explicitRaw);
+    if (fromExplicit) return fromExplicit;
+
+    // Если явного format/type нет — пробуем извлечь из маркера или основных названий
+    const titleBag = [
+      itemOrFields.marker,
+      itemOrFields.title,
+      itemOrFields.titleRu,
+      itemOrFields.titleEn,
+      itemOrFields.en,
+      itemOrFields.romaji,
+      itemOrFields.titleOrig,
+      itemOrFields.orig
+    ].filter(Boolean).join(' ').toLowerCase().replace(/ё/g, 'е');
+
+    if (!titleBag) return '';
+    if (/(?:^|[^a-zа-я0-9])(gekijouban|theatrical|полнометраж[а-я]*|movie|фильм)(?:\s*\d{1,2})?(?=$|[^a-zа-я0-9])/i.test(titleBag)) return 'MOVIE';
+    if (/(?:^|[^a-zа-я0-9])(tv\s*special|спецвыпуск[а-я]*|recap|рекап|special|спешл)(?:\s*\d{1,2})?(?=$|[^a-zа-я0-9])/i.test(titleBag)) return 'SPECIAL';
+    if (/(?:^|[^a-zа-я0-9])(ova|oad)(?:\s*\d{1,2})?(?=$|[^a-zа-я0-9])/i.test(titleBag)) return 'OVA';
+    if (/(?:^|[^a-zа-я0-9])ona(?:\s*\d{1,2})?(?=$|[^a-zа-я0-9])/i.test(titleBag)) return 'ONA';
+    return '';
+  }
+
+  // Проверка совместимости формата (TV/TV_SHORT/ONA против MOVIE/OVA/SPECIAL) и числа серий eps
+  function areFormatsAndEpisodesCompatible(a, b) {
+    if (!a || !b) return false;
+    const catA = String(a.category || '');
+    const catB = String(b.category || '');
+    const isReading = ['Манга', 'Ранобэ'].includes(catA) || ['Манга', 'Ранобэ'].includes(catB);
+
+    const fa = inferNormalizedFormat(a);
+    const fb = inferNormalizedFormat(b);
+    const isSeriesFmt = f => f === 'TV' || f === 'TV_SHORT' || f === 'ONA';
+    const isNonTvFmt = f => f === 'MOVIE' || f === 'OVA' || f === 'SPECIAL';
+
+    if (fa && fb) {
+      if ((isNonTvFmt(fa) && isSeriesFmt(fb)) || (isNonTvFmt(fb) && isSeriesFmt(fa))) return false;
+      if (isNonTvFmt(fa) && isNonTvFmt(fb) && fa !== fb) return false;
+    }
+
+    if (!isReading) {
+      const epsA = parseInt(a.eps, 10) || 0;
+      const epsB = parseInt(b.eps, 10) || 0;
+      if (epsA > 0 && epsB > 0) {
+        if ((epsA <= 2 && epsB >= 6) || (epsB <= 2 && epsA >= 6)) return false;
+      }
+      // Если у одной стороны формат — фильм/OVA/спешл, а у другой формат не указан, но серий >= 6 (явно сериал) — запрещаем склейку
+      if ((isNonTvFmt(fa) && !fb && epsB >= 6) || (isNonTvFmt(fb) && !fa && epsA >= 6)) {
+        return false;
+      }
+    }
     return true;
   }
 
@@ -694,6 +762,8 @@
     shouldBlockLegacyEmptyInitialSync,
     areCategoriesCompatibleForExternalId,
     areSeasonMarkersCompatible,
+    inferNormalizedFormat,
+    areFormatsAndEpisodesCompatible,
     matchesCategoryFilter,
     computeCategoryStatusCounts,
     validateLoadedChunks

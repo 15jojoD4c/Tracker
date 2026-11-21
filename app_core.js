@@ -291,14 +291,17 @@ function safeCssBgUrl(u) {
   return `url("${clean.replace(/["\\()\r\n]/g, '')}")`;
 }
 
+const _fbCfg = (typeof window !== 'undefined' && window.__FIREBASE_CONFIG__ && typeof window.__FIREBASE_CONFIG__ === 'object')
+  ? window.__FIREBASE_CONFIG__
+  : {};
 const app = initializeApp({
-  apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
-  authDomain: "mymediatracker-6e179.firebaseapp.com",
-  projectId: "mymediatracker-6e179",
-  storageBucket: "mymediatracker-6e179.firebasestorage.app",
-  messagingSenderId: "642718397694",
-  appId: "1:642718397694:web:7a4e175ed593cc364961af",
-  measurementId: "G-NKNYFSP981"
+  apiKey: _fbCfg.apiKey || "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
+  authDomain: _fbCfg.authDomain || "mymediatracker-6e179.firebaseapp.com",
+  projectId: _fbCfg.projectId || "mymediatracker-6e179",
+  storageBucket: _fbCfg.storageBucket || "mymediatracker-6e179.firebasestorage.app",
+  messagingSenderId: _fbCfg.messagingSenderId || "642718397694",
+  appId: _fbCfg.appId || "1:642718397694:web:7a4e175ed593cc364961af",
+  measurementId: _fbCfg.measurementId || "G-NKNYFSP981"
 });
 const auth = getAuth(app);
 const db = (() => {
@@ -2135,6 +2138,17 @@ async function flushPendingCloudChanges(showToast = false) {
         return true;
       }
       if (isChunkStorageEnabled()) {
+        // Если коллекция пуста и сохранение чанков было отклонено защитой пустой перезаписи,
+        // но есть несохранённый профиль (dirtyProf) — отправляем профиль независимо, чтобы не зависала плашка изменений!
+        if (dirtyProf && items.length === 0) {
+          _lastSavedProfJson = '';
+          const profOk = await profCloud(false);
+          setSync();
+          if (profOk && !dirtyItems.length && !pendingDeletes.length) {
+            if (showToast) toast('Профиль синхронизирован с облаком ✓');
+            return true;
+          }
+        }
         return false;
       }
     }
@@ -2931,16 +2945,26 @@ function normTitleStr(s) {
     .trim();
 }
 
-// Извлечение маркера сезона / части / ТВ / Фильма / OVA, чтобы НЕ склеивать разные сезоны и фильмы одной франшизы при импорте из Anixart
+// Извлечение маркера сезона / части / ТВ / Фильма / OVA / Спешла, чтобы НЕ склеивать разные сезоны и фильмы одной франшизы при импорте
 function extractSeasonPartMarker(s) {
   const raw = String(s || '').toLowerCase().replace(/ё/g, 'е');
   let season = '', part = '', fmt = '';
-  const mS = raw.match(/(?:сезон|season|s|тв|tv)\s*[-:]?\s*(\d{1,2})\b/) || raw.match(/\b(\d{1,2})\s*(?:сезон|season|nd\s+season|rd\s+season|th\s+season)\b/);
+  const mS = raw.match(/(?:^|[^a-zа-я0-9])(?:сезон|season|s|тв|tv)\s*[-:]?\s*(\d{1,2})(?=$|[^a-zа-я0-9])/i)
+    || raw.match(/(?:^|[^a-zа-я0-9])(\d{1,2})\s*(?:сезон|season|nd\s+season|rd\s+season|th\s+season)(?=$|[^a-zа-я0-9])/i);
   if (mS && Number(mS[1]) > 1) season = 's' + Number(mS[1]);
-  const mP = raw.match(/(?:часть|part|cour)\s*[-:]?\s*(\d{1,2})\b/) || raw.match(/\b(\d{1,2})\s*(?:часть|part)\b/);
+  const mP = raw.match(/(?:^|[^a-zа-я0-9])(?:часть|part|cour)\s*[-:]?\s*(\d{1,2})(?=$|[^a-zа-я0-9])/i)
+    || raw.match(/(?:^|[^a-zа-я0-9])(\d{1,2})\s*(?:часть|part)(?=$|[^a-zа-я0-9])/i);
   if (mP && Number(mP[1]) > 1) part = 'p' + Number(mP[1]);
-  const mFmt = raw.match(/\b(фильм|movie|ova|ona|спешл|special)(?:\s*(\d{1,2}))?\b/);
-  if (mFmt) fmt = mFmt[1].replace('movie', 'фильм').replace('special', 'спешл') + (mFmt[2] || '');
+  const mFmt = raw.match(/(?:^|[^a-zа-я0-9])(gekijouban|theatrical|полнометраж[а-я]*|фильм|movie|tv\s*special|спецвыпуск[а-я]*|recap|рекап|спешл|special|ova|oad|ona)(?:\s*(\d{1,2}))?(?=$|[^a-zа-я0-9])/i);
+  if (mFmt) {
+    const tok = mFmt[1].replace(/\s+/g, ' ').trim();
+    let normFmt = tok;
+    if (/^(?:gekijouban|theatrical|полнометраж|movie|фильм)/.test(tok)) normFmt = 'фильм';
+    else if (/^(?:tv special|спецвыпуск|recap|рекап|special|спешл)/.test(tok)) normFmt = 'спешл';
+    else if (/^(?:ova|oad)$/.test(tok)) normFmt = 'ova';
+    else if (tok === 'ona') normFmt = 'ona';
+    fmt = normFmt + (mFmt[2] || '');
+  }
   const mTrail = raw.match(/(?:\s|:)(ii|iii|iv|v|2|3|4|5)\s*$/i);
   const romanMap = { ii: '2', iii: '3', iv: '4', v: '5' };
   const trail = mTrail ? (romanMap[mTrail[1].toLowerCase()] || mTrail[1]) : '';
@@ -2952,8 +2976,8 @@ const splitAltNames = altStr => String(altStr || '').split(/[,;/|]+/).map(s => s
 // Кэширование нормализованных названий и маркеров в WeakMap для исключения повторных вызовов normTitleStr
 const _itemNormMetaCache = new WeakMap();
 function getCachedItemNormMeta(o) {
-  if (!o || typeof o !== 'object') return { primary: [], all: [], marker: '' };
-  const sig = `${o.title || ''}\x00${o.titleEn || o.en || ''}\x00${o.romaji || ''}\x00${o.titleOrig || o.orig || ''}\x00${o.alt || ''}`;
+  if (!o || typeof o !== 'object') return { strictPrimary: [], primary: [], all: [], marker: '' };
+  const sig = `${o.title || ''}\x00${o.titleEn || o.en || ''}\x00${o.romaji || ''}\x00${o.titleOrig || o.orig || ''}\x00${o.alt || ''}\x00${o.format || ''}`;
   let cached = _itemNormMetaCache.get(o);
   if (cached && cached.sig === sig) return cached;
 
@@ -2961,17 +2985,24 @@ function getCachedItemNormMeta(o) {
   const altParts = splitAltNames(o.alt);
   const rawAll = [...rawPrimary, ...altParts].filter(Boolean);
   let marker = '';
-  for (const t of rawAll) {
+  for (const t of rawPrimary) {
     const m = extractSeasonPartMarker(t);
     if (m) { marker = m; break; }
+  }
+  if (!marker) {
+    for (const t of altParts) {
+      const m = extractSeasonPartMarker(t);
+      if (m) { marker = m; break; }
+    }
   }
   const qualifyingAlts = altParts.filter(altName => {
     const n = normTitleStr(altName);
     return n && n.length >= 4 && extractSeasonPartMarker(altName) === marker;
   });
+  const strictPrimary = [...new Set(rawPrimary.map(normTitleStr).filter(x => x && x.length >= 2))];
   const primary = [...new Set([...rawPrimary, ...qualifyingAlts].map(normTitleStr).filter(x => x && x.length >= 2))];
   const all = [...new Set(rawAll.map(normTitleStr).filter(x => x && x.length >= 2))];
-  cached = { sig, primary, all, marker };
+  cached = { sig, strictPrimary, primary, all, marker };
   _itemNormMetaCache.set(o, cached);
   return cached;
 }
@@ -2985,6 +3016,37 @@ const sameCatForId = (a, b) => {
   }
   if (sameCat(a, b)) return true;
   return (a === 'Манга' && b === 'Ранобэ') || (a === 'Ранобэ' && b === 'Манга');
+};
+
+const getEffectiveFormatForMatch = o => {
+  if (!o) return '';
+  const marker = getItemMarkers(o);
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.inferNormalizedFormat === 'function') {
+    return KirokuEngine.inferNormalizedFormat({ ...o, marker });
+  }
+  return String(o.format || '').toUpperCase();
+};
+
+const areItemsFormatAndEpsCompatible = (a, b) => {
+  if (!a || !b) return false;
+  const metaA = getCachedItemNormMeta(a);
+  const metaB = getCachedItemNormMeta(b);
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.areFormatsAndEpisodesCompatible === 'function') {
+    return KirokuEngine.areFormatsAndEpisodesCompatible({ ...a, marker: metaA.marker }, { ...b, marker: metaB.marker });
+  }
+  const fa = String(a.format || '').toUpperCase();
+  const fb = String(b.format || '').toUpperCase();
+  const isSeriesFmt = f => f === 'TV' || f === 'TV_SHORT' || f === 'ONA';
+  const isNonTvFmt = f => f === 'MOVIE' || f === 'OVA' || f === 'SPECIAL';
+  if ((isNonTvFmt(fa) && isSeriesFmt(fb)) || (isNonTvFmt(fb) && isSeriesFmt(fa))) return false;
+  if (isNonTvFmt(fa) && isNonTvFmt(fb) && fa !== fb) return false;
+  const isReading = ['Манга', 'Ранобэ'].includes(a.category) || ['Манга', 'Ранобэ'].includes(b.category);
+  if (!isReading) {
+    const epsA = parseInt(a.eps, 10) || 0;
+    const epsB = parseInt(b.eps, 10) || 0;
+    if (epsA > 0 && epsB > 0 && ((epsA <= 2 && epsB >= 6) || (epsB <= 2 && epsA >= 6))) return false;
+  }
+  return true;
 };
 
 // Единая функция поиска повторов для ВСЕХ мест
@@ -3007,10 +3069,7 @@ const same = (a, b) => {
   if (a.tmdb && b.tmdb && String(a.tmdb) !== String(b.tmdb)) return false;
   if (a.imdbId && b.imdbId && String(a.imdbId) !== String(b.imdbId)) return false;
 
-  const fa = String(a.format || '').toUpperCase();
-  const fb = String(b.format || '').toUpperCase();
-  const isSeriesFmt = f => f === 'TV' || f === 'TV_SHORT' || f === 'ONA';
-  if ((fa === 'MOVIE' && isSeriesFmt(fb)) || (fb === 'MOVIE' && isSeriesFmt(fa))) return false;
+  if (!areItemsFormatAndEpsCompatible(a, b)) return false;
 
   const ya = parseInt(a.year) || 0, yb = parseInt(b.year) || 0;
   const maxYearDiff = (a.category === 'Манга' || a.category === 'Ранобэ') ? 2 : 1;
@@ -3020,15 +3079,26 @@ const same = (a, b) => {
   const metaB = getCachedItemNormMeta(b);
   if (!metaA.all.length || !metaB.all.length) return false;
 
-  const primaryMatch = metaA.primary.length && metaB.primary.length && metaA.primary.some(n => metaB.primary.includes(n));
-  const yearConfirmed = Boolean(ya && yb && Math.abs(ya - yb) <= maxYearDiff);
-  const allMatch = !primaryMatch && yearConfirmed && metaA.all.some(n => metaB.all.includes(n));
-  if (!primaryMatch && !allMatch) return false;
-
   const markerOk = (typeof KirokuEngine !== 'undefined' && KirokuEngine.areSeasonMarkersCompatible)
     ? KirokuEngine.areSeasonMarkersCompatible(metaA.marker, metaB.marker)
     : (metaA.marker === metaB.marker);
   if (!markerOk) return false;
+
+  // Не используем альтернативные названия (qualifyingAlts), если у кандидатов расходятся формат или число серий
+  const fa = getEffectiveFormatForMatch(a);
+  const fb = getEffectiveFormatForMatch(b);
+  const epsA = parseInt(a.eps, 10) || 0;
+  const epsB = parseInt(b.eps, 10) || 0;
+  const isReading = ['Манга', 'Ранобэ'].includes(a.category) || ['Манга', 'Ранобэ'].includes(b.category);
+  const formatMismatchForAlts = Boolean((fa || fb) && fa !== fb);
+  const epsMismatchForAlts = Boolean(!isReading && epsA > 0 && epsB > 0 && Math.abs(epsA - epsB) > 2);
+  const primaryA = (formatMismatchForAlts || epsMismatchForAlts) ? metaA.strictPrimary : metaA.primary;
+  const primaryB = (formatMismatchForAlts || epsMismatchForAlts) ? metaB.strictPrimary : metaB.primary;
+
+  const primaryMatch = primaryA.length && primaryB.length && primaryA.some(n => primaryB.includes(n));
+  const yearConfirmed = Boolean(ya && yb && Math.abs(ya - yb) <= maxYearDiff);
+  const allMatch = !primaryMatch && !formatMismatchForAlts && !epsMismatchForAlts && yearConfirmed && metaA.all.some(n => metaB.all.includes(n));
+  if (!primaryMatch && !allMatch) return false;
 
   return true;
 };

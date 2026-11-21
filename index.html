@@ -15,11 +15,11 @@
 <meta property="og:title" content="Kirokucho">
 <meta property="og:description" content="Kirokucho — трекер фильмов, сериалов, аниме, манги и ранобэ с каталогом и облачной синхронизацией">
 <meta property="og:type" content="website">
-<link rel="preload" href="./kiroku_engine.js?v=20261121" as="script">
-<link rel="preload" href="./app_core.js?v=20261121" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261121" as="script">
-<link rel="preload" href="./app.js?v=20261121" as="script">
-<link rel="stylesheet" href="./style.css?v=20261121">
+<link rel="preload" href="./kiroku_engine.js?v=20261124" as="script">
+<link rel="preload" href="./app_core.js?v=20261124" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261124" as="script">
+<link rel="preload" href="./app.js?v=20261124" as="script">
+<link rel="stylesheet" href="./style.css?v=20261124">
 <style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
 </head>
 <body class="auth-checking">
@@ -66,7 +66,6 @@
             <button id="menuSettingsBtn" type="button">Настройки профиля</button>
             <button id="accThemeModalBtn" type="button">Оформление</button>
             <button id="accDataBtn" type="button">Данные и импорт</button>
-            <button id="accKey" type="button">Свой ключ TMDB</button>
             <button class="out" id="logoutBtn" type="button">Выйти</button>
           </div>
         </div>
@@ -589,27 +588,15 @@
     <button class="btn btn-s" id="shikiImportBtn" type="button" style="width:100%">🌐 Импорт по никнейму (AniList / Shikimori)</button>
   </div>
 
-  <div id="lastImportBatchBar" style="display:none;background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.35);border-radius:10px;padding:10px 12px;font-size:13px" class="row">
-    <span id="lastImportBatchTxt" style="flex:1">Последний импорт</span>
-    <button class="btn btn-d" id="undoLastImportBtn" type="button" style="padding:6px 12px;font-size:12px">↩ Отменить импорт</button>
-  </div>
-
   <div class="fs">Резервная копия и порядок в коллекции</div>
-  <div class="row2">
-    <button class="btn btn-s" onclick="exportData()" type="button">⬇ Скачать бэкап (.json)</button>
-    <button class="btn btn-s" id="dedupMergeBtn" type="button">🧹 Объединить дубликаты</button>
-  </div>
+  <button class="btn btn-s" onclick="exportData()" type="button" style="width:100%">⬇ Скачать бэкап (.json)</button>
   <button class="btn btn-s" id="restoreSafetyBackupBtn" type="button" style="width:100%">🛟 Восстановить из локального кэша / страховочной копии</button>
-  <button class="btn btn-s" id="linkCollectionCatalogBtn" type="button" style="width:100%">🔗 Подгрузить постеры и описания из каталога</button>
+  <button class="btn btn-s" id="cleanupAndEnrichBtn" type="button" style="width:100%">🧹 Навести порядок (дубликаты и обложки)</button>
 
   <div class="fs">Локальная копия и диагностика облака</div>
   <div class="row2">
     <button class="btn btn-s" id="manualCloudSyncBtn" type="button">↻ Синхронизировать с облаком</button>
-    <button class="btn btn-s" id="manualLocalMigrateBtn" type="button">☁ Перенести локальную коллекцию в облако</button>
-  </div>
-  <div class="row2">
     <button class="btn btn-s" id="cloudDiagBtn" type="button">🩺 Проверка облака</button>
-    <button class="btn btn-s" id="runSchemaMigrationBtn" type="button">⚙ Обновить схему старых записей</button>
   </div>
   <div id="cloudDiagResultBox" style="display:none;margin-top:8px;max-height:260px;overflow-y:auto;background:rgba(0,0,0,.3);border:1px solid var(--bd);border-radius:12px;padding:10px"></div>
 </div></div>
@@ -697,7 +684,16 @@ const importWithTimeout = (url, ms = 12000) => Promise.race([
   new Promise((_, rej) => setTimeout(() => rej(new Error("Firebase load timeout")), ms))
 ]);
 
-const APP_VER = "20261123";
+const APP_VER = "20261124";
+window.__FIREBASE_CONFIG__ = Object.assign({
+  apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
+  authDomain: "mymediatracker-6e179.firebaseapp.com",
+  projectId: "mymediatracker-6e179",
+  storageBucket: "mymediatracker-6e179.firebasestorage.app",
+  messagingSenderId: "642718397694",
+  appId: "1:642718397694:web:7a4e175ed593cc364961af",
+  measurementId: "G-NKNYFSP981"
+}, window.__FIREBASE_CONFIG__ || {});
 
 window.retryFirebaseBootstrap = async function retryFirebaseBootstrap(manual = true) {
   if (!navigator.onLine) {

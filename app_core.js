@@ -2226,11 +2226,17 @@ async function syncItemsFromCloud(effUid, force = false) {
       const pendingDeletesArr = getPendingDeletes(effUid);
 
       // 1. Быстрая загрузка из компактных чанков (1–2 чтения Firestore на 500+ тайтлов вместо 500 чтений!)
+      let checkingLegacyAfterEmptyV2 = false;
       if (isChunkStorageEnabled() && prof.colStorageV2) {
         const chunkCnt = Math.max(0, Number(prof.colChunkCount || 0));
         if (chunkCnt === 0) {
-          ownList = [];
-          loadedFromChunks = true;
+          if (items.length === 0) {
+            // Если в профиле colStorageV2=true и chunkCnt===0 при пустой локальной коллекции — сначала проверяем legacy-документы на сервере!
+            checkingLegacyAfterEmptyV2 = true;
+          } else {
+            ownList = [];
+            loadedFromChunks = true;
+          }
         } else {
           try {
             const unpacked = await loadCollectionChunksFromCloud(effUid, chunkCnt, Boolean(force));
@@ -2253,9 +2259,8 @@ async function syncItemsFromCloud(effUid, force = false) {
       // 2. Однополевой fallback-запрос (БЕЗ составного индекса kind+userId, подхватывает даже старые записи без kind=="title"!)
       let snapFromCache = false;
       if (!loadedFromChunks) {
-        const readDocsFn = (force && navigator.onLine && typeof getDocsFromServer === 'function')
-          ? getDocsFromServer
-          : getDocs;
+        const mustReadServer = Boolean((force || checkingLegacyAfterEmptyV2) && navigator.onLine && typeof getDocsFromServer === 'function');
+        const readDocsFn = mustReadServer ? getDocsFromServer : getDocs;
         let docsList = [];
         try {
           const snapAll = await withCloudTimeout(readDocsFn(query(collection(db, 'items'), where('userId', '==', effUid))));
@@ -2315,16 +2320,17 @@ async function syncItemsFromCloud(effUid, force = false) {
         clearCloudErrorState(effUid);
       }
 
-      // Защита legacy-коллекции на новом устройстве: если профиль не переведён на V2, ответ пришёл пустым из кэша/офлайна — блокируем запись чанков!
+      // Защита legacy-коллекции на новом устройстве: если профиль не переведён на V2 (или V2 с 0 чанков при пустой коллекции), ответ пришёл пустым из кэша/офлайна — блокируем запись чанков!
       const blockLegacyEmpty = !loadedFromChunks && (
-        typeof KirokuEngine !== 'undefined' && KirokuEngine.shouldBlockLegacyEmptyInitialSync
+        (checkingLegacyAfterEmptyV2 && ownList.length === 0 && (snapFromCache || !navigator.onLine)) ||
+        (typeof KirokuEngine !== 'undefined' && KirokuEngine.shouldBlockLegacyEmptyInitialSync
           ? KirokuEngine.shouldBlockLegacyEmptyInitialSync({
               colStorageV2: Boolean(prof.colStorageV2),
               loadedCount: ownList.length,
               fromCache: snapFromCache,
               isOnline: navigator.onLine
             })
-          : (!prof.colStorageV2 && ownList.length === 0 && (snapFromCache || !navigator.onLine))
+          : (!prof.colStorageV2 && ownList.length === 0 && (snapFromCache || !navigator.onLine)))
       );
       if (blockLegacyEmpty) {
         markInitialCloudSyncBlocked(effUid);
@@ -2333,7 +2339,7 @@ async function syncItemsFromCloud(effUid, force = false) {
         refresh();
         homeTab();
         setSync();
-        return;
+        return false;
       }
 
       if (ownList.length > 0) {
@@ -2406,6 +2412,7 @@ async function syncItemsFromCloud(effUid, force = false) {
       refresh();
       homeTab();
       setSync();
+      return true;
     } catch (err) {
       // Железобетонная защита: при ошибке квоты или сети НИКОГДА не затираем текущие items и блокируем перезапись облака до успешного sync!
       markInitialCloudSyncBlocked(effUid);
@@ -2425,6 +2432,7 @@ async function syncItemsFromCloud(effUid, force = false) {
       profPaint();
       refresh();
       homeTab();
+      return false;
     } finally {
       _cloudSyncInFlight = null;
     }
@@ -2566,71 +2574,116 @@ async function hydrateLocalSessionView(uObj) {
   }
 }
 
-function attachCloudProfileListener(effUid, sessionToken) {
+function applyServerProfileDocToLocal(effUid, pd, isFromCache = false) {
+  const localAvatarBackup = prof.avatar || '';
+  const localCoverBackup = prof.cover || '';
+  const localCoverColBackup = prof.coverColor || 0;
+  const { isProfile, kind: _k, userId: _u, _docId, statsSummary, friends: _fr, ...rest } = pd;
+  let hasLocalDirtyProf = false;
+  try { hasLocalDirtyProf = localStorage.getItem('profDirty_' + effUid) === '1'; } catch (e) {}
+
+  if (hasLocalDirtyProf) {
+    // Сохраняем локальные несохранённые правки профиля — обновляем облачные метаданные (и подборки, если локально их нет)
+    ['colStorageV2', 'colChunkCount', 'colChunkRev', 'colChunkWriter', 'colRev', 'colCount', 'schemaMigratedV4'].forEach(k => {
+      if (rest[k] !== undefined) prof[k] = rest[k];
+    });
+    if ((!Array.isArray(prof.customLists) || !prof.customLists.length) && Array.isArray(rest.customLists) && rest.customLists.length) {
+      prof.customLists = rest.customLists;
+    }
+    if ((!prof.listMeta || !Object.keys(prof.listMeta).length) && rest.listMeta && typeof rest.listMeta === 'object') {
+      prof.listMeta = rest.listMeta;
+    }
+  } else {
+    Object.assign(prof, rest);
+  }
+
+  if (pd.schemaMigratedV4) {
+    try { localStorage.setItem('schemaMigratedV4_' + effUid, '1'); } catch (e) {}
+    setCloudSyncMeta({ schemaMigratedV4: true }, effUid);
+  }
+
+  let restoredVisuals = false;
+  if (!hasLocalDirtyProf) {
+    if (!prof.avatar && localAvatarBackup) { prof.avatar = localAvatarBackup; restoredVisuals = true; }
+    if (!prof.cover && localCoverBackup) { prof.cover = localCoverBackup; restoredVisuals = true; }
+    if (!prof.cover && !prof.coverColor && localCoverColBackup) { prof.coverColor = localCoverColBackup; restoredVisuals = true; }
+  }
+  _cloudProfLoaded = true;
+  if (!hasLocalDirtyProf) {
+    const safeProfSnapshot = stripUndefinedDeep({ ...prof, kind: 'profile', isProfile: true, userId: effUid });
+    delete safeProfSnapshot.email; delete safeProfSnapshot.ownerEmail; delete safeProfSnapshot.statsSummary; delete safeProfSnapshot.friends;
+    _lastSavedProfJson = JSON.stringify({ ...safeProfSnapshot, lastVisit: 0, colRev: 0, colCount: 0 });
+  }
+  profSaveLocal(true);
+  if (restoredVisuals && !isCloudWriteBlocked() && !isFromCache) profCloud();
+  profPaint();
+}
+
+async function forcePullProfileAndCollectionFromServer(effUid, sessionToken) {
+  if (!effUid || !navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK || isCloudQuotaBlocked()) return false;
+  if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+  if (typeof getDocFromServer === 'function') {
+    try {
+      const sProfSnap = await withCloudTimeout(getDocFromServer(doc(db, 'items', 'prof_' + effUid)));
+      if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+      if (sProfSnap && sProfSnap.exists()) {
+        clearCloudErrorState(effUid);
+        applyServerProfileDocToLocal(effUid, sProfSnap.data(), false);
+      }
+    } catch (profErr) {
+      // Если профиль не прочитался с сервера, всё равно пробуем подтянуть коллекцию с сервера ниже
+    }
+  }
+  if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+  const syncedOk = await syncItemsFromCloud(effUid, true);
+  return Boolean(syncedOk && isInitialCloudSyncDone(effUid) && !isInitialCloudSyncBlocked(effUid));
+}
+
+function attachCloudProfileListener(effUid, sessionToken, alreadyForceSynced = false) {
   if (!effUid || sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
   // Перед созданием нового onSnapshot гарантированно отписываем предыдущий слушатель
   if (unsub) { unsub(); unsub = null; }
 
   // Слушаем ТОЛЬКО 1 документ профиля (вместо чтения всей коллекции из тысяч документов при каждом F5!)
-  let initialProfileHandled = false;
+  let initialProfileHandled = Boolean(alreadyForceSynced);
+  let emptyCacheForceTried = Boolean(alreadyForceSynced);
   unsub = onSnapshot(doc(db, 'items', 'prof_' + effUid),
     async pSnap => {
       if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
       const isFromCache = Boolean(pSnap.metadata && pSnap.metadata.fromCache);
       if (!isFromCache && !isCloudQuotaBlocked()) clearCloudErrorState(effUid);
 
-      const localAvatarBackup = prof.avatar || '';
-      const localCoverBackup = prof.cover || '';
-      const localCoverColBackup = prof.coverColor || 0;
       const localSyncMeta = getCloudSyncMeta(effUid);
       let remoteColRev = 0;
       let remoteColCount = null;
 
       if (pSnap.exists()) {
         const pd = pSnap.data();
-        const { isProfile, kind: _k, userId: _u, _docId, statsSummary, friends: _fr, ...rest } = pd;
-        let hasLocalDirtyProf = false;
-        try { hasLocalDirtyProf = localStorage.getItem('profDirty_' + effUid) === '1'; } catch (e) {}
-
-        if (hasLocalDirtyProf) {
-          // Сохраняем локальные несохранённые правки профиля (имя, аватар, обложка, тема, акцент, подборки) — обновляем только облачные метаданные
-          ['colStorageV2', 'colChunkCount', 'colChunkRev', 'colChunkWriter', 'colRev', 'colCount', 'schemaMigratedV4'].forEach(k => {
-            if (rest[k] !== undefined) prof[k] = rest[k];
-          });
-        } else {
-          Object.assign(prof, rest);
-        }
-
-        if (pd.schemaMigratedV4) {
-          try { localStorage.setItem('schemaMigratedV4_' + effUid, '1'); } catch (e) {}
-          setCloudSyncMeta({ schemaMigratedV4: true }, effUid);
-        }
+        applyServerProfileDocToLocal(effUid, pd, isFromCache);
         remoteColRev = Number(pd.colRev || 0);
         remoteColCount = (pd.colCount != null) ? Number(pd.colCount) : null;
-
-        let restoredVisuals = false;
-        if (!hasLocalDirtyProf) {
-          if (!prof.avatar && localAvatarBackup) { prof.avatar = localAvatarBackup; restoredVisuals = true; }
-          if (!prof.cover && localCoverBackup) { prof.cover = localCoverBackup; restoredVisuals = true; }
-          if (!prof.cover && !prof.coverColor && localCoverColBackup) { prof.coverColor = localCoverColBackup; restoredVisuals = true; }
-        }
-        _cloudProfLoaded = true;
-        if (!hasLocalDirtyProf) {
-          const safeProfSnapshot = stripUndefinedDeep({ ...prof, kind: 'profile', isProfile: true, userId: effUid });
-          delete safeProfSnapshot.email; delete safeProfSnapshot.ownerEmail; delete safeProfSnapshot.statsSummary; delete safeProfSnapshot.friends;
-          _lastSavedProfJson = JSON.stringify({ ...safeProfSnapshot, lastVisit: 0, colRev: 0, colCount: 0 });
-        }
-        profSaveLocal();
-        if (restoredVisuals && !isCloudWriteBlocked() && !isFromCache) profCloud();
-        profPaint();
       } else {
-        // Если снимок пришёл из локального кэша и документа профиля ещё нет — НЕ вызываем profCloud()
-        // и ждём серверный ответ, чтобы на новом устройстве не пропустить облачные чанки и не перезаписать профиль!
+        // Если снимок пришёл из локального кэша и документа профиля ещё нет — при пустой коллекции и онлайне принудительно читаем с сервера!
         if (isFromCache) {
+          if (items.length === 0 && navigator.onLine && !emptyCacheForceTried && !window.__FIREBASE_OFFLINE_FALLBACK && !isCloudQuotaBlocked()) {
+            emptyCacheForceTried = true;
+            const forcedOk = await forcePullProfileAndCollectionFromServer(effUid, sessionToken);
+            if (forcedOk) initialProfileHandled = true;
+          }
           return;
         }
         _cloudProfLoaded = true;
         if (!isCloudWriteBlocked()) profCloud();
+      }
+
+      // Если первый снимок пришёл из пустого локального кэша, принудительно дочитываем профиль и коллекцию напрямую с сервера
+      if (isFromCache && items.length === 0 && navigator.onLine && !emptyCacheForceTried && !window.__FIREBASE_OFFLINE_FALLBACK && !isCloudQuotaBlocked()) {
+        emptyCacheForceTried = true;
+        const forcedOk = await forcePullProfileAndCollectionFromServer(effUid, sessionToken);
+        if (forcedOk) {
+          initialProfileHandled = true;
+          return;
+        }
       }
 
       const lastFullSyncAt = Number(localSyncMeta.lastFullSyncAt || 0);
@@ -2653,11 +2706,13 @@ function attachCloudProfileListener(effUid, sessionToken) {
         : (!initialProfileHandled && (items.length === 0 || (remoteColRev && remoteColRev > localRev)));
 
       if (shouldPull) {
-        initialProfileHandled = true;
-        await syncItemsFromCloud(effUid, false);
+        const syncedOk = await syncItemsFromCloud(effUid, items.length === 0 && navigator.onLine);
+        if (syncedOk && isInitialCloudSyncDone(effUid) && !isInitialCloudSyncBlocked(effUid)) {
+          initialProfileHandled = true;
+        }
       } else {
-        initialProfileHandled = true;
         if (pSnap.exists() || !isFromCache) {
+          initialProfileHandled = true;
           markInitialCloudSyncDone(effUid);
         }
         if (!profTried) {
@@ -2751,7 +2806,13 @@ async function activateCloudUserSession(uObj) {
     return;
   }
 
-  attachCloudProfileListener(effUid, myToken);
+  let initialForceSynced = false;
+  if (items.length === 0 && navigator.onLine) {
+    initialForceSynced = await forcePullProfileAndCollectionFromServer(effUid, myToken);
+    if (myToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
+  }
+
+  attachCloudProfileListener(effUid, myToken, initialForceSynced);
 }
 
 // ---------- ОБРАБОТЧИКИ АВТОРИЗАЦИИ ----------

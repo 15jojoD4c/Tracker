@@ -3150,7 +3150,7 @@ async function quickAdd(r, targetStatus = 'В планах') {
       posterFallbacks: Array.isArray(r.posterFallbacks) ? r.posterFallbacks.filter(isValidPosterUrl).slice(0, 6) : undefined,
       year: r.year || '', rating: '', extRating: r.ext || '',
       description: r.desc || '', titleEn: r.en || (r.titleEn || ''), romaji: r.romaji || '', titleOrig: r.orig || (r.titleOrig || ''), alt: r.alt || '',
-      tags: r.tags || [], author: r.author || '', studio: r.studio || '', source: r.source || '', ongoing: !!r.ongoing,
+      tags: r.tags || [], author: r.author || '', studio: r.studio || '', source: r.source || '', ongoing: !!r.ongoing, upcoming: !!r.upcoming,
       trailerId: r.trailerId || '',
       shikiId: Number(r.shikiId) || 0,
       mdId: r.mdId || ''
@@ -3889,7 +3889,9 @@ function showPreview(r, rnd) {
   applyPosterImg($('rndPoster'), r.poster, r);
   $('rndTitle').textContent = r.title;
   $('rndNames').textContent = [r.en, r.orig].filter(Boolean).join(' / ');
-  $('rndMeta').textContent = [r.year, catLabel(r), r.ext ? '★ ' + r.ext + (r.src ? ' (' + r.src + ')' : '') : '', r.ongoing ? 'Онгоинг' : ''].filter(Boolean).join(' | ');
+  const rndRelState = typeof getItemReleaseState === 'function' ? getItemReleaseState(r) : (r.ongoing ? 'ongoing' : r.upcoming ? 'upcoming' : 'finished');
+  const rndRelLabel = rndRelState === 'ongoing' ? 'Онгоинг' : rndRelState === 'upcoming' ? 'Анонс' : 'Завершён';
+  $('rndMeta').textContent = [r.year, catLabel(r), r.ext ? '★ ' + r.ext + (r.src ? ' (' + r.src + ')' : '') : '', rndRelLabel].filter(Boolean).join(' | ');
   $('rndCredits').textContent = [r.author && 'Автор: ' + r.author, r.studio && 'Студия: ' + r.studio, r.source && 'Источник: ' + r.source].filter(Boolean).join('  •  ');
   rndTagChips(r);
   const dKeyRnd = 'd_' + getRuCacheKey(r);

@@ -2966,6 +2966,11 @@ class CharacterSeiyuuManager {
         mediaMeta: {
           bannerImage: d?.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + d.backdrop_path : '',
           description: d?.overview || '',
+          status: (d?.status === 'Returning Series' || d?.status === 'In Production')
+            ? 'RELEASING'
+            : (d?.status === 'Planned' || d?.status === 'Post Production' || d?.status === 'Rumored')
+              ? 'NOT_YET_RELEASED'
+              : (d?.status ? 'FINISHED' : ''),
           isOngoingTmdb: d?.status === 'Returning Series' || d?.status === 'In Production',
           nextEpAirDate: d?.next_episode_to_air?.air_date || d?.last_air_date || d?.first_air_date || '',
           endDateStr: d?.last_air_date || '',
@@ -3093,11 +3098,26 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
     specsGrid.append(b);
     return b;
   };
+  const formatReleaseStatusLabel = (item, meta = null) => {
+    const st = typeof getItemReleaseState === 'function'
+      ? getItemReleaseState(item, meta)
+      : (Boolean(item?.ongoing || meta?.status === 'RELEASING' || meta?.isOngoingTmdb) ? 'ongoing'
+        : Boolean(item?.upcoming || meta?.status === 'NOT_YET_RELEASED') ? 'upcoming' : 'finished');
+    if (st === 'ongoing') return 'Онгоинг (выходит)';
+    if (st === 'upcoming') return 'Анонс';
+    return 'Завершён';
+  };
   const formatReleasePeriodText = (item, meta = null) => {
     const startYr = item.year || (meta?.startDate?.year ? String(meta.startDate.year) : '');
-    const isOng = Boolean(item.ongoing || meta?.status === 'RELEASING' || meta?.isOngoingTmdb);
-    if (isOng) {
+    const relSt = typeof getItemReleaseState === 'function'
+      ? getItemReleaseState(item, meta)
+      : (Boolean(item.ongoing || meta?.status === 'RELEASING' || meta?.isOngoingTmdb) ? 'ongoing'
+        : Boolean(item.upcoming || meta?.status === 'NOT_YET_RELEASED') ? 'upcoming' : 'finished');
+    if (relSt === 'ongoing') {
       return startYr ? `${startYr} — выходит (онгоинг)` : 'выходит (онгоинг)';
+    }
+    if (relSt === 'upcoming') {
+      return startYr ? `${startYr} (Анонс)` : 'Анонс';
     }
     let endFull = item.endDate || '';
     let endYr = item.endYear || '';
@@ -3122,6 +3142,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
     return startYr || 'Не указан';
   };
   const releaseSpecBox = addSpec('Годы / Дата выхода', formatReleasePeriodText(activeItem, null));
+  const releaseStatusSpecBox = addSpec('Статус релиза', formatReleaseStatusLabel(activeItem, null));
   addSpec('Тип произведения', FORMAT_RU[activeItem.format] || catLabel(activeItem));
   addSpec('Первоисточник', activeItem.source || 'Оригинал / Не указан');
   const addClickableSpec = (lbl, rawVal, kindType) => {
@@ -3323,6 +3344,10 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   if (releaseSpecBox && mediaMeta) {
     const bEl = releaseSpecBox.querySelector('b');
     if (bEl) bEl.textContent = formatReleasePeriodText(activeItem, mediaMeta);
+  }
+  if (releaseStatusSpecBox && mediaMeta) {
+    const bEl = releaseStatusSpecBox.querySelector('b');
+    if (bEl) bEl.textContent = formatReleaseStatusLabel(activeItem, mediaMeta);
   }
   if (mediaMeta?.castNames && !activeItem.cast) {
     activeItem.cast = mediaMeta.castNames;

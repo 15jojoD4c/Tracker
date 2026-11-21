@@ -15,11 +15,11 @@
 <meta property="og:title" content="Kirokucho">
 <meta property="og:description" content="Kirokucho — трекер фильмов, сериалов, аниме, манги и ранобэ с каталогом и облачной синхронизацией">
 <meta property="og:type" content="website">
-<link rel="preload" href="./kiroku_engine.js?v=20261124" as="script">
-<link rel="preload" href="./app_core.js?v=20261124" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261124" as="script">
-<link rel="preload" href="./app.js?v=20261124" as="script">
-<link rel="stylesheet" href="./style.css?v=20261124">
+<link rel="preload" href="./kiroku_engine.js?v=20261125" as="script">
+<link rel="preload" href="./app_core.js?v=20261125" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261125" as="script">
+<link rel="preload" href="./app.js?v=20261125" as="script">
+<link rel="stylesheet" href="./style.css?v=20261125">
 <style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
 </head>
 <body class="auth-checking">
@@ -384,6 +384,7 @@
             </div>
           </div>
           <button class="tb" id="ongBtn" type="button">Онгоинг</button>
+          <button class="tb" id="finBtn" type="button">Завершено</button>
           <button class="tb" id="archiveToggleBtn" type="button">Архив</button>
           <button class="tb on" id="xfBtn" type="button" style="display:none"></button>
           <div id="chips" class="chips"></div>
@@ -684,7 +685,7 @@ const importWithTimeout = (url, ms = 12000) => Promise.race([
   new Promise((_, rej) => setTimeout(() => rej(new Error("Firebase load timeout")), ms))
 ]);
 
-const APP_VER = "20261124";
+const APP_VER = "20261125";
 window.__FIREBASE_CONFIG__ = Object.assign({
   apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
   authDomain: "mymediatracker-6e179.firebaseapp.com",

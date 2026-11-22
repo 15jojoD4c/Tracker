@@ -2716,11 +2716,60 @@ class CharacterSeiyuuManager {
       const mType = item.category === 'Аниме' ? 'ANIME' : 'MANGA';
       const isAnime = item.category === 'Аниме';
       const hasDirectId = Boolean(Number(item.aniId) > 0 || Number(item.mal) > 0);
-      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal status bannerImage description(asHtml:false) format source duration episodes volumes chapters title{romaji english native} synonyms startDate{year month day} endDate{year month day} nextAiringEpisode{airingAt episode} trailer{id site} relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,FAVOURITES_DESC,RELEVANCE],perPage:50){edges{role node{name{full native}image{large}favourites}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
+      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal status bannerImage description(asHtml:false) format source duration episodes volumes chapters title{romaji english native} synonyms startDate{year month day} endDate{year month day} nextAiringEpisode{airingAt episode} trailer{id site} studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}} relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,FAVOURITES_DESC,RELEVANCE],perPage:50){edges{role node{name{full native}image{large}favourites}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
       const vars = { t: mType };
       if (Number(item.aniId) > 0) vars.id = Number(item.aniId);
       else if (Number(item.mal) > 0) vars.mal = Number(item.mal);
       else vars.s = item.romaji || item.titleEn || item.en || item.title;
+
+      const fetchFallbackCreators = async (targetMalId, animeFlag, curAuthor, curStudio) => {
+        let outAuthor = curAuthor || '';
+        let outStudio = curStudio || '';
+        if (!targetMalId || (outAuthor && outStudio)) return { author: outAuthor, studio: outStudio };
+        try {
+          const ep = animeFlag ? 'animes' : 'mangas';
+          const roles = await ruJson(`https://shikimori.one/api/${ep}/${targetMalId}/roles`, 3500);
+          if (Array.isArray(roles)) {
+            const preferred = [];
+            const secondary = [];
+            roles.forEach(r => {
+              const pName = r?.person?.russian || r?.person?.name || '';
+              if (!pName) return;
+              const roleStr = [...(r.roles || []), ...(r.roles_russian || [])].join(' ');
+              if (/original creator|story|art|author|director|автор|оригинал|режисс|сценарий/i.test(roleStr)) preferred.push(pName);
+              else secondary.push(pName);
+            });
+            const picked = [...new Set(preferred.length ? preferred : secondary)].slice(0, 2).join(', ');
+            if (!outAuthor && picked) outAuthor = picked;
+          }
+        } catch (e) {}
+        if (!outAuthor || !outStudio) {
+          try {
+            if (animeFlag) {
+              const jStaff = await _jikanJson(`https://api.jikan.moe/v4/anime/${targetMalId}/staff`, 3500);
+              if (!outAuthor && Array.isArray(jStaff?.data)) {
+                const pref = jStaff.data.filter(s => (s.positions || []).some(p => /original creator|director|series composition|story/i.test(p)));
+                const picked = [...new Set((pref.length ? pref : jStaff.data).map(s => s.person?.name).filter(Boolean))].slice(0, 2).join(', ');
+                if (picked) outAuthor = picked;
+              }
+            } else {
+              const jManga = await _jikanJson(`https://api.jikan.moe/v4/manga/${targetMalId}`, 3500);
+              const md = jManga?.data;
+              if (md) {
+                if (!outAuthor && Array.isArray(md.authors)) {
+                  const picked = [...new Set(md.authors.map(a => a?.name).filter(Boolean))].slice(0, 2).join(', ');
+                  if (picked) outAuthor = picked;
+                }
+                if (!outStudio && Array.isArray(md.serializations)) {
+                  const picked = [...new Set(md.serializations.map(s => s?.name).filter(Boolean))].slice(0, 2).join(', ');
+                  if (picked) outStudio = picked;
+                }
+              }
+            }
+          } catch (e) {}
+        }
+        return { author: outAuthor, studio: outStudio };
+      };
 
       let media = null;
       if (!isAniListBlockedNow()) {
@@ -2748,17 +2797,36 @@ class CharacterSeiyuuManager {
         }).slice(0, 25);
         const ruMap = new Map();
         const malId = Number(media.idMal || item.mal) || 0;
+        const staffEdges = media.staff?.edges || [];
+        const prefStaff = staffEdges.filter(e => /original creator|story|art|director|author|creator/i.test(String(e.role || '')));
+        let aniAuthor = [...new Set((prefStaff.length ? prefStaff : staffEdges).map(e => e.node?.name?.full).filter(Boolean))].slice(0, 2).join(', ');
+        let aniStudio = [...new Set((media.studios?.nodes || []).map(s => s?.name).filter(Boolean))].slice(0, 2).join(', ');
         if (malId && SHK[item.category]) {
           try {
             const field = isAnime ? 'animes' : 'mangas';
-            const gChars = await shikiGraphQL(`query($ids:String){${field}(ids:$ids,limit:1){characterRoles{character{name russian}}}}`, { ids: String(malId) });
-            (gChars?.[field]?.[0]?.characterRoles || []).forEach(r => {
+            const extraStudioField = isAnime ? 'studios{name}' : 'publishers{name}';
+            const gChars = await shikiGraphQL(`query($ids:String){${field}(ids:$ids,limit:1){${extraStudioField} characterRoles{character{name russian}}}}`, { ids: String(malId) });
+            const shNode = gChars?.[field]?.[0];
+            (shNode?.characterRoles || []).forEach(r => {
               if (r.character?.name && r.character?.russian) ruMap.set(ruN(r.character.name), r.character.russian);
             });
+            if (!aniStudio) {
+              const stNames = (shNode?.studios || shNode?.publishers || []).map(x => x?.name).filter(Boolean);
+              if (stNames.length) aniStudio = [...new Set(stNames)].slice(0, 2).join(', ');
+            }
           } catch (e) {}
         }
+        if (malId && (!aniAuthor || !aniStudio)) {
+          const fbCr = await fetchFallbackCreators(malId, isAnime, aniAuthor || item.author || '', aniStudio || item.studio || '');
+          if (!aniAuthor && fbCr.author) aniAuthor = fbCr.author;
+          if (!aniStudio && fbCr.studio) aniStudio = fbCr.studio;
+        }
+        media.author = aniAuthor;
+        media.studio = aniStudio;
         const res = {
           mediaMeta: media,
+          author: aniAuthor,
+          studio: aniStudio,
           isAnime,
           isLiveAction: false,
           items: edges.map(e => {
@@ -2799,8 +2867,8 @@ class CharacterSeiyuuManager {
       let jikanChars = [];
       if (malId > 0) {
         const detailFields = isAnime
-          ? 'id malId status kind description airedOn{year month day} releasedOn{year month day} nextEpisodeAt duration episodes episodesAired videos{url kind} related{relationKind relationText anime{id malId name russian kind score airedOn{year} poster{mainUrl}} manga{id malId name russian kind score airedOn{year} poster{mainUrl}}} characterRoles{rolesEn rolesRu character{id name russian poster{originalUrl mainUrl}}}'
-          : 'id malId status kind description airedOn{year month day} releasedOn{year month day} chapters volumes related{relationKind relationText anime{id malId name russian kind score airedOn{year} poster{mainUrl}} manga{id malId name russian kind score airedOn{year} poster{mainUrl}}} characterRoles{rolesEn rolesRu character{id name russian poster{originalUrl mainUrl}}}';
+          ? 'id malId status kind description airedOn{year month day} releasedOn{year month day} nextEpisodeAt duration episodes episodesAired studios{name} videos{url kind} related{relationKind relationText anime{id malId name russian kind score airedOn{year} poster{mainUrl}} manga{id malId name russian kind score airedOn{year} poster{mainUrl}}} characterRoles{rolesEn rolesRu character{id name russian poster{originalUrl mainUrl}}}'
+          : 'id malId status kind description airedOn{year month day} releasedOn{year month day} chapters volumes publishers{name} related{relationKind relationText anime{id malId name russian kind score airedOn{year} poster{mainUrl}} manga{id malId name russian kind score airedOn{year} poster{mainUrl}}} characterRoles{rolesEn rolesRu character{id name russian poster{originalUrl mainUrl}}}';
         const shProm = shikiGraphQL(`query($ids:String){${field}(ids:$ids,limit:1){${detailFields}}}`, { ids: String(malId) })
           .then(d => d?.[field]?.[0] || null)
           .catch(() => null);
@@ -2883,6 +2951,14 @@ class CharacterSeiyuuManager {
         };
       }).filter(Boolean);
 
+      let fbStudio = [...new Set((shMedia?.studios || shMedia?.publishers || []).map(x => x?.name).filter(Boolean))].slice(0, 2).join(', ');
+      let fbAuthor = '';
+      if (malId > 0 && (!fbAuthor || !fbStudio)) {
+        const fbCr = await fetchFallbackCreators(malId, isAnime, item.author || '', fbStudio || item.studio || '');
+        if (fbCr.author) fbAuthor = fbCr.author;
+        if (!fbStudio && fbCr.studio) fbStudio = fbCr.studio;
+      }
+
       const mediaMeta = shMedia ? {
         idMal: Number(shMedia.malId || malId),
         description: ruClean(shMedia.description || ''),
@@ -2894,8 +2970,10 @@ class CharacterSeiyuuManager {
           episode: (Number(shMedia.episodesAired) || 0) + 1
         } : null,
         trailer: shYtId ? { site: 'youtube', id: shYtId } : null,
+        author: fbAuthor,
+        studio: fbStudio,
         relations: { edges: relEdges }
-      } : null;
+      } : ((fbAuthor || fbStudio) ? { author: fbAuthor, studio: fbStudio } : null);
 
       let charItems = [];
       const rawRoles = Array.isArray(shMedia?.characterRoles) ? shMedia.characterRoles : [];
@@ -2943,7 +3021,7 @@ class CharacterSeiyuuManager {
         });
       }
 
-      const fbRes = { mediaMeta, isAnime, isLiveAction: false, items: charItems };
+      const fbRes = { mediaMeta, author: fbAuthor, studio: fbStudio, isAnime, isLiveAction: false, items: charItems };
       this.cache.set(k, fbRes);
       if (this.cache.size > 120) this.cache.delete(this.cache.keys().next().value);
       return fbRes;
@@ -3147,11 +3225,14 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   const releaseStatusSpecBox = addSpec('Статус релиза', formatReleaseStatusLabel(activeItem, null), 'status');
   addSpec('Тип произведения', FORMAT_RU[activeItem.format] || catLabel(activeItem), 'format');
   addSpec('Первоисточник', activeItem.source || 'Оригинал / Не указан', 'source');
-  const addClickableSpec = (lbl, rawVal, kindType, specKey = '') => {
+  const fillClickableSpecBox = (b, lbl, rawVal, kindType) => {
+    if (!b) return b;
     const list = spl(rawVal);
-    if (!list.length) return addSpec(lbl, 'Не указан', specKey);
-    const b = el('div', 'tp-spec-box');
-    if (specKey) b.dataset.spec = specKey;
+    b.replaceChildren(el('span', null, lbl));
+    if (!list.length) {
+      b.append(el('b', null, 'Не указан'));
+      return b;
+    }
     const chips = el('div', 'chips');
     chips.style.margin = '2px 0 0';
     list.forEach(nameStr => {
@@ -3161,11 +3242,18 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
       ch.onclick = () => openCatalogByCreator(kindType, nameStr, activeItem.category);
       chips.append(ch);
     });
-    b.append(el('span', null, lbl), chips);
-    specsGrid.append(b);
+    b.append(chips);
+    return b;
   };
-  addClickableSpec('Автор / Режиссёр', activeItem.author, 'author', 'author');
-  addClickableSpec('Студия / Издатель', activeItem.studio, 'studio', 'studio');
+  const addClickableSpec = (lbl, rawVal, kindType, specKey = '') => {
+    const b = el('div', 'tp-spec-box');
+    if (specKey) b.dataset.spec = specKey;
+    fillClickableSpecBox(b, lbl, rawVal, kindType);
+    specsGrid.append(b);
+    return b;
+  };
+  const authorSpecBox = addClickableSpec('Автор / Режиссёр', activeItem.author, 'author', 'author');
+  const studioSpecBox = addClickableSpec('Студия / Издатель', activeItem.studio, 'studio', 'studio');
   if (activeItem.cast) addSpec('В главных ролях', activeItem.cast, 'cast');
   if (activeItem.category === 'Манга' || activeItem.category === 'Ранобэ') {
     addSpec('Объём (Главы и Тома)', `${num(activeItem.eps) || '?'} гл. · ${num(activeItem.vols) || '?'} т.`, 'volume');
@@ -3420,6 +3508,22 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
     const bEl = releaseStatusSpecBox.querySelector('b');
     if (bEl) bEl.textContent = formatReleaseStatusLabel(activeItem, mediaMeta);
   }
+  {
+    const foundAuthor = String(mediaMeta?.author || cachedData?.author || '').trim();
+    const foundStudio = String(mediaMeta?.studio || cachedData?.studio || '').trim();
+    let metaPatchedLocal = false;
+    if (foundAuthor && !activeItem.author) {
+      activeItem.author = foundAuthor;
+      if (inCol && !inCol.author) { inCol.author = foundAuthor; metaPatchedLocal = true; }
+      fillClickableSpecBox(authorSpecBox, 'Автор / Режиссёр', foundAuthor, 'author');
+    }
+    if (foundStudio && !activeItem.studio) {
+      activeItem.studio = foundStudio;
+      if (inCol && !inCol.studio) { inCol.studio = foundStudio; metaPatchedLocal = true; }
+      fillClickableSpecBox(studioSpecBox, 'Студия / Издатель', foundStudio, 'studio');
+    }
+    if (metaPatchedLocal) saveLocalItems();
+  }
   if (mediaMeta?.castNames && !activeItem.cast) {
     activeItem.cast = mediaMeta.castNames;
     addSpec('В главных ролях', mediaMeta.castNames, 'cast');
@@ -3454,7 +3558,14 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
       }
     }
     if (scheduleText) {
-      addSpec('📅 Расписание выхода (Онгоинг)', scheduleText, 'schedule');
+      const schBox = el('div', 'tp-spec-box');
+      schBox.dataset.spec = 'schedule';
+      const schLbl = el('span');
+      const deskIc = el('span', 'tp-desktop-ic', '📅 ');
+      deskIc.style.display = 'inline';
+      schLbl.append(deskIc, document.createTextNode('Расписание выхода (Онгоинг)'));
+      schBox.append(schLbl, el('b', null, scheduleText));
+      specsGrid.append(schBox);
     }
   }
 
@@ -4639,12 +4750,18 @@ function refresh(opts = {}) {
   if ($('reviewItemsBox')?.style.display !== 'none') renderReviewItemsTab();
 }
 
-// Синхронизация прокрутки и кнопки закрытия в модальных окнах
+// Синхронизация прокрутки (включая тач-блокировку фона) и кнопки закрытия в модальных окнах
 {
   const mods = [...document.querySelectorAll('.modal')]; let back = null;
   const sync = () => {
     const open = mods.find(m => m.style.display && m.style.display !== 'none');
-    document.body.style.overflow = open ? 'hidden' : '';
+    const locked = Boolean(open);
+    document.documentElement.classList.toggle('modal-open', locked);
+    document.body.classList.toggle('modal-open', locked);
+    document.documentElement.style.overflow = locked ? 'hidden' : '';
+    document.body.style.overflow = locked ? 'hidden' : '';
+    document.documentElement.style.overscrollBehavior = locked ? 'none' : '';
+    document.body.style.overscrollBehavior = locked ? 'none' : '';
     const hasOwnClose = Boolean(open && open.querySelector('[id$="CloseBtn"], [id^="close"], #cropCancelBtn'));
     $('modalX').classList.toggle('show', Boolean(open && !hasOwnClose));
     if (open) {
@@ -4662,6 +4779,53 @@ function refresh(opts = {}) {
     }
   };
   mods.forEach(m => new MutationObserver(sync).observe(m, {attributes: true, attributeFilter: ['style']}));
+
+  let _mTouchX = 0;
+  let _mTouchY = 0;
+  const findVerticalScrollerInModal = target => {
+    let cur = target;
+    while (cur && cur !== document.body && cur !== document.documentElement) {
+      if (cur.nodeType === 1) {
+        const st = getComputedStyle(cur);
+        const canScrollY = (st.overflowY === 'auto' || st.overflowY === 'scroll') && cur.scrollHeight > cur.clientHeight + 1;
+        if (canScrollY) return cur;
+        if (cur.classList && cur.classList.contains('mc')) return cur;
+      }
+      cur = cur.parentElement;
+    }
+    return null;
+  };
+  document.addEventListener('touchstart', e => {
+    if (!document.documentElement.classList.contains('modal-open')) return;
+    if (e.touches && e.touches.length) {
+      _mTouchX = e.touches[0].clientX;
+      _mTouchY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!document.documentElement.classList.contains('modal-open')) return;
+    if (!e.touches || !e.touches.length) return;
+    const t = e.target;
+    if (t && t.closest && (t.closest('#cropCanvas') || t.closest('input[type="range"]'))) return;
+    const insideMc = t && t.closest ? t.closest('.modal .mc, .qa-float-menu') : null;
+    if (!insideMc) {
+      e.preventDefault();
+      return;
+    }
+    const dx = e.touches[0].clientX - _mTouchX;
+    const dy = e.touches[0].clientY - _mTouchY;
+    if (Math.abs(dx) > Math.abs(dy)) return;
+    const scroller = findVerticalScrollerInModal(t);
+    if (!scroller || scroller.scrollHeight <= scroller.clientHeight + 1) {
+      e.preventDefault();
+      return;
+    }
+    const atTop = scroller.scrollTop <= 0;
+    const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+    if ((atTop && dy > 0) || (atBottom && dy < 0)) {
+      e.preventDefault();
+    }
+  }, { passive: false });
 }
 $('modalX').onclick = () => closeTopModal(false);
 document.querySelectorAll('#accMenu .mi, #accMenu .mrow').forEach(n => n.addEventListener('click', e => e.stopPropagation()));

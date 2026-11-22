@@ -4,6 +4,7 @@ html{scrollbar-color:rgba(255,255,255,.18) transparent;scrollbar-gutter:stable}
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:4px}
 html,body{max-width:100%;overflow-x:hidden}
+html.modal-open,body.modal-open{overflow:hidden!important;overscroll-behavior:none!important}
 body{background:var(--bg);color:#f1f3f9;font-family:'Inter','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;letter-spacing:-.01em;margin:0;padding:0;min-height:100vh}
 body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:none}
 h1,h2,h3,.logo,.pinfo b,.tile b{font-family:'Plus Jakarta Sans','Inter',sans-serif;letter-spacing:-.02em}
@@ -21,6 +22,20 @@ h1,h2,h3,.logo,.pinfo b,.tile b{font-family:'Plus Jakarta Sans','Inter',sans-ser
 header{position:sticky;top:0;z-index:60;background:rgba(15,17,21,.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--bd);margin-bottom:16px}
 .hdr-inner{max-width:1380px;margin:0 auto;padding:10px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px}
 .logo{color:#fff;font-weight:800;font-size:17px;letter-spacing:-.02em}
+.hdr-info-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--mu);cursor:pointer;flex-shrink:0;transition:color .15s,background .15s}
+.hdr-info-btn:hover{color:#fff;background:rgba(255,255,255,.08)}
+.hdr-info-btn:active{transform:scale(.95)}
+.about-lead{margin:0;font-size:13.5px;line-height:1.55;color:#cfd4e2}
+.about-card{background:var(--inp);border:1px solid var(--bd);border-radius:var(--rad);padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.about-card-title{font-size:13px;font-weight:700;color:#fff}
+.about-card-sub{margin:0;font-size:12.5px;line-height:1.45;color:var(--mu)}
+.about-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-top:4px}
+.about-row-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+.about-row-lbl{font-size:11px;color:var(--mu);text-transform:uppercase;letter-spacing:.03em;font-weight:600}
+.about-link{color:var(--ach);font-size:14px;font-weight:700;text-decoration:none;overflow-wrap:anywhere;word-break:break-word}
+.about-link:hover{text-decoration:underline}
+.about-row-btns{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.about-row-btns .btn{display:inline-flex;align-items:center;justify-content:center;min-height:36px;height:36px;line-height:1}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .row2{display:flex;gap:10px}.row2>*{flex:1;min-width:0}
 .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.row3>*{min-width:0}
@@ -480,6 +495,7 @@ html[data-theme=white] .tp-hero-art-bg::after{background:linear-gradient(90deg,#
 .anix-r-stars{font-size:11px;font-weight:700;color:#f59e0b}
 
 body[data-pview="collection"] .hyb-profile-shell,body[data-pview="collection"] #profAnixartExtrasSec{display:none!important}
+body[data-pview="profile"] #myListsBlock,body[data-pview="profile"] .hyb-subtabs-bar,body[data-pview="profile"] #profColWrap,body[data-pview="profile"] #reviewItemsBox,body[data-pview="profile"] #catalogLinkProgressBar{display:none!important}
 .tp-specs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:8px;margin:12px 0}
 .tp-spec-box{background:var(--inp);border:1px solid var(--bd);border-radius:var(--rad-sm);padding:8px 10px}
 .tp-spec-box span{display:block;font-size:11px;color:var(--mu);margin-bottom:2px}
@@ -538,6 +554,10 @@ html[data-theme=white] .qa-float-menu{background:rgba(255,255,255,.94);backdrop-
 html[data-theme=white] .qa-float-menu button{color:#14161f}
 html[data-theme=white] .hyb-st-tab{color:#4b5563}
 html[data-theme=white] .hyb-st-tab.on{color:#fff}
+html[data-theme=white] .hdr-info-btn{color:#5d6478}
+html[data-theme=white] .hdr-info-btn:hover{color:#14161f;background:rgba(0,0,0,.06)}
+html[data-theme=white] .about-lead{color:#2b2f40}
+html[data-theme=white] .about-card-title{color:#14161f}
 
 html[data-theme=neon]{--bg:#090812;--card:#131124;--inp:#1b1833;--bd:rgba(0,240,255,.2);--ac:#e11d48;--ach:#38bdf8;--mu:#9ca3bf}
 html[data-theme=mocha]{--bg:#14110f;--card:#1f1a17;--inp:#29221e;--bd:rgba(255,220,190,.12);--ac:#b45309;--ach:#f59e0b;--mu:#a8998c}

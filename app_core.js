@@ -3892,9 +3892,12 @@ if ($('colLoadMoreBtn')) {
 $('searchInput').addEventListener('input', () => render(false));
 ['statusFilter', 'tagFilter', 'sortSelect', 'listFilter'].forEach(id => $(id).addEventListener('change', () => render(false)));
 
-// Переключение табов статусов в профиле (включая «📥 Разобрать»)
+// Переключение табов статусов в коллекции (включая «📥 Разобрать»)
 document.querySelectorAll('#hybStatusTabs .hyb-st-tab').forEach(btn => {
   btn.onclick = () => {
+    if (document.body.dataset.pview !== 'collection' && typeof applyMainTabView === 'function') {
+      applyMainTabView('collection');
+    }
     const st = btn.dataset.st;
     if (st === '__review__') {
       document.querySelectorAll('#hybStatusTabs .hyb-st-tab').forEach(b => b.classList.toggle('on', b === btn));
@@ -4038,7 +4041,7 @@ $('sizeSel').onchange = e => setSize(e.target.value, false);
 let cropDone = null;
 
 // Приоритет модальных окон от самого верхнего к нижнему (по z-index)
-const MODAL_STACK_ORDER = ['cropModal', 'dlgModal', 'charPopupModal', 'themeModal', 'dataModal', 'profModal', 'statsModal', 'addModal', 'detailModal', 'rndModal'];
+const MODAL_STACK_ORDER = ['cropModal', 'dlgModal', 'charPopupModal', 'aboutSiteModal', 'themeModal', 'dataModal', 'profModal', 'statsModal', 'addModal', 'detailModal', 'rndModal'];
 
 function getOpenModalsInStackOrder() {
   return MODAL_STACK_ORDER.map(id => $(id)).filter(m => m && m.style.display && m.style.display !== 'none');
@@ -4087,9 +4090,37 @@ const closeAll = (fromPopState = false) => {
   }
 };
 
-['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'closeStatsTopBtn', 'rndClose'].forEach(id => {
+['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'closeStatsTopBtn', 'rndClose', 'closeAboutSiteBtn', 'doneAboutSiteBtn'].forEach(id => {
   if ($(id)) $(id).onclick = () => closeTopModal(false);
 });
+
+const openAboutSiteModal = () => {
+  $('accMenu')?.classList.remove('open');
+  if ($('aboutSiteModal')) $('aboutSiteModal').style.display = 'flex';
+};
+if ($('aboutSiteBtn')) $('aboutSiteBtn').onclick = openAboutSiteModal;
+if ($('accAboutBtn')) $('accAboutBtn').onclick = openAboutSiteModal;
+if ($('copyAboutTgBtn')) {
+  $('copyAboutTgBtn').onclick = async () => {
+    const handle = '@Ueste';
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(handle);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = handle;
+        ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.append(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      toast('Telegram @Ueste скопирован');
+    } catch (e) {
+      toast('Telegram: @Ueste');
+    }
+  };
+}
 
 let _lastMouseDownTarget = null;
 document.addEventListener('mousedown', e => {
@@ -5253,6 +5284,9 @@ function renderMyListsFolderBlock() {
     pill.append(dot, lbl);
 
     pill.onclick = () => {
+      if (document.body.dataset.pview !== 'collection' && typeof applyMainTabView === 'function') {
+        applyMainTabView('collection');
+      }
       if ($('reviewItemsBox')) $('reviewItemsBox').style.display = 'none';
       $('profColWrap').style.display = '';
       $('listFilter').value = ($('listFilter').value.toLowerCase() === lowKey) ? 'Все' : lowKey;
@@ -5564,7 +5598,13 @@ $('saveItemBtn').onclick = async () => {
 // ИСПРАВЛЕНИЕ ОШИБКИ №2: Итоги года и Капсула времени используют дату просмотра completedAt, если она есть, иначе дату добавления
 const born = i => { const v = Number(i.id); return v > 1e14 ? v / 1000 : v > 1e11 && v < 1e13 ? v : 0; };
 const itemActionDate = i => Number(i.completedAt) || born(i) || Date.now();
-const toList = () => { $('profColWrap').style.display = ''; $('searchInput').scrollIntoView({behavior: 'smooth'}); };
+const toList = () => {
+  if (document.body.dataset.pview !== 'collection' && typeof applyMainTabView === 'function') {
+    applyMainTabView('collection');
+  }
+  $('profColWrap').style.display = '';
+  $('searchInput').scrollIntoView({behavior: 'smooth'});
+};
 
 function detailExtra(id) {
   const i = items.find(x => x.id === id); if (!i) return;

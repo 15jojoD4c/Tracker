@@ -15,12 +15,12 @@
 <meta property="og:title" content="Kirokucho">
 <meta property="og:description" content="Kirokucho — трекер фильмов, сериалов, аниме, манги и ранобэ с каталогом и облачной синхронизацией">
 <meta property="og:type" content="website">
-<link rel="preload" href="./kiroku_engine.js?v=20261128" as="script">
-<link rel="preload" href="./app_core.js?v=20261128" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261128" as="script">
-<link rel="preload" href="./app.js?v=20261128" as="script">
-<link rel="stylesheet" href="./style.css?v=20261128">
-<link rel="stylesheet" href="./mobile.css?v=20261128" media="(max-width: 768px)">
+<link rel="preload" href="./kiroku_engine.js?v=20261129" as="script">
+<link rel="preload" href="./app_core.js?v=20261129" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261129" as="script">
+<link rel="preload" href="./app.js?v=20261129" as="script">
+<link rel="stylesheet" href="./style.css?v=20261129">
+<link rel="stylesheet" href="./mobile.css?v=20261129" media="(max-width: 768px)">
 <style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
 </head>
 <body class="auth-checking">
@@ -53,7 +53,7 @@
 <div id="appScreen">
   <header>
     <div class="hdr-inner">
-      <div class="row"><span class="brand" aria-hidden="true">▶</span><span class="logo">Kirokucho</span><span id="syncState" class="sync">☁ Синхронизировано</span><span id="accountBadge" class="sync" style="display:none"></span></div>
+      <div class="row"><span class="brand" aria-hidden="true">▶</span><span class="logo">Kirokucho</span><button id="aboutSiteBtn" class="hdr-info-btn" type="button" title="О сайте и связь с автором" aria-label="О сайте и связь с автором"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="16" x2="12" y2="11.5"/><circle cx="12" cy="8" r="0.8" fill="currentColor" stroke="none"/></svg></button><span id="syncState" class="sync">☁ Синхронизировано</span><span id="accountBadge" class="sync" style="display:none"></span></div>
       <div class="row hdr-actions">
         <input type="file" id="universalImportFile" accept=".csv,.tsv,.txt,.json,.xml,.html,.htm,.xls" style="display:none" onchange="handleUniversalFileImport(event)">
         <input type="file" id="importFile" accept=".json" onchange="importData(event)">
@@ -67,6 +67,7 @@
             <button id="menuSettingsBtn" type="button">Настройки профиля</button>
             <button id="accThemeModalBtn" type="button">Оформление</button>
             <button id="accDataBtn" type="button">Данные и импорт</button>
+            <button id="accAboutBtn" type="button">О сайте и связь</button>
             <button class="out" id="logoutBtn" type="button">Выйти</button>
           </div>
         </div>
@@ -672,6 +673,31 @@
   </div>
 </div></div>
 
+<div id="aboutSiteModal" class="modal" style="z-index:1350"><div class="mc about-modal-mc" style="max-width:460px">
+  <div class="row" style="justify-content:space-between;align-items:center">
+    <h3 style="margin:0;display:flex;align-items:center;gap:8px"><span class="brand" aria-hidden="true" style="width:24px;height:24px;font-size:11px">▶</span>О сайте Kirokucho</h3>
+    <button class="btn btn-s" id="closeAboutSiteBtn" type="button" aria-label="Закрыть" style="padding:5px 10px">✕</button>
+  </div>
+  <p class="about-lead">Kirokucho — личный медиа-трекер фильмов, сериалов, аниме, манги и ранобэ с каталогом, подборками, подробной статистикой и облачной синхронизацией между устройствами.</p>
+  <div class="about-card">
+    <div class="about-card-title">Связь с автором</div>
+    <p class="about-card-sub">Нашли ошибку, есть идея для улучшения или вопрос по сайту — напишите в Telegram:</p>
+    <div class="about-row">
+      <div class="about-row-info">
+        <span class="about-row-lbl">Telegram</span>
+        <a class="about-link" href="https://t.me/Ueste" target="_blank" rel="noopener noreferrer">@Ueste ↗</a>
+      </div>
+      <div class="about-row-btns">
+        <a class="btn" href="https://t.me/Ueste" target="_blank" rel="noopener noreferrer" style="text-decoration:none;padding:7px 12px;font-size:12.5px">Написать</a>
+        <button class="btn btn-s" id="copyAboutTgBtn" type="button" style="padding:7px 10px;font-size:12.5px">Копировать</button>
+      </div>
+    </div>
+  </div>
+  <div class="mb" style="justify-content:flex-end;margin-top:4px">
+    <button class="btn btn-s" id="doneAboutSiteBtn" type="button">Закрыть</button>
+  </div>
+</div></div>
+
 <div id="posterLightboxModal" role="dialog" aria-label="Просмотр постера">
   <img id="posterLightboxImg" src="" alt="Постер" referrerpolicy="no-referrer">
   <div class="poster-lb-bar" onclick="event.stopPropagation()">
@@ -687,7 +713,7 @@ const importWithTimeout = (url, ms = 25000) => Promise.race([
   new Promise((_, rej) => setTimeout(() => rej(new Error("Firebase load timeout")), ms))
 ]);
 
-const APP_VER = "20261128";
+const APP_VER = "20261129";
 window.__FIREBASE_CONFIG__ = {
   apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
   authDomain: "mymediatracker-6e179.firebaseapp.com",

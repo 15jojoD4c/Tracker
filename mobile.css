@@ -874,14 +874,98 @@ html[data-grid-size="lg"] .grid:not(.list) .card .pc {
   width: 100%;
 }
 
+#detailModal .mc > .mb:last-child {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  width: 100% !important;
+  margin-top: 6px !important;
+}
+
+#detailModal .mc > .mb:last-child > .row {
+  display: contents !important;
+}
+
+#detailModal .mc > .mb:last-child .btn {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  padding: 0 10px !important;
+  font-size: 12.5px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  justify-content: center !important;
+  align-items: center !important;
+  flex: none !important;
+}
+
+#openFullPageFromDetailBtn {
+  grid-column: 1 / -1 !important;
+  order: 1 !important;
+}
+
+#editItemBtn {
+  order: 2 !important;
+}
+
+#deleteItemBtn {
+  order: 3 !important;
+}
+
+#closeDetailBtn {
+  display: none !important;
+}
+
+/* Нижние кнопки маленькой карточки (#rndModal): ровная сетка, единая высота, без дубля «Закрыть» */
 #rndModal .mc .row {
   width: 100%;
   gap: 6px;
 }
 
-#rndModal .mc .row .btn {
-  flex: 1 1 calc(50% - 6px);
-  justify-content: center;
+#rndModal .mc > .row:last-child {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  width: 100% !important;
+  margin-top: 6px !important;
+  align-items: stretch !important;
+}
+
+#rndModal .mc > .row:last-child > .btn {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  padding: 0 10px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  justify-content: center !important;
+  align-items: center !important;
+  flex: none !important;
+  border-radius: 10px !important;
+}
+
+#rndAdd {
+  grid-column: 1 / -1 !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+}
+
+#rndMore {
+  grid-column: 1 / -1 !important;
+}
+
+#rndClose {
+  display: none !important;
 }
 
 #modalX.show {
@@ -944,14 +1028,24 @@ html[data-grid-size="lg"] .grid:not(.list) .card .pc {
   text-align: center;
 }
 
-/* === 5. Полная страница тайтла (#titlePageView) — удобная вертикальная колонка === */
+/* === 5. Полная страница тайтла (#titlePageView) — компактный мобильный стиль Anixart === */
 #titlePageView {
   width: 100%;
   max-width: 100%;
 }
 
+#titlePageView > .row:first-child {
+  margin-bottom: 8px !important;
+}
+
+#titlePageView > .row:first-child .btn {
+  padding: 7px 12px !important;
+  font-size: 12.5px !important;
+  min-height: 36px !important;
+}
+
 .tp-wrap {
-  padding: 12px !important;
+  padding: 14px 12px 16px !important;
   border-radius: 14px;
   overflow: hidden;
 }
@@ -959,7 +1053,7 @@ html[data-grid-size="lg"] .grid:not(.list) .card .pc {
 .tp-hero {
   display: grid !important;
   grid-template-columns: 1fr !important;
-  gap: 14px !important;
+  gap: 10px !important;
   align-items: start;
 }
 
@@ -970,65 +1064,388 @@ html[data-grid-size="lg"] .grid:not(.list) .card .pc {
 
 .tp-hero-art-bg {
   width: 100% !important;
-  height: 240px !important;
-  top: -12px !important;
+  height: 220px !important;
+  top: -14px !important;
   right: 0 !important;
-  opacity: 0.18 !important;
+  opacity: 0.22 !important;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent) !important;
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent) !important;
 }
 
 .tp-poster {
-  width: 176px !important;
-  max-width: 58vw !important;
-  margin: 0 auto !important;
+  width: 156px !important;
+  max-width: 48vw !important;
+  margin: 0 auto 2px !important;
   display: block;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.48) !important;
+}
+
+.tp-badges-row {
+  justify-content: center !important;
+  gap: 5px !important;
+  margin-bottom: 6px !important;
+}
+
+.tp-badges-row .status,
+.tp-badges-row .chip,
+.tp-badges-row .ong {
+  font-size: 11px !important;
+  padding: 3px 8px !important;
 }
 
 #titlePageView h1 {
-  font-size: 21px !important;
-  line-height: 1.25 !important;
+  font-size: 20px !important;
+  line-height: 1.24 !important;
+  text-align: center !important;
+  margin: 0 0 4px !important;
   word-break: break-word;
 }
 
+.tp-subnames {
+  text-align: center !important;
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+  margin: 0 0 10px !important;
+  word-break: break-word;
+}
+
+.tp-subnames:empty {
+  display: none !important;
+}
+
+/* Характеристики в стиле Anixart: чистый вертикальный список с мини-иконками слева, без бабблов */
 .tp-specs-grid {
-  display: grid !important;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  gap: 7px !important;
-  width: 100%;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  width: 100% !important;
+  margin: 8px 0 0 !important;
+  padding: 0 !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .tp-spec-box {
+  display: grid !important;
+  grid-template-columns: 20px minmax(0, 1fr) !important;
+  column-gap: 9px !important;
+  row-gap: 1px !important;
+  align-items: start !important;
   min-width: 0;
-  padding: 8px 9px !important;
+  width: 100%;
+  padding: 5.5px 2px !important;
+  margin: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
   word-break: break-word;
 }
 
-.tp-hero .row {
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.tp-hero .row .btn {
-  flex: 1 1 auto;
+.tp-spec-box::before {
+  content: "•";
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  min-height: 40px;
+  width: 20px;
+  height: 20px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.86;
+  margin-top: 1px;
 }
 
-/* Трейлер и OP/ED в одну колонку */
+.tp-spec-box[data-spec="release"]::before { content: "📅"; }
+.tp-spec-box[data-spec="status"]::before { content: "📡"; }
+.tp-spec-box[data-spec="format"]::before { content: "🎞"; }
+.tp-spec-box[data-spec="source"]::before { content: "📚"; }
+.tp-spec-box[data-spec="author"]::before { content: "✍"; }
+.tp-spec-box[data-spec="studio"]::before { content: "🎬"; }
+.tp-spec-box[data-spec="cast"]::before { content: "🎭"; }
+.tp-spec-box[data-spec="volume"]::before { content: "📖"; }
+.tp-spec-box[data-spec="episodes"]::before { content: "📺"; }
+.tp-spec-box[data-spec="duration"]::before { content: "⏱"; }
+.tp-spec-box[data-spec="extRating"]::before { content: "⭐"; }
+.tp-spec-box[data-spec="myRating"]::before { content: "💚"; }
+.tp-spec-box[data-spec="added"]::before { content: "🕒"; }
+.tp-spec-box[data-spec="schedule"]::before { content: "🔔"; }
+
+.tp-spec-box > span {
+  grid-column: 2;
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+  color: var(--mut) !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  opacity: 0.9;
+}
+
+.tp-spec-box > b {
+  grid-column: 2;
+  font-size: 13.5px !important;
+  line-height: 1.35 !important;
+  font-weight: 600 !important;
+  color: var(--txt) !important;
+}
+
+.tp-spec-box > .chips {
+  grid-column: 2;
+  margin: 2px 0 0 !important;
+  gap: 4px 10px !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+}
+
+.tp-spec-box > .chips .chip {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  min-height: auto !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+  color: var(--ac, #a78bfa) !important;
+  text-decoration: underline;
+  text-decoration-color: rgba(167, 139, 250, 0.35);
+  text-underline-offset: 2px;
+}
+
+/* Жанры и теги аккуратной строкой с иконкой слева без громоздких бабблов */
+.tp-tags-row {
+  position: relative;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 5px 6px !important;
+  margin: 0 !important;
+  padding: 7px 2px 7px 31px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tp-tags-row:empty {
+  display: none !important;
+}
+
+.tp-tags-row::before {
+  content: "🏷";
+  position: absolute;
+  left: 2px;
+  top: 7px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.tp-tags-row .chip {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  padding: 2px 7px !important;
+  font-size: 11.5px !important;
+  line-height: 1.35 !important;
+  color: var(--txt) !important;
+}
+
+/* Компактные ровные ряды всех кнопок действий */
+.tp-act-row {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 7px !important;
+  width: 100% !important;
+  margin: 12px 0 4px !important;
+  align-items: stretch !important;
+}
+
+.tp-act-row > .btn {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 10px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  justify-content: center !important;
+  align-items: center !important;
+  flex: none !important;
+  border-radius: 10px !important;
+}
+
+.tp-act-row > .qa-trigger {
+  grid-column: 1 / -1 !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+}
+
+.tp-act-row > a.btn {
+  grid-column: 1 / -1 !important;
+}
+
+/* Мобильные вкладки полной страницы (О тайтле / Персонажи / Франшиза / Медиа) */
+.tp-mob-tabs {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  gap: 0 !important;
+  margin: 12px -12px 2px !important;
+  padding: 0 6px !important;
+  border-bottom: 1px solid var(--bd) !important;
+}
+
+.tp-mob-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tp-mob-tab {
+  flex: 1 0 auto !important;
+  padding: 9px 5px 8px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  color: var(--mut) !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  text-align: center !important;
+  cursor: pointer !important;
+  margin-bottom: -1px !important;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.tp-mob-tab.on {
+  color: var(--txt) !important;
+  border-bottom-color: var(--ac, #8b5cf6) !important;
+}
+
+.tp-wrap[data-mob-tab] .tp-tab-panel {
+  display: none !important;
+}
+
+.tp-wrap[data-mob-tab="about"] .tp-about-panel,
+.tp-wrap[data-mob-tab="chars"] .tp-chars-panel,
+.tp-wrap[data-mob-tab="franchise"] .tp-franchise-panel,
+.tp-wrap[data-mob-tab="media"] .tp-media-panel {
+  display: block !important;
+}
+
+.tp-tab-panel[data-has-content="0"] .tp-mob-empty {
+  display: block !important;
+  margin-top: 12px;
+  padding: 14px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--bd);
+  color: var(--mut);
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+/* Сворачиваемое длинное описание с плавным градиентом */
+.tp-desc-sec > h3 {
+  font-size: 14.5px !important;
+  margin: 12px 0 8px !important;
+}
+
+.tp-desc-body {
+  position: relative !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  font-size: 13.5px !important;
+  line-height: 1.55 !important;
+  color: var(--txt) !important;
+}
+
+.tp-desc-sec[data-collapsible="1"]:not([data-expanded="1"]) .tp-desc-body {
+  max-height: 7.75em !important;
+  overflow: hidden !important;
+}
+
+.tp-desc-sec[data-collapsible="1"]:not([data-expanded="1"]) .tp-desc-body::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.9em;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--card, #12151f) 92%);
+}
+
+.tp-desc-sec[data-collapsible="1"] .tp-desc-toggle-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--bd);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ac, #a78bfa);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Светлая тема для обновлённой страницы тайтла */
+html[data-theme="white"] .tp-specs-grid {
+  border-top-color: rgba(15, 23, 42, 0.1);
+}
+
+html[data-theme="white"] .tp-spec-box,
+html[data-theme="white"] .tp-tags-row {
+  border-bottom-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+html[data-theme="white"] .tp-tags-row .chip {
+  background: rgba(15, 23, 42, 0.06) !important;
+}
+
+html[data-theme="white"] .tp-desc-sec[data-collapsible="1"] .tp-desc-toggle-btn {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+/* Трейлер и OP/ED в одну колонку внутри вкладки «Медиа» */
 #titlePageView .dash {
   display: grid !important;
   grid-template-columns: 1fr !important;
   gap: 12px !important;
+  margin-top: 12px !important;
 }
 
 /* Персонажи и связанные части франшизы */
 .jutsu-chars-sec {
   width: 100%;
   min-width: 0;
+  margin-top: 12px !important;
 }
 
 .jutsu-chars-track,
 .jutsu-chars-grid {
   max-width: 100%;
+}
+
+.tp-franchise-panel > div:first-child {
+  margin-top: 12px !important;
 }
 
 .tp-rel-grid {

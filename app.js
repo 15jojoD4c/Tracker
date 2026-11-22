@@ -3070,14 +3070,15 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
 
   // Карточка тайтла в стиле Jut-su (Скриншот 5): слева постер, по центру информация, справа — мягкий фоновый арт главного героя / баннера
   const wrap = el('div', 'tp-wrap'), hero = el('div', 'tp-hero');
+  wrap.dataset.mobTab = 'about';
   const heroArtBg = el('div', 'tp-hero-art-bg');
   const initialArt = safePosterUrl(activeItem.banner || activeItem.poster);
   if (initialArt && initialArt !== FALL) {
     heroArtBg.style.backgroundImage = `url("${initialArt.replace(/["\\()\r\n]/g, '')}")`;
   }
   const posterImg = el('img', 'tp-poster'); applyPosterImg(posterImg, activeItem.poster, activeItem);
-  const heroInfo = el('div');
-  const badgesRow = el('div', 'row'); badgesRow.style.marginBottom = '8px';
+  const heroInfo = el('div', 'tp-hero-info');
+  const badgesRow = el('div', 'row tp-badges-row'); badgesRow.style.marginBottom = '8px';
   const stPill = el('span', 'status', activeItem.status ? getStatusLabelForCategory(activeItem.status, activeItem.category) : 'В каталоге'); stPill.dataset.s = activeItem.status || 'В планах';
   badgesRow.append(stPill);
   if (activeItem.fav) badgesRow.append(el('span', 'chip', '❤ Любимое'));
@@ -3085,15 +3086,16 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   badgesRow.append(el('span', 'chip', catLabel(activeItem)));
 
   const titleH1 = el('h1', null, activeItem.title); titleH1.style.cssText = 'margin:0 0 6px;font-size:26px';
-  const subNames = el('div', 'meta', [activeItem.titleEn || activeItem.en, activeItem.titleOrig || activeItem.orig].filter(Boolean).join(' / '));
+  const subNames = el('div', 'meta tp-subnames', [activeItem.titleEn || activeItem.en, activeItem.titleOrig || activeItem.orig].filter(Boolean).join(' / '));
   const specsGrid = el('div', 'tp-specs-grid');
-  const tagsBox = el('div', 'chips'); tagsBox.style.margin = '12px 0';
+  const tagsBox = el('div', 'chips tp-tags-row'); tagsBox.style.margin = '12px 0';
   (activeItem.tags || []).forEach(t => tagsBox.append(el('span', 'chip', t)));
-  const actRow = el('div', 'row'); actRow.style.marginTop = '12px';
+  const actRow = el('div', 'row tp-act-row'); actRow.style.marginTop = '12px';
 
-  const addSpec = (lbl, val) => {
+  const addSpec = (lbl, val, specKey = '') => {
     if (!val) return null;
     const b = el('div', 'tp-spec-box');
+    if (specKey) b.dataset.spec = specKey;
     b.append(el('span', null, lbl), el('b', null, String(val)));
     specsGrid.append(b);
     return b;
@@ -3141,14 +3143,15 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
     }
     return startYr || 'Не указан';
   };
-  const releaseSpecBox = addSpec('Годы / Дата выхода', formatReleasePeriodText(activeItem, null));
-  const releaseStatusSpecBox = addSpec('Статус релиза', formatReleaseStatusLabel(activeItem, null));
-  addSpec('Тип произведения', FORMAT_RU[activeItem.format] || catLabel(activeItem));
-  addSpec('Первоисточник', activeItem.source || 'Оригинал / Не указан');
-  const addClickableSpec = (lbl, rawVal, kindType) => {
+  const releaseSpecBox = addSpec('Годы / Дата выхода', formatReleasePeriodText(activeItem, null), 'release');
+  const releaseStatusSpecBox = addSpec('Статус релиза', formatReleaseStatusLabel(activeItem, null), 'status');
+  addSpec('Тип произведения', FORMAT_RU[activeItem.format] || catLabel(activeItem), 'format');
+  addSpec('Первоисточник', activeItem.source || 'Оригинал / Не указан', 'source');
+  const addClickableSpec = (lbl, rawVal, kindType, specKey = '') => {
     const list = spl(rawVal);
-    if (!list.length) return addSpec(lbl, 'Не указан');
+    if (!list.length) return addSpec(lbl, 'Не указан', specKey);
     const b = el('div', 'tp-spec-box');
+    if (specKey) b.dataset.spec = specKey;
     const chips = el('div', 'chips');
     chips.style.margin = '2px 0 0';
     list.forEach(nameStr => {
@@ -3161,20 +3164,20 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
     b.append(el('span', null, lbl), chips);
     specsGrid.append(b);
   };
-  addClickableSpec('Автор / Режиссёр', activeItem.author, 'author');
-  addClickableSpec('Студия / Издатель', activeItem.studio, 'studio');
-  if (activeItem.cast) addSpec('В главных ролях', activeItem.cast);
+  addClickableSpec('Автор / Режиссёр', activeItem.author, 'author', 'author');
+  addClickableSpec('Студия / Издатель', activeItem.studio, 'studio', 'studio');
+  if (activeItem.cast) addSpec('В главных ролях', activeItem.cast, 'cast');
   if (activeItem.category === 'Манга' || activeItem.category === 'Ранобэ') {
-    addSpec('Объём (Главы и Тома)', `${num(activeItem.eps) || '?'} гл. · ${num(activeItem.vols) || '?'} т.`);
+    addSpec('Объём (Главы и Тома)', `${num(activeItem.eps) || '?'} гл. · ${num(activeItem.vols) || '?'} т.`, 'volume');
   } else {
-    addSpec('Количество серий', num(activeItem.eps) ? `${activeItem.eps} эп.` : (activeItem.category === 'Фильм' ? 'Полнометражный фильм' : 'Не указано'));
-    addSpec('Длительность', num(activeItem.dur) ? `${activeItem.dur} мин. (${formatWatchTimeRu(getItemMinutes(activeItem))} всего)` : formatWatchTimeRu(getItemMinutes(activeItem)));
+    addSpec('Количество серий', num(activeItem.eps) ? `${activeItem.eps} эп.` : (activeItem.category === 'Фильм' ? 'Полнометражный фильм' : 'Не указано'), 'episodes');
+    addSpec('Длительность', num(activeItem.dur) ? `${activeItem.dur} мин. (${formatWatchTimeRu(getItemMinutes(activeItem))} всего)` : formatWatchTimeRu(getItemMinutes(activeItem)), 'duration');
   }
-  addSpec('Внешний рейтинг', (activeItem.extRating || activeItem.ext) ? `★ ${activeItem.extRating || activeItem.ext}` : '—');
-  addSpec('Моя оценка', activeItem.rating ? `★ ${activeItem.rating} / 10` : 'Не оценено');
+  addSpec('Внешний рейтинг', (activeItem.extRating || activeItem.ext) ? `★ ${activeItem.extRating || activeItem.ext}` : '—', 'extRating');
+  addSpec('Моя оценка', activeItem.rating ? `★ ${activeItem.rating} / 10` : 'Не оценено', 'myRating');
   if (inCol) {
     const addDt = formatAddedDateRu(inCol);
-    if (addDt) addSpec(`Добавлено в «${getStatusLabelForCategory(inCol.status, inCol.category)}»`, addDt);
+    if (addDt) addSpec(`Добавлено в «${getStatusLabelForCategory(inCol.status, inCol.category)}»`, addDt, 'added');
   }
 
   const fullPageSimBox = el('div', 'chips');
@@ -3272,27 +3275,93 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   }
   const isManualFp = isManualItemEditable(activeItem);
 
+  const descSec = el('div', 'tp-desc-sec tp-tab-panel tp-about-panel');
   const descHdr = el('h3', null, '📖 Описание и синопсис'); descHdr.style.margin = '22px 0 8px';
-  const descBody = el('div', null, initialDesc || (isManualFp ? 'Описание отсутствует.' : 'Загружаю описание…'));
+  const descBody = el('div', 'tp-desc-body', initialDesc || (isManualFp ? 'Описание отсутствует.' : 'Загружаю описание…'));
   descBody.style.cssText = 'background:rgba(0,0,0,.25);padding:14px;border-radius:12px;line-height:1.6;white-space:pre-wrap';
+  const descToggleBtn = el('button', 'tp-desc-toggle-btn', 'Показать полностью ▾');
+  descToggleBtn.type = 'button';
+  descToggleBtn.style.display = 'none';
+  const syncDescCollapsible = txt => {
+    const clean = String(txt || '').trim();
+    const isLong = clean.length > 185 || (clean.match(/\n/g) || []).length >= 4;
+    descSec.dataset.collapsible = isLong ? '1' : '0';
+    if (!isLong) {
+      descSec.dataset.expanded = '0';
+      descToggleBtn.textContent = 'Показать полностью ▾';
+    }
+  };
+  descToggleBtn.onclick = () => {
+    const exp = descSec.dataset.expanded === '1';
+    descSec.dataset.expanded = exp ? '0' : '1';
+    descToggleBtn.textContent = exp ? 'Показать полностью ▾' : 'Свернуть ▴';
+  };
+  syncDescCollapsible(descBody.textContent);
+  descSec.append(descHdr, descBody, descToggleBtn);
 
+  const mediaPanel = el('div', 'tp-tab-panel tp-media-panel');
   const mediaRowSec = el('div', 'dash'); mediaRowSec.style.marginTop = '18px';
   const trailerBox = el('div', 'pb'); trailerBox.style.display = 'none';
   const themesBox = el('div', 'pb'); themesBox.style.display = 'none';
   mediaRowSec.append(trailerBox, themesBox);
+  const mediaEmptyHint = el('div', 'tp-mob-empty', 'Встроенный трейлер и опенинги не найдены. Вы можете открыть поиск трейлера на YouTube кнопкой выше.');
+  mediaEmptyHint.style.display = 'none';
+  mediaPanel.append(mediaRowSec, mediaEmptyHint);
 
+  const charsPanel = el('div', 'tp-tab-panel tp-chars-panel');
   const charsSec = el('div', 'jutsu-chars-sec'); charsSec.style.marginTop = '18px'; charsSec.style.display = 'none';
+  const charsEmptyHint = el('div', 'tp-mob-empty', 'Список персонажей для этого тайтла пока недоступен.');
+  charsEmptyHint.style.display = 'none';
+  charsPanel.append(charsSec, charsEmptyHint);
+
+  const franchisePanel = el('div', 'tp-tab-panel tp-franchise-panel');
   const franchiseSec = el('div'); franchiseSec.style.marginTop = '20px'; franchiseSec.style.display = 'none';
   const franchiseHdr = el('h3', null, '🌳 Франшиза и порядок просмотра'); franchiseHdr.style.margin = '0 0 8px';
   const relGrid = el('div', 'tp-rel-grid');
   franchiseSec.append(franchiseHdr, relGrid);
+  const franchiseEmptyHint = el('div', 'tp-mob-empty', 'Связанных сезонов, сиквелов или адаптаций не найдено.');
+  franchiseEmptyHint.style.display = 'none';
+  franchisePanel.append(franchiseSec, franchiseEmptyHint);
 
-  wrap.append(hero, descHdr, descBody, mediaRowSec, charsSec, franchiseSec);
+  const mobTabsBar = el('div', 'tp-mob-tabs');
+  mobTabsBar.setAttribute('role', 'tablist');
+  mobTabsBar.style.display = 'none';
+  const mobTabDefs = [
+    ['about', 'О тайтле'],
+    ['chars', 'Персонажи'],
+    ['franchise', 'Франшиза'],
+    ['media', 'Медиа']
+  ];
+  const mobTabBtns = {};
+  mobTabDefs.forEach(([key, label]) => {
+    const b = el('button', 'tp-mob-tab' + (key === 'about' ? ' on' : ''), label);
+    b.type = 'button';
+    b.dataset.tab = key;
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', key === 'about' ? 'true' : 'false');
+    b.onclick = () => {
+      wrap.dataset.mobTab = key;
+      Object.entries(mobTabBtns).forEach(([k, btnEl]) => {
+        const active = k === key;
+        btnEl.classList.toggle('on', active);
+        btnEl.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+    };
+    mobTabBtns[key] = b;
+    mobTabsBar.append(b);
+  });
+
+  wrap.append(hero, mobTabsBar, descSec, mediaPanel, charsPanel, franchisePanel);
   page.append(backWrap, wrap);
 
   await CharacterSeiyuuManager.render(charsSec, activeItem);
   const cachedData = await CharacterSeiyuuManager.fetchChars(activeItem);
   const mediaMeta = cachedData?.mediaMeta;
+  const loadedCharsCount = Array.isArray(cachedData?.items) ? cachedData.items.length : 0;
+  charsPanel.dataset.hasContent = loadedCharsCount > 0 ? '1' : '0';
+  if (loadedCharsCount > 0 && mobTabBtns.chars) {
+    mobTabBtns.chars.textContent = `Персонажи (${loadedCharsCount})`;
+  }
 
   // Синхронизируем и подгружаем описание, если оно отсутствовало или было не на русском (локально, без лишних записей в Firestore)
   (async () => {
@@ -3329,6 +3398,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
     if (window._fullPageRenderTok !== pageRenderTok) return;
     if (bestText) {
       descBody.textContent = bestText;
+      syncDescCollapsible(bestText);
       if (hasRu(bestText)) RUC[dKeyFp] = bestText;
       if (inCol && inCol.description !== bestText) {
         inCol.description = bestText;
@@ -3338,6 +3408,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
       if (itemObj && !itemObj.desc) itemObj.desc = bestText;
     } else {
       descBody.textContent = 'Описание отсутствует.';
+      syncDescCollapsible('');
     }
   })();
 
@@ -3351,7 +3422,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   }
   if (mediaMeta?.castNames && !activeItem.cast) {
     activeItem.cast = mediaMeta.castNames;
-    addSpec('В главных ролях', mediaMeta.castNames);
+    addSpec('В главных ролях', mediaMeta.castNames, 'cast');
   }
   if (mediaMeta?.imdbId && !activeItem.imdbId) activeItem.imdbId = mediaMeta.imdbId;
 
@@ -3383,7 +3454,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
       }
     }
     if (scheduleText) {
-      addSpec('📅 Расписание выхода (Онгоинг)', scheduleText);
+      addSpec('📅 Расписание выхода (Онгоинг)', scheduleText, 'schedule');
     }
   }
 
@@ -3399,6 +3470,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   if (ytId) {
     if (!activeItem.trailerId) activeItem.trailerId = ytId;
     trailerBox.style.display = 'block';
+    mediaPanel.dataset.hasContent = '1';
     const th = el('div', 'row'); th.style.justifyContent = 'space-between'; th.style.marginBottom = '10px';
     th.append(el('h4', null, '🎬 Официальный трейлер'));
     const extYt = el('a', 'btn btn-s', 'Открыть на YouTube ↗');
@@ -3411,6 +3483,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
     ifr.allowFullscreen = true;
     trailerBox.append(th, ifr);
   } else {
+    mediaPanel.dataset.hasContent = mediaPanel.dataset.hasContent || '0';
     const ytSuffix = ['Аниме', 'Манга', 'Ранобэ'].includes(activeItem.category) ? ' anime trailer' : ' официальный трейлер';
     const searchYt = el('a', 'btn btn-s', '🎬 Найти трейлер на YouTube ↗');
     searchYt.href = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((activeItem.titleEn || activeItem.title) + ytSuffix);
@@ -3440,6 +3513,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
         const themes = j?.anime?.[0]?.animethemes || [];
         if (!themes.length) return;
         themesBox.style.display = 'block';
+        mediaPanel.dataset.hasContent = '1';
         themesBox.replaceChildren(el('h4', null, `🎵 Опенинги и Эндинги (${themes.length})`));
         const listWrap = el('div'); listWrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto';
         const playerBox = el('div'); playerBox.style.marginTop = '10px';
@@ -3475,7 +3549,9 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
 
   // Дерево просмотра франшизы с пронумерованным маршрутом, отметками «✓ В коллекции» и корректным определением Ранобэ (Б1 + Ошибка №11)
   const relEdges = mediaMeta?.relations?.edges || [];
+  franchisePanel.dataset.hasContent = relEdges.length > 0 ? '1' : '0';
   if (relEdges.length) {
+    if (mobTabBtns.franchise) mobTabBtns.franchise.textContent = `Франшиза (${relEdges.length})`;
     franchiseSec.style.display = 'block';
     const ORDER_WEIGHT = { PREQUEL: 1, PARENT: 2, SEQUEL: 3, SIDE_STORY: 4, SPIN_OFF: 5, ADAPTATION: 6, SUMMARY: 7, ALTERNATIVE: 8 };
     const sortedEdges = [...relEdges].sort((a, b) => {

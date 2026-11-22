@@ -49,7 +49,7 @@ function mapAniListMediaNode(m, type = 'ANIME') {
     vols: m.volumes || 0, eps: m.episodes || m.chapters || 0, dur: m.duration || 0,
     title: main, en: t.english || '', romaji: t.romaji || '', orig: t.native || '', alt,
     author: type === 'ANIME' ? (pick(/Original Creator/i) || pick(/Director/i)) : (pick(/Story/i) || pick(/Art/i)),
-    studio: (m.studios?.nodes || []).map(n => n.name).slice(0, 2).join(', '), source: SRC[m.source] || '', ongoing: m.status === 'RELEASING', src: 'AniList', url: m.siteUrl, poster: rawPoster, year: m.startDate?.year || '',
+    studio: (m.studios?.nodes || []).map(n => n.name).slice(0, 2).join(', '), source: SRC[m.source] || '', ongoing: m.status === 'RELEASING', releaseStatus: m.status || '', src: 'AniList', url: m.siteUrl, poster: rawPoster, year: m.startDate?.year || '',
     endYear: endYearStr, endDate: endDateStr,
     ext: m.averageScore ? (m.averageScore / 10).toFixed(1) : '', tags: [...(m.genres || []).map(g => RU[g] || g), ...(m.tags || []).filter(t => !t.isMediaSpoiler && t.rank >= 60).slice(0, 8).map(t => ruTag(t.name))],
     desc: m.description ? decode(m.description.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim() : '',
@@ -388,6 +388,7 @@ function mapShikimoriGraphQLNode(d, type, isNovelHint = false) {
     studio: (d.studios || d.publishers || []).map(s => s.name).filter(Boolean).slice(0, 2).join(', '),
     source: SRC[String(d.origin || '').toUpperCase()] || '',
     ongoing: d.status === 'ongoing',
+    releaseStatus: d.status || '',
     src: 'Shikimori',
     url: d.url ? (d.url.startsWith('http') ? d.url : 'https://shikimori.io' + d.url) : `https://shikimori.io/${ep}/${malNum}`,
     poster: posterUrl,
@@ -447,6 +448,7 @@ function mapJikanNode(x, isAnime = true, isNovelHint = false) {
     studio: (x.studios || x.serializations || []).map(s => s.name).slice(0, 2).join(', '),
     source: SRC[String(x.source || '').toUpperCase().replace(/\s+/g, '_')] || '',
     ongoing: Boolean(x.airing || x.publishing),
+    releaseStatus: x.status || '',
     src: 'Jikan',
     url: x.url || '',
     poster: posterU,
@@ -588,6 +590,7 @@ function mapMangaDexNode(d, isNovelHint = false) {
     studio: '',
     source: '',
     ongoing: attr.status === 'ongoing',
+    releaseStatus: attr.status || '',
     src: 'MangaDex',
     url: `https://mangadex.org/title/${d.id}`,
     poster: cover512,
@@ -915,6 +918,7 @@ async function _tmdbRaw(search, path, media, page = 1) {
       banner: x.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + x.backdrop_path : '',
       ongoing: Boolean(x.status === 'Returning Series' || x.status === 'In Production' || (x.media_type === 'tv' && isReturningFilter && !isUpc)),
       upcoming: isUpc,
+      releaseStatus: x.status || (isUpc ? 'NOT_YET_RELEASED' : ''),
       year: relDateStr.slice(0, 4), ext: x.vote_count ? x.vote_average.toFixed(1) : '',
       tags: ids.map(g => TG[g]).filter(Boolean), tmdb: x.media_type + '/' + x.id, src: 'TMDB', url: 'https://www.themoviedb.org/' + x.media_type + '/' + x.id, desc: x.overview || '',
       category: x.media_type === 'tv' ? 'Сериал' : 'Фильм'
@@ -1807,7 +1811,7 @@ $('manageListBtn').onclick = async () => {
 // ---------- Каталог (AniList и TMDB) с кликабельной панелью жанров/тегов, полосой подкатегорий и живой подборкой ----------
 // Часть 1 п.4: Убрана кнопка «✕ Не показывать в каталоге» (.hid / cgHid)
 // Часть 1 п.5: Не восстанавливаем старые жанровые фильтры из localStorage при перезагрузке страницы, чтобы выдача не оказывалась скрыто урезанной на телефоне
-const cg = {g: 'Аниме', page: 1, q: '', t: 0, hide: false, ongOnly: false, min: 0, feedSeedPage: 1}, cgGrid = $('cgGrid');
+const cg = {g: 'Аниме', page: 1, q: '', t: 0, hide: false, ongOnly: false, finOnly: false, min: 0, feedSeedPage: 1}, cgGrid = $('cgGrid');
 let _cgLookupIdx = null;
 let _cgLookupCount = -1;
 function getCatalogLookupIndex(forceRebuild = false) {
@@ -1838,7 +1842,22 @@ function scheduleCgLoad(delayMs = 320) {
 // Состояние кликабельных жанров и тегов: Map(key -> 1 (включить, зелёный) | -1 (исключить, красный))
 const cgTagState = new Map();
 
-const cgPass = r => !(cg.hide && has(r)) && (!cg.ongOnly || r.ongoing) && num(r.ext) >= cg.min;
+function isCatalogItemFinished(r) {
+  if (!r) return false;
+  if (r.ongoing || r.upcoming) return false;
+  const rawSt = String(r.releaseStatus || '').trim().toUpperCase();
+  if (rawSt) {
+    if (['RELEASING', 'ONGOING', 'AIRING', 'PUBLISHING', 'NOT_YET_RELEASED', 'ANONS', 'UPCOMING', 'HIATUS', 'PLANNED', 'IN PRODUCTION', 'RETURNING SERIES', 'CURRENTLY AIRING', 'NOT YET AIRED', 'NOT YET PUBLISHED'].includes(rawSt)) {
+      return false;
+    }
+  }
+  if (typeof getItemReleaseState === 'function') {
+    return getItemReleaseState(r) === 'finished';
+  }
+  return true;
+}
+
+const cgPass = r => !(cg.hide && has(r)) && (!cg.ongOnly || r.ongoing) && (!cg.finOnly || isCatalogItemFinished(r)) && num(r.ext) >= cg.min;
 
 const CLASSIC_GENRES = [
   ['g:Action', 'Экшен'], ['g:Adventure', 'Приключения'], ['g:Comedy', 'Комедия'], ['g:Drama', 'Драма'],
@@ -2151,7 +2170,8 @@ function renderCatalogActiveChipsBar() {
   if ($('cgMode')?.value && $('cgMode').value !== 'actual') addChip(`Сортировка: ${$('cgMode').selectedOptions[0]?.textContent}`, () => { $('cgMode').value = 'actual'; cgLoad(true); });
   if ($('cgYear')?.value) addChip(`Год от: ${$('cgYear').value}`, () => { $('cgYear').value = ''; cgLoad(true); });
   if ($('cgYear2')?.value) addChip(`Год до: ${$('cgYear2').value}`, () => { $('cgYear2').value = ''; cgLoad(true); });
-  if (cg.ongOnly) addChip('🟢 Только онгоинги', () => { cg.ongOnly = false; $('cgOngBtn')?.classList.remove('on'); cgLoad(true); });
+  if (cg.ongOnly) addChip('🟢 Только онгоинги', () => { cg.ongOnly = false; $('cgOngBtn')?.classList.remove('on'); updateActiveFiltersCounterUI(); cgLoad(true); });
+  if (cg.finOnly) addChip('✓ Только завершённые', () => { cg.finOnly = false; $('cgFinBtn')?.classList.remove('on'); updateActiveFiltersCounterUI(); cgLoad(true); });
   if ($('cgLen')?.value) addChip(`Длина: ${$('cgLen').selectedOptions[0]?.textContent}`, () => { $('cgLen').value = ''; cgLoad(true); });
   if ($('cgCountry')?.value && cg.g === 'Кино и сериалы') addChip(`Страна: ${$('cgCountry').selectedOptions[0]?.textContent}`, () => { $('cgCountry').value = ''; cgLoad(true); });
   if ($('cgAge')?.value && cg.g !== 'Кино и сериалы') addChip(`${$('cgAge').selectedOptions[0]?.textContent}`, () => { $('cgAge').value = ''; cgGenres(); cgLoad(true); });
@@ -2223,6 +2243,7 @@ function updateActiveFiltersCounterUI() {
   if ($('cgYear')?.value) totalActive++;
   if ($('cgYear2')?.value) totalActive++;
   if (cg.ongOnly) totalActive++;
+  if (cg.finOnly) totalActive++;
   if (cg.hide) totalActive++;
   if (cg.min > 0) totalActive++;
   if ($('cgKind')?.value && cg.g === 'Манга') totalActive++;
@@ -2449,6 +2470,8 @@ function verifyCatalogItemMatchesFilters(r) {
   const itemYr = parseInt(r.year) || 0;
   if (yrFrom && itemYr && itemYr < yrFrom) return false;
   if (yrTo && itemYr && itemYr > yrTo) return false;
+  if (cg.ongOnly && !r.ongoing) return false;
+  if (cg.finOnly && !isCatalogItemFinished(r)) return false;
 
   if (!isVideo && r.src !== 'TMDB') {
     const hasHentai = (r.rawGenres || []).includes('Hentai') || (r.tags || []).some(t => /хентай|hentai/i.test(t));
@@ -2515,8 +2538,10 @@ async function cgFetchSingleVideo(m, page, q, mode) {
   else if (yrTo) yearFilterParams = `&${dk}.lte=${yrTo}-12-31`;
 
   if (cg.ongOnly && mv) return [];
-  const ongStatusParam = (cg.ongOnly && !mv) ? '&with_status=0' : '';
-  const hasNarrowVideoFilters = Boolean(gens || withoutGens || yrFrom || yrTo || cty || rt || cg.ongOnly || cg.min > 0);
+  const ongStatusParam = (cg.ongOnly && !mv)
+    ? '&with_status=0'
+    : (cg.finOnly ? (mv ? `&primary_release_date.lte=${today}` : '&with_status=3') : '');
+  const hasNarrowVideoFilters = Boolean(gens || withoutGens || yrFrom || yrTo || cty || rt || cg.ongOnly || cg.finOnly || cg.min > 0);
   let path = '';
   if (q && !cg.ongOnly) {
     path = `/search/${m}?query=${encodeURIComponent(q)}${(yrFrom && yrTo && yrFrom === yrTo) ? '&' + (mv ? 'year' : yk) + '=' + yrFrom : ''}`;
@@ -2533,7 +2558,7 @@ async function cgFetchSingleVideo(m, page, q, mode) {
       + (gens ? '&with_genres=' + gens : '')
       + (withoutGens ? '&without_genres=' + withoutGens : '')
       + yearFilterParams
-      + (mode === 'soon' ? `&${dk}.gte=${today}` : '')
+      + (mode === 'soon' && !cg.finOnly ? `&${dk}.gte=${today}` : '')
       + (cty ? '&with_origin_country=' + cty : '') + rt + ongStatusParam + minVoteParam;
   } else {
     path = mode === 'top' ? `/${m}/top_rated` : mode === 'new' ? (mv ? '/movie/now_playing' : '/tv/on_the_air') : `/${m}/popular`;
@@ -2830,7 +2855,7 @@ async function cgFetch(page, per, q, mode, optsOverride = null, signal = null) {
   const cacheKey = (!optsOverride && _cgPageCache && window.KirokuEngine)
     ? window.KirokuEngine.buildCatalogCacheKey({
         g, sub: subKind, page: effPage, q, mode: mode || 'actual', age, len, yrFrom, yrTo,
-        ongOnly: cg.ongOnly, country: $('cgCountry')?.value || '',
+        ongOnly: cg.ongOnly, finOnly: cg.finOnly, country: $('cgCountry')?.value || '',
         tags: [...cgTagState.entries()].filter(([, st]) => st !== 0).map(([k, st]) => `${k}:${st}`)
       })
     : '';
@@ -2847,15 +2872,16 @@ async function cgFetch(page, per, q, mode, optsOverride = null, signal = null) {
   };
 
   if (g === 'Все') {
+    const allStatus = cg.ongOnly ? 'RELEASING' : (cg.finOnly ? 'FINISHED' : undefined);
     const primaryAnime = () => (!isAniListBlockedNow()
-      ? _anilistDirectOnly(q || null, 'ANIME', { page: effPage, per: 10, sort: [q ? 'SEARCH_MATCH' : 'TRENDING_DESC'], ad: false }, signal)
-          .then(res => (res && res.length) ? res : _shikiDirectOnly(q || '', 'ANIME', { page: effPage, per: 10, sort: ['TRENDING_DESC'], ad: false }, signal))
-      : _shikiDirectOnly(q || '', 'ANIME', { page: effPage, per: 10, sort: ['TRENDING_DESC'], ad: false }, signal)
+      ? _anilistDirectOnly(q || null, 'ANIME', { page: effPage, per: 10, sort: [q ? 'SEARCH_MATCH' : 'TRENDING_DESC'], status: allStatus, ad: false }, signal)
+          .then(res => (res && res.length) ? res : _shikiDirectOnly(q || '', 'ANIME', { page: effPage, per: 10, sort: ['TRENDING_DESC'], status: allStatus, ad: false }, signal))
+      : _shikiDirectOnly(q || '', 'ANIME', { page: effPage, per: 10, sort: ['TRENDING_DESC'], status: allStatus, ad: false }, signal)
     ).catch(() => []);
     const primaryManga = () => (!isAniListBlockedNow()
-      ? _anilistDirectOnly(q || null, 'MANGA', { page: effPage, per: 10, sort: [q ? 'SEARCH_MATCH' : 'TRENDING_DESC'], ad: false }, signal)
-          .then(res => (res && res.length) ? res : _shikiDirectOnly(q || '', 'MANGA', { page: effPage, per: 10, sort: ['TRENDING_DESC'], ad: false }, signal))
-      : _shikiDirectOnly(q || '', 'MANGA', { page: effPage, per: 10, sort: ['TRENDING_DESC'], ad: false }, signal)
+      ? _anilistDirectOnly(q || null, 'MANGA', { page: effPage, per: 10, sort: [q ? 'SEARCH_MATCH' : 'TRENDING_DESC'], status: allStatus, ad: false }, signal)
+          .then(res => (res && res.length) ? res : _shikiDirectOnly(q || '', 'MANGA', { page: effPage, per: 10, sort: ['TRENDING_DESC'], status: allStatus, ad: false }, signal))
+      : _shikiDirectOnly(q || '', 'MANGA', { page: effPage, per: 10, sort: ['TRENDING_DESC'], status: allStatus, ad: false }, signal)
     ).catch(() => []);
     const [aRes, mRes, fRes, sRes] = await Promise.all([
       primaryAnime(),
@@ -2863,7 +2889,7 @@ async function cgFetch(page, per, q, mode, optsOverride = null, signal = null) {
       cgFetchSingleVideo('movie', effPage, q, mode).catch(() => []),
       cgFetchSingleVideo('tv', effPage, q, mode).catch(() => [])
     ]);
-    return saveCache(interleaveAndDedupCatalogLists([cachedHits, aRes, mRes, fRes.slice(0, 8), sRes.slice(0, 8)]));
+    return saveCache(interleaveAndDedupCatalogLists([cachedHits, aRes, mRes, fRes.slice(0, 8), sRes.slice(0, 8)]).filter(verifyCatalogItemMatchesFilters));
   }
 
   if (g === 'Кино и сериалы' || g === 'Фильм' || g === 'Сериал') {
@@ -2882,6 +2908,7 @@ async function cgFetch(page, per, q, mode, optsOverride = null, signal = null) {
   const SO = {actual: 'TRENDING_DESC', top: 'SCORE_DESC', trend: 'TRENDING_DESC', date: 'START_DATE_DESC', votes: 'FAVOURITES_DESC', hidden: 'SCORE_DESC', classic: 'SCORE_DESC', rare: 'SCORE_DESC'};
   const baseOpts = {page: effPage, per: Math.max(per || 24, 24), ad: age === 'only' ? true : age === 'all' ? undefined : false};
   if (cg.ongOnly) baseOpts.status = 'RELEASING';
+  else if (cg.finOnly) baseOpts.status = 'FINISHED';
   if (incG.length) baseOpts.genre = incG;
   if (excG.length) baseOpts.genreNot = excG;
   if (incT.length) baseOpts.tag = incT;
@@ -2914,14 +2941,16 @@ async function cgFetch(page, per, q, mode, optsOverride = null, signal = null) {
   const o = { ...baseOpts, sort: [effectiveSort] };
   if (!q) {
     if (mode === 'top' && age !== 'only') o.pg = 3000;
-    if (mode === 'new') o.status = 'RELEASING';
-    if (mode === 'soon') o.status = 'NOT_YET_RELEASED';
+    if (mode === 'new' && !cg.finOnly) o.status = 'RELEASING';
+    if (mode === 'soon' && !cg.finOnly && !cg.ongOnly) o.status = 'NOT_YET_RELEASED';
     if (mode === 'date') o.sl = num8(today);
     if (mode === 'month') { o.sg = num8(ago(30)); o.sl = num8(today); }
     if (mode === 'hidden') { o.ag = 75; o.pl = 60000; }
     if (mode === 'classic') { o.sl = 20000101; o.pg = 5000; }
     if (mode === 'rare') { o.ag = 65; o.pl = 15000; }
   }
+  if (cg.finOnly) o.status = 'FINISHED';
+  else if (cg.ongOnly) o.status = 'RELEASING';
 
   // Primary-First водопад: сначала один быстрый живой источник (AniList или Shikimori),
   // а дополнительные интеграции подключаются ТОЛЬКО если первый источник недоступен или вернул < 12 подходящих тайтлов.
@@ -3621,7 +3650,25 @@ $('cgSearch').onkeydown = e => { if (e.key === 'Enter') cgGo(); };
 if ($('cgOngBtn')) {
   $('cgOngBtn').onclick = e => {
     cg.ongOnly = !cg.ongOnly;
+    if (cg.ongOnly && cg.finOnly) {
+      cg.finOnly = false;
+      $('cgFinBtn')?.classList.remove('on');
+    }
     e.currentTarget.classList.toggle('on', cg.ongOnly);
+    cg.feedSeedPage = 1;
+    updateActiveFiltersCounterUI();
+    cgLoad(true);
+  };
+}
+if ($('cgFinBtn')) {
+  $('cgFinBtn').onclick = e => {
+    cg.finOnly = !cg.finOnly;
+    if (cg.finOnly && cg.ongOnly) {
+      cg.ongOnly = false;
+      $('cgOngBtn')?.classList.remove('on');
+    }
+    e.currentTarget.classList.toggle('on', cg.finOnly);
+    cg.feedSeedPage = 1;
     updateActiveFiltersCounterUI();
     cgLoad(true);
   };
@@ -3641,9 +3688,10 @@ $('cgReset').onclick = () => {
   $('cgSearch').value = ''; cg.q = ''; $('cgYear').value = ''; $('cgKind').value = ''; $('cgMode').value = 'actual';
   if ($('cgAnimeKind')) $('cgAnimeKind').value = '';
   if ($('cgVideoKind')) $('cgVideoKind').value = 'all';
-  cg.hide = false; cg.ongOnly = false; cg.min = 0; cg.feedSeedPage = 1; $('cgMin').value = '0'; $('cgClear').style.display = 'none';
+  cg.hide = false; cg.ongOnly = false; cg.finOnly = false; cg.min = 0; cg.feedSeedPage = 1; $('cgMin').value = '0'; $('cgClear').style.display = 'none';
   $('cgHide').classList.remove('on');
   $('cgOngBtn')?.classList.remove('on');
+  $('cgFinBtn')?.classList.remove('on');
   cgGenres(); cgLoad(true);
 };
 $('cgMore').onclick = () => cgLoad(false);

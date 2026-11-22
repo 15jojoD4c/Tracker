@@ -15,11 +15,12 @@
 <meta property="og:title" content="Kirokucho">
 <meta property="og:description" content="Kirokucho — трекер фильмов, сериалов, аниме, манги и ранобэ с каталогом и облачной синхронизацией">
 <meta property="og:type" content="website">
-<link rel="preload" href="./kiroku_engine.js?v=20261126" as="script">
-<link rel="preload" href="./app_core.js?v=20261126" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261126" as="script">
-<link rel="preload" href="./app.js?v=20261126" as="script">
-<link rel="stylesheet" href="./style.css?v=20261126">
+<link rel="preload" href="./kiroku_engine.js?v=20261127" as="script">
+<link rel="preload" href="./app_core.js?v=20261127" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261127" as="script">
+<link rel="preload" href="./app.js?v=20261127" as="script">
+<link rel="stylesheet" href="./style.css?v=20261127">
+<link rel="stylesheet" href="./mobile.css?v=20261127" media="(max-width: 768px)">
 <style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
 </head>
 <body class="auth-checking">
@@ -144,6 +145,7 @@
         <div class="cg-extra-row">
           <button class="tb" id="cgTagsToggleBtn" type="button">Жанры и теги <span id="cgTagsCountBadge"></span></button>
           <button class="tb" id="cgOngBtn" type="button">Онгоинг</button>
+          <button class="tb" id="cgFinBtn" type="button">Завершено</button>
           <button class="tb" id="cgHide" type="button">Скрыть добавленные</button>
           <select id="cgMin" title="Минимальная внешняя оценка"><option value="0">Любой рейтинг</option><option value="6">★ 6+</option><option value="7">★ 7+</option><option value="8">★ 8+</option></select>
           <div class="row cg-year-pair" style="gap:4px;background:var(--inp);padding:2px 8px;border-radius:var(--rad-sm);border:1px solid var(--bd)">
@@ -685,7 +687,7 @@ const importWithTimeout = (url, ms = 25000) => Promise.race([
   new Promise((_, rej) => setTimeout(() => rej(new Error("Firebase load timeout")), ms))
 ]);
 
-const APP_VER = "20261126";
+const APP_VER = "20261127";
 window.__FIREBASE_CONFIG__ = {
   apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
   authDomain: "mymediatracker-6e179.firebaseapp.com",

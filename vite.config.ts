@@ -33,7 +33,7 @@ export default defineConfig(() => {
           if (fs.existsSync(rootAssets)) {
             fs.cpSync(rootAssets, distRootAssets, {recursive: true, force: true});
           }
-          for (const file of ['style.css', 'kiroku_engine.js', 'app_core.js', 'app_catalog.js', 'app.js']) {
+          for (const file of ['style.css', 'mobile.css', 'kiroku_engine.js', 'app_core.js', 'app_catalog.js', 'app.js']) {
             const srcFile = path.resolve(__dirname, file);
             if (fs.existsSync(srcFile)) {
               fs.copyFileSync(srcFile, path.resolve(distDir, file));

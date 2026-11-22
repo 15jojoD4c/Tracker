@@ -229,6 +229,7 @@
       Number(p.yrFrom) || 0,
       Number(p.yrTo) || 0,
       Boolean(p.ongOnly),
+      Boolean(p.finOnly),
       sortedTags
     ]);
   }

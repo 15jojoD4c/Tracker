@@ -209,6 +209,10 @@ test('runPrimaryFirstWaterfall respects AbortController cancellation', async () 
 test('catalog cache stores, clones, expires by TTL, and mobile grid size cycles sm/md/lg', () => {
   const cache = KirokuEngine.createCatalogCache(1000, 2);
   const k1 = KirokuEngine.buildCatalogCacheKey({ g: 'Манга', mode: 'actual', page: 1, tags: ['t:Yuri'] });
+  const kFin = KirokuEngine.buildCatalogCacheKey({ g: 'Манга', mode: 'actual', page: 1, finOnly: true, tags: ['t:Yuri'] });
+  const kOng = KirokuEngine.buildCatalogCacheKey({ g: 'Манга', mode: 'actual', page: 1, ongOnly: true, tags: ['t:Yuri'] });
+  assert.notEqual(k1, kFin);
+  assert.notEqual(kFin, kOng);
   cache.set(k1, [{ title: 'Bloom Into You' }], 100);
   const hit = cache.get(k1, 500);
   assert.equal(hit?.length, 1);

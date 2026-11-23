@@ -1248,7 +1248,7 @@ window.handleUniversalFileImport = e => {
 // ---------- КНОПКА «🧹 Найти и объединить повторы» (с откатом при ошибке облака — Этап 1 п.1 и п.3) ----------
 function itemCompletenessScore(it) {
   let s = 0;
-  if (it.aniId || it.mal || it.tmdb) s += 50;
+  if (it.aniId || it.mal || it.shikiId || it.tmdb) s += 50;
   if (num(it.rating) > 0) s += 30;
   if (it.status && it.status !== 'В планах') s += 20;
   if (it.completedAt) s += 15;
@@ -1270,6 +1270,11 @@ function mergeTwoDuplicateItems(best, other) {
   merged.fav = Boolean(merged.fav || other.fav);
   merged.pin = Boolean(merged.pin || other.pin);
   merged.rewatchCount = Math.max(num(merged.rewatchCount), num(other.rewatchCount));
+  merged.watchedEps = Math.max(Math.floor(num(merged.watchedEps)), Math.floor(num(other.watchedEps)));
+  if (Array.isArray(other.seasonsMeta) && other.seasonsMeta.length && (!Array.isArray(merged.seasonsMeta) || other.seasonsMeta.length > merged.seasonsMeta.length)) {
+    merged.seasonsMeta = other.seasonsMeta;
+  }
+  if (num(other.seasons) > num(merged.seasons)) merged.seasons = num(other.seasons);
 
   if (other.myNote && !merged.myNote) merged.myNote = other.myNote;
   else if (other.myNote && merged.myNote && !merged.myNote.includes(other.myNote)) {
@@ -1315,11 +1320,28 @@ function mergeTwoDuplicateItems(best, other) {
       }
     }
 
-    const keysToFill = ['aniId', 'mal', 'shikiId', 'mdId', 'tmdb', 'imdbId', 'poster', 'titleEn', 'titleOrig', 'alt', 'year', 'extRating', 'extSrc', 'description', 'author', 'studio', 'cast', 'source', 'eps', 'vols', 'dur', 'format', 'subKind', 'recBy', 'trailerId'];
+    const keysToFill = ['aniId', 'mal', 'shikiId', 'mdId', 'tmdb', 'imdbId', 'poster', 'titleEn', 'romaji', 'titleOrig', 'alt', 'year', 'extRating', 'extSrc', 'description', 'author', 'studio', 'cast', 'source', 'eps', 'vols', 'dur', 'format', 'subKind', 'recBy', 'trailerId'];
     keysToFill.forEach(k => {
       if (mergedProtectedMeta && !otherHasId && (k === 'titleEn' || k === 'titleOrig' || k === 'format' || k === 'eps')) return;
       if (!merged[k] && other[k]) merged[k] = other[k];
     });
+    if (other.title && hasRu(other.title) && !hasRu(merged.title)) {
+      if (!merged.titleEn && merged.title) merged.titleEn = merged.title;
+      merged.title = other.title;
+    }
+
+    // При объединении дублей многосерийного сериала (TV vs ONA / ошибочная OVA с >= 6 сериями) предпочитаем TV (или ONA вместо OVA)
+    const fmtRank = f => {
+      const u = String(f || '').toUpperCase();
+      if (u === 'TV') return 3;
+      if (u === 'TV_SHORT') return 2;
+      if (u === 'ONA') return 1;
+      return 0;
+    };
+    const mEps = Math.max(num(merged.eps), num(other.eps));
+    if (mEps >= 6 && fmtRank(other.format) > fmtRank(merged.format)) {
+      merged.format = other.format;
+    }
   }
   merged.needsReview = Boolean(!hasExternalCatalogId(merged) && merged.needsReview && other.needsReview);
   delete merged._knownStatusFromImport;
@@ -1338,13 +1360,24 @@ async function findAndMergeDuplicatesModal() {
     if (!b) { b = []; buckets.set(key, b); }
     b.push(it);
   };
+  const getCjkBucketKey = it => {
+    if (typeof KirokuEngine === 'undefined' || typeof KirokuEngine.extractCjkCore !== 'function') return '';
+    const c = KirokuEngine.extractCjkCore(it.titleOrig || it.orig || it.title || '');
+    return c && c.length >= 2 ? ('cjk:' + c) : '';
+  };
   items.forEach(it => {
     if (!it) return;
     if (it.tmdb) pushToBucket('tmdb:' + it.tmdb, it);
     if (it.imdbId) pushToBucket('imdb:' + it.imdbId, it);
     if (Number(it.aniId) > 0) pushToBucket('ani:' + it.aniId, it);
-    if (Number(it.mal) > 0) pushToBucket('mal:' + it.mal, it);
-    getCachedItemNormMeta(it).primary.forEach(nt => pushToBucket('t:' + nt, it));
+    const malKey = Number(it.mal) || Number(it.shikiId) || 0;
+    if (malKey > 0) pushToBucket('mal:' + malKey, it);
+    if (Number(it.shikiId) > 0) pushToBucket('mal:' + it.shikiId, it);
+    if (it.mdId) pushToBucket('md:' + it.mdId, it);
+    const meta = getCachedItemNormMeta(it);
+    [...new Set([...(meta.primary || []), ...(meta.all || [])])].forEach(nt => pushToBucket('t:' + nt, it));
+    const cjkK = getCjkBucketKey(it);
+    if (cjkK) pushToBucket(cjkK, it);
   });
 
   for (let i = 0; i < items.length; i++) {
@@ -1354,8 +1387,14 @@ async function findAndMergeDuplicatesModal() {
     if (a.tmdb) (buckets.get('tmdb:' + a.tmdb) || []).forEach(x => candidatePeers.add(x));
     if (a.imdbId) (buckets.get('imdb:' + a.imdbId) || []).forEach(x => candidatePeers.add(x));
     if (Number(a.aniId) > 0) (buckets.get('ani:' + a.aniId) || []).forEach(x => candidatePeers.add(x));
-    if (Number(a.mal) > 0) (buckets.get('mal:' + a.mal) || []).forEach(x => candidatePeers.add(x));
-    getCachedItemNormMeta(a).primary.forEach(nt => (buckets.get('t:' + nt) || []).forEach(x => candidatePeers.add(x)));
+    const malKeyA = Number(a.mal) || Number(a.shikiId) || 0;
+    if (malKeyA > 0) (buckets.get('mal:' + malKeyA) || []).forEach(x => candidatePeers.add(x));
+    if (Number(a.shikiId) > 0) (buckets.get('mal:' + a.shikiId) || []).forEach(x => candidatePeers.add(x));
+    if (a.mdId) (buckets.get('md:' + a.mdId) || []).forEach(x => candidatePeers.add(x));
+    const metaA = getCachedItemNormMeta(a);
+    [...new Set([...(metaA.primary || []), ...(metaA.all || [])])].forEach(nt => (buckets.get('t:' + nt) || []).forEach(x => candidatePeers.add(x)));
+    const cjkKA = getCjkBucketKey(a);
+    if (cjkKA) (buckets.get(cjkKA) || []).forEach(x => candidatePeers.add(x));
 
     const grp = [a];
     visited.add(a.id);
@@ -2726,16 +2765,17 @@ class CharacterSeiyuuManager {
           const ep = animeFlag ? 'animes' : 'mangas';
           const roles = await ruJson(`https://shikimori.one/api/${ep}/${targetMalId}/roles`, 3500);
           if (Array.isArray(roles)) {
-            const preferred = [];
-            const secondary = [];
+            const staffEntries = [];
             roles.forEach(r => {
               const pName = r?.person?.russian || r?.person?.name || '';
               if (!pName) return;
-              const roleStr = [...(r.roles || []), ...(r.roles_russian || [])].join(' ');
-              if (/original creator|story|art|author|director|автор|оригинал|режисс|сценарий/i.test(roleStr)) preferred.push(pName);
-              else secondary.push(pName);
+              const roleList = [...(r.roles || []), ...(r.roles_russian || [])].filter(Boolean);
+              if (!roleList.length) staffEntries.push({ name: pName, role: '' });
+              else roleList.forEach(rl => staffEntries.push({ name: pName, role: rl }));
             });
-            const picked = [...new Set(preferred.length ? preferred : secondary)].slice(0, 2).join(', ');
+            const picked = (typeof KirokuEngine !== 'undefined' && KirokuEngine.pickPrimaryAuthorsFromStaff)
+              ? KirokuEngine.pickPrimaryAuthorsFromStaff(staffEntries, animeFlag, 2).join(', ')
+              : [...new Set(staffEntries.map(s => s.name))].slice(0, 2).join(', ');
             if (!outAuthor && picked) outAuthor = picked;
           }
         } catch (e) {}
@@ -2794,8 +2834,13 @@ class CharacterSeiyuuManager {
         const ruMap = new Map();
         const malId = Number(media.idMal || item.mal) || 0;
         const staffEdges = media.staff?.edges || [];
-        const prefStaff = staffEdges.filter(e => /original creator|story|art|director|author|creator/i.test(String(e.role || '')));
-        let aniAuthor = [...new Set((prefStaff.length ? prefStaff : staffEdges).map(e => e.node?.name?.full).filter(Boolean))].slice(0, 2).join(', ');
+        let aniAuthor = (typeof KirokuEngine !== 'undefined' && KirokuEngine.pickPrimaryAuthorsFromStaff)
+          ? KirokuEngine.pickPrimaryAuthorsFromStaff(
+              staffEdges.map(e => ({ name: e.node?.name?.full || '', role: e.role || '' })),
+              isAnime,
+              2
+            ).join(', ')
+          : [...new Set(staffEdges.filter(e => /original creator|story|director|author/i.test(String(e.role || ''))).map(e => e.node?.name?.full).filter(Boolean))].slice(0, 2).join(', ');
         let aniStudio = [...new Set((media.studios?.nodes || []).map(s => s?.name).filter(Boolean))].slice(0, 2).join(', ');
         if (malId && SHK[item.category]) {
           try {
@@ -3988,22 +4033,107 @@ async function openCatalogByCreator(kindType, nameStr, itemCat) {
   $('cgMore').style.display = 'none';
   if ($('cgHeroWrap')) $('cgHeroWrap').style.display = 'none';
   toast(`Ищу все работы: ${nameStr}…`);
+  const matchCreatorName = (q, cands) => (typeof KirokuEngine !== 'undefined' && KirokuEngine.isCreatorNameMatch)
+    ? KirokuEngine.isCreatorNameMatch(q, cands)
+    : true;
+  const filterCreatorWorks = (entries, limit = 24) => (typeof KirokuEngine !== 'undefined' && KirokuEngine.filterAndDedupCreatorWorks)
+    ? KirokuEngine.filterAndDedupCreatorWorks(entries, { limit })
+    : entries.map(e => e.item).slice(0, limit);
+  const mapShikiPersonWork = (w, personLabel) => {
+    const isAn = Boolean(w && w.anime);
+    const d = isAn ? w.anime : w?.manga;
+    if (!d || !d.id) return null;
+    const rawImg = d.image?.original || d.image?.preview || '';
+    const poster = rawImg && !/missing_/i.test(rawImg)
+      ? (rawImg.startsWith('http') ? rawImg : 'https://shikimori.one' + rawImg)
+      : '';
+    const knd = String(d.kind || '').toLowerCase();
+    const isNovel = !isAn && (knd === 'light_novel' || knd === 'novel');
+    const fmt = isAn
+      ? (knd === 'movie' ? 'MOVIE' : knd === 'ova' ? 'OVA' : knd === 'ona' ? 'ONA' : knd === 'special' || knd === 'tv_special' ? 'SPECIAL' : knd === 'music' || knd === 'pv' || knd === 'cm' ? 'MUSIC' : 'TV')
+      : (isNovel ? 'NOVEL' : knd === 'one_shot' ? 'ONE_SHOT' : 'MANGA');
+    const titleRu = d.russian || d.name || '';
+    const yr = String(d.aired_on || '').slice(0, 4);
+    const sc = parseFloat(d.score) || 0;
+    const item = {
+      aniId: 0,
+      mal: Number(d.id) || 0,
+      shikiId: Number(d.id) || 0,
+      format: fmt,
+      isAdult: false,
+      upcoming: d.status === 'anons',
+      ongoing: d.status === 'ongoing',
+      releaseStatus: d.status === 'ongoing' ? 'RELEASING' : d.status === 'anons' ? 'NOT_YET_RELEASED' : 'FINISHED',
+      eps: isAn ? (Number(d.episodes) || Number(d.episodes_aired) || 0) : (Number(d.chapters) || 0),
+      vols: isAn ? 0 : (Number(d.volumes) || 0),
+      dur: 0,
+      title: titleRu,
+      en: d.name || '',
+      romaji: d.name || '',
+      orig: '',
+      alt: d.name && d.name !== titleRu ? d.name : '',
+      author: personLabel || nameStr,
+      studio: '',
+      src: 'Shikimori',
+      url: d.url ? ('https://shikimori.one' + d.url) : '',
+      poster,
+      year: yr,
+      ext: sc > 0 ? sc.toFixed(1) : '',
+      tags: [],
+      desc: '',
+      category: isAn ? 'Аниме' : (isNovel ? 'Ранобэ' : 'Манга'),
+      kind: isAn ? '' : (knd === 'manhwa' ? 'Манхва' : knd === 'manhua' ? 'Маньхуа' : 'Манга'),
+      subKind: isAn ? '' : (knd === 'manhwa' ? 'Манхва' : knd === 'manhua' ? 'Маньхуа' : 'Манга')
+    };
+    // Отбрасываем рекламные ролики/клипы (pv/cm/music), чтобы не засорять список работ автора
+    if (isAn && (knd === 'pv' || knd === 'cm')) return null;
+    return {
+      idKey: `${isAn ? 'A' : 'M'}:${d.id}`,
+      role: w.role || '',
+      isAnime: isAn,
+      score: sc,
+      popularity: sc * 100 + (isAn && knd === 'tv' ? 30 : 0),
+      item
+    };
+  };
+
   try {
     let found = [];
     const isAni = ['Аниме', 'Манга', 'Ранобэ'].includes(itemCat);
+    const hasCyrillicName = /[а-яё]/i.test(nameStr);
     if (isAni) {
-      if (!isAniListBlockedNow()) {
+      if (!isAniListBlockedNow() && (kindType === 'studio' || !hasCyrillicName)) {
         try {
           if (kindType === 'studio') {
             const q = 'query($s:String){Studio(search:$s){name media(sort:POPULARITY_DESC,perPage:24){nodes{id idMal isAdult format siteUrl countryOfOrigin bannerImage trailer{id site} title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore episodes duration chapters volumes genres status source}}}}';
             const j = await fetchAniListGraphQL(q, { s: nameStr }, 2800);
-            const nodes = j?.data?.Studio?.media?.nodes || [];
-            found = nodes.map(m => ({ ...mapAniListMediaNode(m, m.format === 'NOVEL' || m.format === 'MANGA' || m.format === 'ONE_SHOT' ? 'MANGA' : 'ANIME'), studio: nameStr, author: '' }));
+            const stObj = j?.data?.Studio;
+            const nodes = stObj?.media?.nodes || [];
+            found = nodes.map(m => ({ ...mapAniListMediaNode(m, m.format === 'NOVEL' || m.format === 'MANGA' || m.format === 'ONE_SHOT' ? 'MANGA' : 'ANIME'), studio: stObj?.name || nameStr, author: '' }));
           } else {
-            const q = 'query($s:String){Staff(search:$s){name{full} staffMedia(sort:POPULARITY_DESC,perPage:24){nodes{id idMal isAdult format siteUrl countryOfOrigin bannerImage trailer{id site} title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore episodes duration chapters volumes genres status source}}}}';
-            const j = await fetchAniListGraphQL(q, { s: nameStr }, 2800);
-            const nodes = j?.data?.Staff?.staffMedia?.nodes || [];
-            found = nodes.map(m => ({ ...mapAniListMediaNode(m, m.format === 'NOVEL' || m.format === 'MANGA' || m.format === 'ONE_SHOT' ? 'MANGA' : 'ANIME'), author: nameStr, studio: '' }));
+            const q = 'query($s:String){Staff(search:$s){id name{full native alternative} staffMedia(sort:POPULARITY_DESC,perPage:50){edges{staffRole node{id idMal isAdult format siteUrl countryOfOrigin bannerImage trailer{id site} title{romaji english native} synonyms coverImage{large} description(asHtml:false) startDate{year} averageScore popularity episodes duration chapters volumes genres status source}}}}}';
+            const j = await fetchAniListGraphQL(q, { s: nameStr }, 3200);
+            const st = j?.data?.Staff;
+            const candNames = [st?.name?.full, st?.name?.native, ...(st?.name?.alternative || [])].filter(Boolean);
+            if (st && matchCreatorName(nameStr, candNames)) {
+              const edges = st.staffMedia?.edges || [];
+              const workEntries = edges
+                .filter(e => e && e.node && e.node.format !== 'MUSIC')
+                .map(e => {
+                  const m = e.node;
+                  const isManga = m.format === 'NOVEL' || m.format === 'MANGA' || m.format === 'ONE_SHOT';
+                  const mapped = { ...mapAniListMediaNode(m, isManga ? 'MANGA' : 'ANIME'), author: st.name?.full || nameStr, studio: '' };
+                  return {
+                    idKey: `ani:${m.id || m.idMal}`,
+                    role: e.staffRole || '',
+                    isAnime: !isManga,
+                    popularity: Number(m.popularity) || Number(m.averageScore) || 0,
+                    score: Number(m.averageScore) || 0,
+                    item: mapped
+                  };
+                });
+              found = filterCreatorWorks(workEntries, 24);
+            }
           }
         } catch (aniErr) {
           found = [];
@@ -4013,7 +4143,10 @@ async function openCatalogByCreator(kindType, nameStr, itemCat) {
         if (kindType === 'studio') {
           try {
             const stRes = await shiki(`/api/studios?search=${encodeURIComponent(nameStr)}`);
-            const stId = Array.isArray(stRes) && stRes[0]?.id;
+            const stPick = Array.isArray(stRes)
+              ? (stRes.find(s => matchCreatorName(nameStr, [s.name, s.filtered_name])) || stRes[0])
+              : null;
+            const stId = stPick?.id;
             if (stId) {
               const g = await shikiGraphQL(
                 'query($st:String){animes(studio:$st,limit:24,order:popularity){id malId name russian english japanese synonyms kind status score airedOn{year} isCensored genres{id name russian} description poster{originalUrl mainUrl} episodes duration origin studios{name} videos{url kind}}}',
@@ -4022,10 +4155,24 @@ async function openCatalogByCreator(kindType, nameStr, itemCat) {
               found = (g?.animes || []).map(d => mapShikimoriGraphQLNode(d, 'ANIME', false));
             }
           } catch (e) {}
-        }
-        if (!found.length) {
-          const mType = itemCat === 'Аниме' ? 'ANIME' : 'MANGA';
-          found = await _shikiCatalogFallback(nameStr, mType, { per: 24, format: itemCat === 'Ранобэ' ? 'NOVEL' : undefined }).catch(() => []);
+        } else {
+          // Надёжный поиск персоны по Shikimori REST (/api/people/search → /api/people/{id}):
+          // поддерживает русские и английские имена и возвращает реальный список работ с точными ролями,
+          // никогда не подменяя поиск автора поиском аниме по названию!
+          try {
+            const pRes = await shiki(`/api/people/search?search=${encodeURIComponent(nameStr)}`);
+            const pList = Array.isArray(pRes) ? pRes : [];
+            const pPick = pList.find(p => matchCreatorName(nameStr, [p.name, p.russian])) || null;
+            if (pPick && pPick.id) {
+              const detail = await shiki(`/api/people/${pPick.id}`);
+              const personLabel = detail?.russian || detail?.name || pPick.russian || pPick.name || nameStr;
+              const rawWorks = Array.isArray(detail?.works) ? detail.works : [];
+              const workEntries = rawWorks
+                .map(w => mapShikiPersonWork(w, personLabel))
+                .filter(Boolean);
+              found = filterCreatorWorks(workEntries, 24);
+            }
+          } catch (e) {}
         }
       }
     } else {
@@ -4036,17 +4183,31 @@ async function openCatalogByCreator(kindType, nameStr, itemCat) {
         if (cid) found = await tmdb(null, `/discover/movie?with_companies=${cid}&sort_by=popularity.desc`, 'movie', 1);
       } else {
         const pj = await fetchTmdbJson(`https://api.themoviedb.org/3/search/person?api_key=${encodeURIComponent(k)}&language=ru-RU&query=${encodeURIComponent(nameStr)}`, 6000);
-        const pid = pj?.results?.[0]?.id;
+        const pResults = Array.isArray(pj?.results) ? pj.results : [];
+        const pMatch = pResults.find(p => matchCreatorName(nameStr, [p.name, p.original_name, ...(p.also_known_as || [])])) || pResults[0];
+        const pid = pMatch?.id;
         if (pid) {
           const cr = await fetchTmdbJson(`https://api.themoviedb.org/3/person/${pid}/combined_credits?api_key=${encodeURIComponent(k)}&language=ru-RU`, 6000);
-          found = [...(cr.crew || []), ...(cr.cast || [])].filter(x => x.media_type === 'movie' || x.media_type === 'tv').slice(0, 24).map(x => ({
-            title: x.title || x.name, en: x.original_title || x.original_name || '', orig: x.original_title || x.original_name || '', alt: '',
-            poster: x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '',
-            year: (x.release_date || x.first_air_date || '').slice(0, 4),
-            ext: x.vote_count ? x.vote_average.toFixed(1) : '', tags: (x.genre_ids || []).map(g => TG[g]).filter(Boolean),
-            tmdb: x.media_type + '/' + x.id, src: 'TMDB', url: 'https://www.themoviedb.org/' + x.media_type + '/' + x.id,
-            desc: x.overview || '', category: x.media_type === 'tv' ? 'Сериал' : 'Фильм'
-          }));
+          const mapTmdbCredit = (x, roleStr) => ({
+            idKey: `${x.media_type}/${x.id}`,
+            role: roleStr,
+            isAnime: false,
+            popularity: (Number(x.vote_count) || 0) * 0.5 + (Number(x.popularity) || 0),
+            score: Number(x.vote_average) || 0,
+            item: {
+              title: x.title || x.name, en: x.original_title || x.original_name || '', orig: x.original_title || x.original_name || '', alt: '',
+              poster: x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '',
+              year: (x.release_date || x.first_air_date || '').slice(0, 4),
+              ext: x.vote_count ? x.vote_average.toFixed(1) : '', tags: (x.genre_ids || []).map(g => TG[g]).filter(Boolean),
+              tmdb: x.media_type + '/' + x.id, src: 'TMDB', url: 'https://www.themoviedb.org/' + x.media_type + '/' + x.id,
+              desc: x.overview || '', category: x.media_type === 'tv' ? 'Сериал' : 'Фильм'
+            }
+          });
+          const entries = [
+            ...(cr.crew || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv').map(x => mapTmdbCredit(x, x.job || x.department || '')),
+            ...(cr.cast || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv').map(x => mapTmdbCredit(x, 'Cast'))
+          ];
+          found = filterCreatorWorks(entries, 24);
         }
       }
     }

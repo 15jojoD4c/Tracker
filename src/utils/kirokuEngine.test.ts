@@ -562,14 +562,14 @@ test('areCategoriesCompatibleForExternalId allows Manga/Ranobe cross-matching wh
   assert.equal(KirokuEngine.areCategoriesCompatibleForExternalId('Аниме', 'Аниме'), true);
 });
 
-test('areSeasonMarkersCompatible strictly separates distinct seasons and empty fmt (TV) vs non-empty fmt (movie/ova/ona/special)', () => {
+test('areSeasonMarkersCompatible strictly separates distinct seasons and empty fmt (TV) vs movie/ova/special while treating ona as TV-compatible', () => {
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('', ''), true);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('s2', 's2'), true);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 's2'), false);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('s2', 's3'), false);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'ova'), false);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'фильм'), false);
-  assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'ona'), false);
+  assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'ona'), true);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('', 'спешл'), false);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('фильм', 'фильм'), true);
   assert.equal(KirokuEngine.areSeasonMarkersCompatible('ova', 'ova'), true);
@@ -948,6 +948,131 @@ test('Season + Episode helpers map Sopranos S4 E9 <-> 48/86 watchedEps accuratel
   // Fallback even-split when only seasonsCount and totalEps are known
   const fallbackMeta = KirokuEngine.normalizeSeasonsMeta(null, 25, 2);
   assert.deepEqual(fallbackMeta, [{ n: 1, eps: 13 }, { n: 2, eps: 12 }]);
+});
+
+test('Witch Hat Atelier TV vs ONA and mislabeled 13-ep OVA merge cleanly while genuine 1-2 ep OVAs stay separate', () => {
+  // TV (Shikimori) vs ONA (AniList) -> both series formats, compatible for both alts and eps
+  assert.equal(KirokuEngine.areFormatsCompatibleForAlts('TV', 'ONA', 13, 13, false), true);
+  assert.equal(KirokuEngine.areFormatsCompatibleForAlts('', 'ONA', 13, 13, false), true);
+  assert.equal(
+    KirokuEngine.areFormatsAndEpisodesCompatible(
+      { category: 'Аниме', format: 'TV', eps: 13 },
+      { category: 'Аниме', format: 'ONA', eps: 13 }
+    ),
+    true
+  );
+
+  // Mislabeled OVA with 13 eps vs TV with 13 eps -> compatible so duplicates can merge
+  assert.equal(KirokuEngine.areFormatsCompatibleForAlts('OVA', 'TV', 13, 13, false), true);
+  assert.equal(
+    KirokuEngine.areFormatsAndEpisodesCompatible(
+      { category: 'Аниме', format: 'OVA', eps: 13 },
+      { category: 'Аниме', format: 'TV', eps: 13 }
+    ),
+    true
+  );
+  assert.equal(
+    KirokuEngine.areFormatsAndEpisodesCompatible(
+      { category: 'Аниме', format: 'OVA', eps: 13 },
+      { category: 'Аниме', format: '', eps: 13 }
+    ),
+    true
+  );
+
+  // Real 1-2 ep OVA or Movie vs 13-ep TV -> MUST remain strictly incompatible
+  assert.equal(KirokuEngine.areFormatsCompatibleForAlts('OVA', 'TV', 1, 13, false), false);
+  assert.equal(KirokuEngine.areFormatsCompatibleForAlts('MOVIE', 'TV', 1, 13, false), false);
+  assert.equal(
+    KirokuEngine.areFormatsAndEpisodesCompatible(
+      { category: 'Аниме', format: 'OVA', eps: 2 },
+      { category: 'Аниме', format: 'TV', eps: 13 }
+    ),
+    false
+  );
+  assert.equal(
+    KirokuEngine.areFormatsAndEpisodesCompatible(
+      { category: 'Аниме', format: 'MOVIE', eps: 13 },
+      { category: 'Аниме', format: 'TV', eps: 13 }
+    ),
+    false
+  );
+
+  // Older TMDB anime saved with Russian countries string ('Япония') is still recognized
+  assert.equal(
+    KirokuEngine.isTmdbJapaneseAnime({
+      category: 'Сериал',
+      tags: ['Мультфильм', 'Фэнтези'],
+      countries: 'Япония'
+    }),
+    true
+  );
+});
+
+test('isCreatorNameMatch, getCreatorRoleTier, pickPrimaryAuthorsFromStaff and filterAndDedupCreatorWorks exclude unrelated minor credits and duplicates', () => {
+  // Name matching (exact, reversed order, rejects unrelated person)
+  assert.equal(KirokuEngine.isCreatorNameMatch('Masashi Kishimoto', ['Masashi Kishimoto']), true);
+  assert.equal(KirokuEngine.isCreatorNameMatch('Kishimoto Masashi', ['Masashi Kishimoto']), true);
+  assert.equal(KirokuEngine.isCreatorNameMatch('Масаси Кисимото', ['Masashi Kishimoto', 'Масаси Кисимото']), true);
+  assert.equal(KirokuEngine.isCreatorNameMatch('Масаси Кисимото', ['Сэйси Кисимото', 'Seishi Kishimoto']), false);
+
+  // Role tiers: Original Creator > Director; Art Director / Sound Director / Episode Director / Storyboard -> 0
+  assert.equal(KirokuEngine.getCreatorRoleTier('Original Creator', true), 3);
+  assert.equal(KirokuEngine.getCreatorRoleTier('Автор оригинала', true), 3);
+  assert.equal(KirokuEngine.getCreatorRoleTier('Director', true), 2);
+  assert.equal(KirokuEngine.getCreatorRoleTier('Режиссёр', true), 2);
+  assert.equal(KirokuEngine.getCreatorRoleTier('Art Director', true), 0);
+  assert.equal(KirokuEngine.getCreatorRoleTier('Sound Director', true), 0);
+  assert.equal(KirokuEngine.getCreatorRoleTier('Episode Director (ep 14)', true), 0);
+  assert.equal(KirokuEngine.getCreatorRoleTier('Раскадровка', true), 0);
+  assert.equal(KirokuEngine.getCreatorRoleTier('Режиссёр эпизодов', true), 0);
+  assert.equal(KirokuEngine.getCreatorRoleTier('Помощник режиссёра', true), 0);
+
+  // pickPrimaryAuthorsFromStaff puts Original Creator first and ignores Art/Sound/Episode Director
+  const picked = KirokuEngine.pickPrimaryAuthorsFromStaff([
+    { name: 'Shigenori Takada', role: 'Art Director' },
+    { name: 'Yasunori Ebina', role: 'Sound Director' },
+    { name: 'Hayato Date', role: 'Director' },
+    { name: 'Masashi Kishimoto', role: 'Original Creator' },
+    { name: 'Someone Else', role: 'Episode Director' }
+  ], true, 2);
+  assert.deepEqual(picked, ['Masashi Kishimoto', 'Hayato Date']);
+
+  // filterAndDedupCreatorWorks: Hayato Date keeps ONLY Director credits and excludes 49 Storyboard/Episode Director anime
+  const dateWorks = KirokuEngine.filterAndDedupCreatorWorks([
+    { idKey: 'A:20', role: 'Режиссёр', popularity: 900, item: { title: 'Наруто', category: 'Аниме' } },
+    { idKey: 'A:1735', role: 'Режиссёр', popularity: 850, item: { title: 'Наруто: Ураганные хроники', category: 'Аниме' } },
+    { idKey: 'A:999', role: 'Раскадровка', popularity: 9999, item: { title: 'Чужое популярное аниме 1', category: 'Аниме' } },
+    { idKey: 'A:998', role: 'Режиссёр эпизодов', popularity: 9998, item: { title: 'Чужое популярное аниме 2', category: 'Аниме' } },
+    { idKey: 'A:997', role: 'Помощник режиссёра', popularity: 9997, item: { title: 'Чужое популярное аниме 3', category: 'Аниме' } }
+  ]);
+  assert.deepEqual(
+    dateWorks.map((x: { title: string }) => x.title),
+    ['Наруто', 'Наруто: Ураганные хроники']
+  );
+
+  // filterAndDedupCreatorWorks: deduplicates repeated AniList edges (e.g. Road to Ninja x3)
+  const kishiWorks = KirokuEngine.filterAndDedupCreatorWorks([
+    { idKey: 'ani:13667', role: 'Original Creator', popularity: 500, item: { title: 'Road to Ninja', category: 'Аниме' } },
+    { idKey: 'ani:13667', role: 'Planning', popularity: 500, item: { title: 'Road to Ninja', category: 'Аниме' } },
+    { idKey: 'ani:13667', role: 'Character Design', popularity: 500, item: { title: 'Road to Ninja', category: 'Аниме' } },
+    { idKey: 'ani:20', role: 'Original Creator', popularity: 1000, item: { title: 'Naruto', category: 'Аниме' } }
+  ]);
+  assert.deepEqual(
+    kishiWorks.map((x: { title: string }) => x.title),
+    ['Naruto', 'Road to Ninja']
+  );
+
+  // TMDB Director: keeps directed films and excludes acting cameos
+  const nolanWorks = KirokuEngine.filterAndDedupCreatorWorks([
+    { idKey: 'movie/27205', role: 'Director', popularity: 800, item: { title: 'Начало', category: 'Фильм' } },
+    { idKey: 'movie/27205', role: 'Writer', popularity: 800, item: { title: 'Начало', category: 'Фильм' } },
+    { idKey: 'movie/157336', role: 'Director', popularity: 900, item: { title: 'Интерстеллар', category: 'Фильм' } },
+    { idKey: 'movie/99999', role: 'Cast', popularity: 1200, item: { title: 'Документалка про кино (камео)', category: 'Фильм' } }
+  ]);
+  assert.deepEqual(
+    nolanWorks.map((x: { title: string }) => x.title),
+    ['Интерстеллар', 'Начало']
+  );
 });
 
 

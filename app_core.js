@@ -591,7 +591,7 @@ const catLabel = i => {
 const STATS = ['В планах','Смотрю/Читаю','Просмотрено/Прочитано','Отложено','Пересматриваю','Брошено'];
 const FORMAT_RU = {
   TV: 'TV-сериал', TV_SHORT: 'Короткометражный TV', MOVIE: 'Полнометражный фильм',
-  SPECIAL: 'Спешл (Special)', OVA: 'OVA', ONA: 'ONA (Веб-аниме)', MUSIC: 'Музыкальное видео',
+  SPECIAL: 'Спешл (Special)', OVA: 'OVA', ONA: 'Веб-сериал (ONA)', MUSIC: 'Музыкальное видео',
   MANGA: 'Манга', NOVEL: 'Ранобэ / Новелла', ONE_SHOT: 'Ваншот'
 };
 const REL_RU = {
@@ -3318,10 +3318,11 @@ const same = (a, b) => {
   if (!a || !b) return false;
   if (a.tmdb && b.tmdb && String(a.tmdb) === String(b.tmdb)) return true;
   if (a.imdbId && b.imdbId && String(a.imdbId) === String(b.imdbId)) return true;
+  const malA = Number(a.mal) || Number(a.shikiId) || 0;
+  const malB = Number(b.mal) || Number(b.shikiId) || 0;
   if (sameCatForId(a.category, b.category)) {
     if (Number(a.aniId) > 0 && Number(b.aniId) > 0 && Number(a.aniId) === Number(b.aniId)) return true;
-    if (Number(a.mal) > 0 && Number(b.mal) > 0 && Number(a.mal) === Number(b.mal)) return true;
-    if (Number(a.shikiId) > 0 && Number(b.shikiId) > 0 && Number(a.shikiId) === Number(b.shikiId)) return true;
+    if (malA > 0 && malB > 0 && malA === malB) return true;
     if (a.mdId && b.mdId && String(a.mdId) === String(b.mdId)) return true;
   }
   const crossTmdbAnime = !sameCat(a.category, b.category)
@@ -3331,8 +3332,7 @@ const same = (a, b) => {
   if (!sameCat(a.category, b.category) && !crossTmdbAnime) return false;
 
   if (Number(a.aniId) > 0 && Number(b.aniId) > 0 && Number(a.aniId) !== Number(b.aniId)) return false;
-  if (Number(a.mal) > 0 && Number(b.mal) > 0 && Number(a.mal) !== Number(b.mal)) return false;
-  if (Number(a.shikiId) > 0 && Number(b.shikiId) > 0 && Number(a.shikiId) !== Number(b.shikiId)) return false;
+  if (malA > 0 && malB > 0 && malA !== malB) return false;
   if (a.mdId && b.mdId && String(a.mdId) !== String(b.mdId)) return false;
   if (a.tmdb && b.tmdb && String(a.tmdb) !== String(b.tmdb)) return false;
   if (a.imdbId && b.imdbId && String(a.imdbId) !== String(b.imdbId)) return false;
@@ -3347,18 +3347,26 @@ const same = (a, b) => {
   const metaB = getCachedItemNormMeta(b);
   if (!metaA.all.length || !metaB.all.length) return false;
 
-  const markerOk = (typeof KirokuEngine !== 'undefined' && KirokuEngine.areSeasonMarkersCompatible)
-    ? KirokuEngine.areSeasonMarkersCompatible(metaA.marker, metaB.marker)
-    : (metaA.marker === metaB.marker);
-  if (!markerOk) return false;
-
-  // Не используем альтернативные названия (qualifyingAlts), если у кандидатов расходятся формат или число серий
-  const fa = getEffectiveFormatForMatch(a);
-  const fb = getEffectiveFormatForMatch(b);
   const epsA = parseInt(a.eps, 10) || 0;
   const epsB = parseInt(b.eps, 10) || 0;
   const isReading = ['Манга', 'Ранобэ'].includes(a.category) || ['Манга', 'Ранобэ'].includes(b.category);
-  const formatMismatchForAlts = Boolean((fa || fb) && fa !== fb);
+  const mislabeledOvaMarkerMatch = !isReading
+    && epsA >= 6 && epsB >= 6 && Math.abs(epsA - epsB) <= 2
+    && ((metaA.marker === 'ova' && metaB.marker === '') || (metaB.marker === 'ova' && metaA.marker === ''));
+  const markerOk = mislabeledOvaMarkerMatch || (
+    (typeof KirokuEngine !== 'undefined' && KirokuEngine.areSeasonMarkersCompatible)
+      ? KirokuEngine.areSeasonMarkersCompatible(metaA.marker, metaB.marker)
+      : (metaA.marker === metaB.marker)
+  );
+  if (!markerOk) return false;
+
+  // Не используем альтернативные названия (qualifyingAlts), если у кандидатов реально несовместимый формат или число серий
+  // (TV / TV_SHORT / ONA считаются совместимыми сериалами, как и пара пустой-формат + сериал, или ошибочно помеченная OVA с >= 6 совпадающими сериями)
+  const fa = getEffectiveFormatForMatch(a);
+  const fb = getEffectiveFormatForMatch(b);
+  const formatMismatchForAlts = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.areFormatsCompatibleForAlts === 'function')
+    ? !KirokuEngine.areFormatsCompatibleForAlts(fa, fb, epsA, epsB, isReading)
+    : Boolean(fa && fb && fa !== fb);
   const epsMismatchForAlts = Boolean(!isReading && epsA > 0 && epsB > 0 && Math.abs(epsA - epsB) > 2);
   const primaryA = (formatMismatchForAlts || epsMismatchForAlts) ? metaA.strictPrimary : metaA.primary;
   const primaryB = (formatMismatchForAlts || epsMismatchForAlts) ? metaB.strictPrimary : metaB.primary;
@@ -3367,11 +3375,14 @@ const same = (a, b) => {
   const yearConfirmed = Boolean(ya && yb && Math.abs(ya - yb) <= maxYearDiff);
   const allMatch = !primaryMatch && !formatMismatchForAlts && !epsMismatchForAlts && yearConfirmed && metaA.all.some(n => metaB.all.includes(n));
   let cjkMatch = false;
-  if (!primaryMatch && !allMatch && crossTmdbAnime && typeof KirokuEngine !== 'undefined' && KirokuEngine.extractCjkCore) {
-    const cjkA = KirokuEngine.extractCjkCore(a.titleOrig || a.orig || a.title || '');
-    const cjkB = KirokuEngine.extractCjkCore(b.titleOrig || b.orig || b.title || '');
-    if (cjkA && cjkB && cjkA.length >= 2 && cjkA === cjkB && (!ya || !yb || Math.abs(ya - yb) <= 1)) {
-      cjkMatch = true;
+  if (!primaryMatch && !allMatch && !formatMismatchForAlts && !epsMismatchForAlts && typeof KirokuEngine !== 'undefined' && KirokuEngine.extractCjkCore) {
+    const allowCjk = crossTmdbAnime || ['Аниме', 'Манга', 'Ранобэ'].includes(a.category) || ['Аниме', 'Манга', 'Ранобэ'].includes(b.category);
+    if (allowCjk) {
+      const cjkA = KirokuEngine.extractCjkCore(a.titleOrig || a.orig || a.title || '');
+      const cjkB = KirokuEngine.extractCjkCore(b.titleOrig || b.orig || b.title || '');
+      if (cjkA && cjkB && cjkA.length >= 2 && cjkA === cjkB && (!ya || !yb || Math.abs(ya - yb) <= maxYearDiff)) {
+        cjkMatch = true;
+      }
     }
   }
   if (!primaryMatch && !allMatch && !cjkMatch) return false;
@@ -3380,13 +3391,19 @@ const same = (a, b) => {
 };
 
 function createFastDuplicateIndex(pool = []) {
-  const byTmdb = new Map(), byImdb = new Map(), byAni = new Map(), byMal = new Map(), byShiki = new Map(), byMd = new Map(), byTitle = new Map();
+  const byTmdb = new Map(), byImdb = new Map(), byAni = new Map(), byMal = new Map(), byShiki = new Map(), byMd = new Map(), byTitle = new Map(), byCjk = new Map();
+  const getCjkKey = it => {
+    if (typeof KirokuEngine === 'undefined' || typeof KirokuEngine.extractCjkCore !== 'function') return '';
+    const k = KirokuEngine.extractCjkCore(it.titleOrig || it.orig || it.title || '');
+    return k && k.length >= 2 ? k : '';
+  };
   const add = it => {
     if (!it) return;
     if (it.tmdb) byTmdb.set(String(it.tmdb), it);
     if (it.imdbId) byImdb.set(String(it.imdbId), it);
     if (Number(it.aniId) > 0) byAni.set(Number(it.aniId), it);
-    if (Number(it.mal) > 0) byMal.set(Number(it.mal), it);
+    const malKey = Number(it.mal) || Number(it.shikiId) || 0;
+    if (malKey > 0) byMal.set(malKey, it);
     if (Number(it.shikiId) > 0) byShiki.set(Number(it.shikiId), it);
     if (it.mdId) byMd.set(String(it.mdId), it);
     const meta = getCachedItemNormMeta(it);
@@ -3394,6 +3411,12 @@ function createFastDuplicateIndex(pool = []) {
     for (const nt of allNames) {
       let arr = byTitle.get(nt);
       if (!arr) { arr = []; byTitle.set(nt, arr); }
+      arr.push(it);
+    }
+    const cjk = getCjkKey(it);
+    if (cjk) {
+      let arr = byCjk.get(cjk);
+      if (!arr) { arr = []; byCjk.set(cjk, arr); }
       arr.push(it);
     }
   };
@@ -3408,8 +3431,9 @@ function createFastDuplicateIndex(pool = []) {
         const h = byAni.get(Number(cand.aniId));
         if (sameCatForId(h.category, cand.category)) return h;
       }
-      if (Number(cand.mal) > 0 && byMal.has(Number(cand.mal))) {
-        const h = byMal.get(Number(cand.mal));
+      const candMalKey = Number(cand.mal) || Number(cand.shikiId) || 0;
+      if (candMalKey > 0 && byMal.has(candMalKey)) {
+        const h = byMal.get(candMalKey);
         if (sameCatForId(h.category, cand.category)) return h;
       }
       if (Number(cand.shikiId) > 0 && byShiki.has(Number(cand.shikiId))) {
@@ -3427,6 +3451,14 @@ function createFastDuplicateIndex(pool = []) {
         const bucket = byTitle.get(nt);
         if (!bucket) continue;
         for (const ex of bucket) {
+          if (ex === cand || checked.has(ex)) continue;
+          checked.add(ex);
+          if (same(ex, cand)) return ex;
+        }
+      }
+      const cjk = getCjkKey(cand);
+      if (cjk && byCjk.has(cjk)) {
+        for (const ex of byCjk.get(cjk)) {
           if (ex === cand || checked.has(ex)) continue;
           checked.add(ex);
           if (same(ex, cand)) return ex;

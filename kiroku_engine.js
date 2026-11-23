@@ -566,7 +566,8 @@
   }
 
   // Проверка совместимости маркеров сезона/части/формата:
-  // строго различаем разные сезоны (s2 != '' и s2 != s3) и запрещаем смешивать пустой fmt (ТВ-сериал) с непустым fmt (фильм/ova/ona/спешл)
+  // строго различаем разные сезоны (s2 != '' и s2 != s3) и запрещаем смешивать ТВ-сериал с фильмом/ova/спешлом
+  // (маркер ona совместим с пустым ТВ-маркером, так как AniList и Shikimori часто по-разному помечают веб-сериалы)
   function areSeasonMarkersCompatible(markerA, markerB) {
     const mA = String(markerA || '');
     const mB = String(markerB || '');
@@ -574,7 +575,8 @@
     const a = _parseSeasonMarker(mA);
     const b = _parseSeasonMarker(mB);
     if (a.season !== b.season) return false;
-    if (a.fmt !== b.fmt) return false;
+    const normFmt = f => (f === 'ona' ? '' : f);
+    if (normFmt(a.fmt) !== normFmt(b.fmt)) return false;
     if (a.part && b.part && a.part !== b.part) return false;
     return true;
   }
@@ -616,6 +618,23 @@
     return '';
   }
 
+  // Проверка, можно ли считать форматы совместимыми для склейки дублей (в т.ч. TV vs ONA и ошибочно помеченная OVA с >= 6 сериями)
+  function areFormatsCompatibleForAlts(fa, fb, epsA = 0, epsB = 0, isReading = false) {
+    const a = String(fa || '').toUpperCase();
+    const b = String(fb || '').toUpperCase();
+    if (!a || !b) return true;
+    if (a === b) return true;
+    const isSeriesFmt = f => f === 'TV' || f === 'TV_SHORT' || f === 'ONA';
+    if (isSeriesFmt(a) && isSeriesFmt(b)) return true;
+    if (!isReading) {
+      const eA = parseInt(epsA, 10) || 0;
+      const eB = parseInt(epsB, 10) || 0;
+      const ovaVsSeries = (a === 'OVA' && isSeriesFmt(b)) || (b === 'OVA' && isSeriesFmt(a));
+      if (ovaVsSeries && eA >= 6 && eB >= 6 && Math.abs(eA - eB) <= 2) return true;
+    }
+    return false;
+  }
+
   // Проверка совместимости формата (TV/TV_SHORT/ONA против MOVIE/OVA/SPECIAL) и числа серий eps
   function areFormatsAndEpisodesCompatible(a, b) {
     if (!a || !b) return false;
@@ -627,20 +646,26 @@
     const fb = inferNormalizedFormat(b);
     const isSeriesFmt = f => f === 'TV' || f === 'TV_SHORT' || f === 'ONA';
     const isNonTvFmt = f => f === 'MOVIE' || f === 'OVA' || f === 'SPECIAL';
+    const epsA = parseInt(a.eps, 10) || 0;
+    const epsB = parseInt(b.eps, 10) || 0;
+    const mislabeledMultiEpOva = !isReading
+      && ((fa === 'OVA' && isSeriesFmt(fb)) || (fb === 'OVA' && isSeriesFmt(fa)))
+      && epsA >= 6 && epsB >= 6 && Math.abs(epsA - epsB) <= 2;
 
     if (fa && fb) {
-      if ((isNonTvFmt(fa) && isSeriesFmt(fb)) || (isNonTvFmt(fb) && isSeriesFmt(fa))) return false;
+      if (!mislabeledMultiEpOva && ((isNonTvFmt(fa) && isSeriesFmt(fb)) || (isNonTvFmt(fb) && isSeriesFmt(fa)))) return false;
       if (isNonTvFmt(fa) && isNonTvFmt(fb) && fa !== fb) return false;
     }
 
     if (!isReading) {
-      const epsA = parseInt(a.eps, 10) || 0;
-      const epsB = parseInt(b.eps, 10) || 0;
       if (epsA > 0 && epsB > 0) {
         if ((epsA <= 2 && epsB >= 6) || (epsB <= 2 && epsA >= 6)) return false;
       }
       // Если у одной стороны формат — фильм/OVA/спешл, а у другой формат не указан, но серий >= 6 (явно сериал) — запрещаем склейку
-      if ((isNonTvFmt(fa) && !fb && epsB >= 6) || (isNonTvFmt(fb) && !fa && epsA >= 6)) {
+      // Исключение: если у самой OVA тоже >= 6 совпадающих серий (ошибочно помеченный сериал)
+      const ovaWithSameMultiEps = ((fa === 'OVA' && !fb) || (fb === 'OVA' && !fa))
+        && epsA >= 6 && epsB >= 6 && Math.abs(epsA - epsB) <= 2;
+      if (!ovaWithSameMultiEps && ((isNonTvFmt(fa) && !fb && epsB >= 6) || (isNonTvFmt(fb) && !fa && epsA >= 6))) {
         return false;
       }
     }
@@ -865,7 +890,8 @@
     if (!hasAnim) return false;
     const lang = String(item.origLang || item.originalLanguage || '').toLowerCase();
     const countries = Array.isArray(item.originCountry) ? item.originCountry.map(c => String(c || '').toUpperCase()) : [];
-    if (lang === 'ja' || countries.includes('JP')) return true;
+    const countriesStr = String(item.countries || '');
+    if (lang === 'ja' || countries.includes('JP') || /япони|japan/i.test(countriesStr)) return true;
     const origTitle = String(item.orig || item.titleOrig || '');
     return /[\u3040-\u30ff]/.test(origTitle);
   }
@@ -964,6 +990,127 @@
     return offset + cleanEp;
   }
 
+  // --- Точная фильтрация авторов/режиссёров и их работ (исключаем второстепенные титры и неверные совпадения) ---
+  function _normPersonNameTokens(str) {
+    return String(str || '')
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .replace(/[.,/\\()[\]"'`«»\-–—:]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter(Boolean);
+  }
+
+  function isCreatorNameMatch(queryName, candidateNames) {
+    const qToks = _normPersonNameTokens(queryName);
+    if (!qToks.length) return false;
+    const qFlat = qToks.join(' ');
+    const qSorted = [...qToks].sort().join(' ');
+    const cands = (Array.isArray(candidateNames) ? candidateNames : [candidateNames]).filter(Boolean);
+    for (const cand of cands) {
+      const cToks = _normPersonNameTokens(cand);
+      if (!cToks.length) continue;
+      const cFlat = cToks.join(' ');
+      if (cFlat === qFlat) return true;
+      if (cToks.length === qToks.length && [...cToks].sort().join(' ') === qSorted) return true;
+      if (qToks.length >= 2 && cToks.length >= 2) {
+        const shorter = qToks.length <= cToks.length ? qToks : cToks;
+        const longerSet = new Set(qToks.length <= cToks.length ? cToks : qToks);
+        if (shorter.every(t => longerSet.has(t))) return true;
+      }
+    }
+    return false;
+  }
+
+  // Уровень значимости роли создателя:
+  // 3 — автор оригинала / сюжет (высший приоритет), 2 — главный режиссёр / художник манги / сценарист,
+  // 1 — прочая неуточнённая роль, 0 — техническая/эпизодическая роль (раскадровка, реж. эпизодов, звукорежиссёр, озвучка и т.д.)
+  function getCreatorRoleTier(roleStr, isAnime = false) {
+    const raw = String(roleStr || '').trim();
+    if (!raw) return 1;
+    // Убираем пояснения в скобках вроде "(eps 1-12)" или "(chs 52-81)" для проверки основной роли
+    const r = raw.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase().replace(/ё/g, 'е');
+    if (!r) return 1;
+
+    // 1. Сначала проверяем явные авторские/создательские роли (высший приоритет — Tier 3)
+    if (/(?:^|[^a-zа-я])(original creator|original story|original work|original concept|original manga|original novel|story\s*&\s*art|story and art|author|creator|автор оригинала|сюжет и иллюстрац[а-я]*|автор идеи|автор манги|автор ранобэ|создатель)(?=$|[^a-zа-я])/i.test(r)) {
+      return 3;
+    }
+    if (r === 'story' || r === 'сюжет' || r === 'автор' || r === 'mangaka' || r === 'мангака') {
+      return 3;
+    }
+
+    // 2. Явно отсекаем технические, эпизодические и актёрские/озвучивающие роли (Tier 0)
+    if (/(?:episode director|assistant director|art director|sound director|audio director|animation director|chief animation director|cg director|3d director|cgi director|photography director|director of photography|unit director|action director|mechanical director|color director|casting director|voice director|music director|technical director|storyboard|key animation|in-between|2nd key|character design|prop design|mecha design|color design|background art|theme song|insert song|opening|ending|special thanks|guest|planning|producer|executive producer|voice|actor|actress|cast|seiyuu|music|composer|editing|editor|раскадровк|режиссер эпизод|помощник режиссер|ассистент режиссер|звукорежиссер|художник-постановщик|режиссер анимац|главный режиссер анимац|оператор|дизайн персонаж|ключевая анимац|промежуточная анимац|продюсер|композитор|музык|монтаж|исполнен|песн|озвуч|сэйю|актер|актрис|благодарност|планирован|супервайзер|supervisor)/i.test(r)) {
+      return 0;
+    }
+
+    // 3. Главный режиссёр, художник манги, сценарист, шоураннер (Tier 2)
+    if (/(?:^|[^a-zа-я])(chief director|series director|supervising director|general director|director|showrunner|series composition|screenplay|writer|art|illustration|illustrator|режиссер|главный режиссер|постановщик|шоураннер|компоновка серий|сценарий|сценарист|рисовка|иллюстрац[а-я]*|художник)(?=$|[^a-zа-я])/i.test(r)) {
+      // В аниме слово "art" без "story & art" чаще относится к фоновой графике, а не автору
+      if (isAnime && /^(art|художник|рисовка|иллюстрац[а-я]*)$/i.test(r)) return 0;
+      return 2;
+    }
+
+    return 1;
+  }
+
+  function pickPrimaryAuthorsFromStaff(staffList, isAnime = false, maxCount = 2) {
+    const list = Array.isArray(staffList) ? staffList : [];
+    const byName = new Map();
+    for (let idx = 0; idx < list.length; idx++) {
+      const entry = list[idx];
+      if (!entry) continue;
+      const name = String(entry.name || '').trim();
+      if (!name) continue;
+      const tier = getCreatorRoleTier(entry.role, isAnime);
+      const prev = byName.get(name);
+      if (!prev || tier > prev.tier) {
+        byName.set(name, { name, tier, idx: prev ? prev.idx : idx });
+      }
+    }
+    const all = [...byName.values()];
+    if (!all.length) return [];
+    const primary = all.filter(x => x.tier >= 2);
+    const pool = primary.length ? primary : all.filter(x => x.tier >= 1);
+    const finalPool = pool.length ? pool : all;
+    finalPool.sort((a, b) => (b.tier - a.tier) || (a.idx - b.idx));
+    return finalPool.slice(0, Math.max(1, Number(maxCount) || 2)).map(x => x.name);
+  }
+
+  function filterAndDedupCreatorWorks(entries, opts = {}) {
+    const list = Array.isArray(entries) ? entries : [];
+    const limit = Math.max(1, Number(opts.limit) || 24);
+    const byKey = new Map();
+
+    for (let idx = 0; idx < list.length; idx++) {
+      const e = list[idx];
+      if (!e || !e.item) continue;
+      const idKey = String(e.idKey || idx);
+      const isAnimeItem = typeof e.isAnime === 'boolean' ? e.isAnime : (e.item.category === 'Аниме');
+      const tier = typeof e.tier === 'number' ? e.tier : getCreatorRoleTier(e.role, isAnimeItem);
+      const pop = Number(e.popularity) || Number(e.score) || 0;
+      const prev = byKey.get(idKey);
+      if (!prev) {
+        byKey.set(idKey, { idKey, item: e.item, tier, pop, idx });
+      } else {
+        if (tier > prev.tier) prev.tier = tier;
+        if (pop > prev.pop) prev.pop = pop;
+      }
+    }
+
+    const deduped = [...byKey.values()];
+    if (!deduped.length) return [];
+
+    // Предпочитаем только работы, где человек — реальный автор/режиссёр/сценарист (tier >= 2).
+    // Если таких работ нет вообще (например, кликнули по актёру/композитору), мягко показываем остальные.
+    const primary = deduped.filter(x => x.tier >= 2);
+    const pool = primary.length ? primary : deduped;
+    pool.sort((a, b) => (b.tier - a.tier) || (b.pop - a.pop) || (a.idx - b.idx));
+    return pool.slice(0, limit).map(x => x.item);
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -991,6 +1138,7 @@
     areCategoriesCompatibleForExternalId,
     areSeasonMarkersCompatible,
     inferNormalizedFormat,
+    areFormatsCompatibleForAlts,
     areFormatsAndEpisodesCompatible,
     matchesCategoryFilter,
     computeCategoryStatusCounts,
@@ -1010,7 +1158,11 @@
     areCategoriesCrossCompatibleForTmdbAnime,
     normalizeSeasonsMeta,
     watchedEpsToSeasonEp,
-    seasonEpToWatchedEps
+    seasonEpToWatchedEps,
+    isCreatorNameMatch,
+    getCreatorRoleTier,
+    pickPrimaryAuthorsFromStaff,
+    filterAndDedupCreatorWorks
   };
 
   if (typeof module !== 'undefined' && module.exports) {

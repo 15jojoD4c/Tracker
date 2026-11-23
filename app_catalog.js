@@ -1065,7 +1065,6 @@ function getItemEpisodesCount(item) {
 }
 
 function isCompletedItem(item) {
-  if (item.archived) return false;
   return item.status === 'Просмотрено/Прочитано' || item.status === 'Пересматриваю';
 }
 
@@ -1077,7 +1076,7 @@ const MON = ['янв','фев','мар','апр','май','июн','июл','а�
 function topBy(f) { const c = {}; getVisibleItems().forEach(i => f(i).forEach(x => c[x] = (c[x] || 0) + 1)); return Object.entries(c).sort((a, b) => b[1] - a[1]); }
 
 function computeProgressChartData(visList, nowMs = Date.now()) {
-  const list = Array.isArray(visList) ? visList.filter(i => i && !i.archived) : [];
+  const list = Array.isArray(visList) ? visList.filter(Boolean) : [];
   const catDefs = [
     { key: 'Аниме', label: 'Аниме', color: '#7c5cff', match: i => i.category === 'Аниме' },
     { key: 'Кино и сериалы', label: 'Фильмы и сериалы', color: '#38bdf8', match: i => (typeof KINO !== 'undefined' ? KINO : ['Фильм', 'Сериал', 'Мультфильм']).includes(i.category) },
@@ -1277,7 +1276,7 @@ function buildProgressChartNode(visList) {
 }
 
 function buildStats(b) {
-  const vis = getVisibleItems().filter(i => !i.archived);
+  const vis = getVisibleItems();
   b.replaceChildren();
   if (!vis.length) {
     b.append(el('div', 'msg', 'В коллекции пока нет тайтлов для расчёта статистики.'));
@@ -1448,7 +1447,7 @@ function profStrips() {
   const box = $('profStrips'); if (!box) return;
   box.replaceChildren();
   const favList = vis
-    .filter(i => !i.archived && i.fav)
+    .filter(i => i.fav)
     .sort((a, b) => (num(b.rating) || num(b.extRating)) - (num(a.rating) || num(a.extRating)))
     .slice(0, 18);
 
@@ -1487,7 +1486,7 @@ function profStrips() {
 
 function profStats() {
   const vis = getVisibleItems();
-  const activeCount = vis.filter(i => !i.archived).length;
+  const activeCount = vis.length;
   const pct = activeCount ? Math.round(vis.filter(isCompletedItem).length / activeCount * 100) : 0;
   if ($('profRing')) $('profRing').style.setProperty('--p', pct);
   if ($('profRingTxt')) $('profRingTxt').textContent = pct + '%';
@@ -1519,6 +1518,8 @@ function renderChips() {
   const add = (t, fn) => { const c = el('button', 'chip', t + ' ✕'); c.onclick = fn; box.append(c); };
   if ($('searchInput').value.trim()) add('🔍 ' + $('searchInput').value.trim(), () => { $('searchInput').value = ''; render(); });
   if ($('statusFilter').value !== 'Все') add($('statusFilter').value, () => { $('statusFilter').value = 'Все'; render(); });
+  if (ongOnly) add('Онгоинг', () => { ongOnly = false; $('ongBtn')?.classList.remove('on'); render(); });
+  if (finOnly) add('Завершено', () => { finOnly = false; $('finBtn')?.classList.remove('on'); render(); });
   if ($('tagFilter').value !== 'Все') add('Жанр: ' + $('tagFilter').selectedOptions[0].textContent, () => { $('tagFilter').value = 'Все'; render(); });
   if ($('listFilter').value !== 'Все') add($('listFilter').selectedOptions[0].textContent, () => { $('listFilter').value = 'Все'; render(); });
 }
@@ -1636,6 +1637,7 @@ $('selSt').onchange = async () => {
     i.status = v;
     i.needsReview = false;
     if (v === 'Просмотрено/Прочитано' && !i.completedAt) i.completedAt = Date.now();
+    if (typeof syncItemProgressOnStatusChange === 'function') syncItemProgressOnStatusChange(i, v);
   });
   await batchSaveItems(hit);
   refresh();
@@ -3123,6 +3125,7 @@ async function quickAdd(r, targetStatus = 'В планах') {
     const prevSt = existing.status;
     const prevFav = !!existing.fav;
     const prevComp = existing.completedAt || 0;
+    const prevWatched = num(existing.watchedEps);
     applyCatalogMatchToItem(existing, r, true);
     if (isFavPick) {
       existing.fav = !existing.fav;
@@ -3136,6 +3139,7 @@ async function quickAdd(r, targetStatus = 'В планах') {
       if (isDoneSt && !existing.completedAt) existing.completedAt = Date.now();
       else if (resolvedSt === 'В планах') existing.completedAt = 0;
     }
+    if (typeof syncItemProgressOnStatusChange === 'function') syncItemProgressOnStatusChange(existing, existing.status);
     cloudSave(existing);
     profCloud(true);
     refresh({ itemId: existing.id });
@@ -3151,6 +3155,7 @@ async function quickAdd(r, targetStatus = 'В планах') {
           existing.status = prevSt;
           existing.fav = prevFav;
           existing.completedAt = prevComp;
+          existing.watchedEps = prevWatched;
           cloudSave(existing);
           refresh({ itemId: existing.id });
         }
@@ -3203,6 +3208,7 @@ async function quickAdd(r, targetStatus = 'В планах') {
         } catch (e) {}
       }
     }
+    if (typeof syncItemProgressOnStatusChange === 'function') syncItemProgressOnStatusChange(it, it.status);
     if (has(r)) { cgMarks(); return items.find(i => same(i, r)); }
     items.push(it); refresh(); cloudSave(it); profCloud(true);
     toast(`Добавлено (${isFavPick ? '❤ Любимое · ' + it.status : it.status}): ${it.title}`, false, {label: 'Отменить', fn: () => removeItem(it.id)});
@@ -3768,7 +3774,7 @@ if ($('cgRec')) {
 if ($('cgPick')) {
   $('cgPick').onclick = () => {
     $('cgPickMenuPop')?.classList.remove('open');
-    const planned = items.filter(i => !i.archived && i.status === 'В планах');
+    const planned = items.filter(i => i.status === 'В планах');
     if (planned.length) {
       const pick = planned[Math.floor(Math.random() * planned.length)];
       openDetail(pick.id);

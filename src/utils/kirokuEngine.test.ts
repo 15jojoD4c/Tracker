@@ -620,15 +620,15 @@ test('computeCategoryStatusCounts filters status tab counts strictly by selected
   const getMangaSubKind = (it: { country?: string }) => (it.country === 'KR' ? 'Манхва' : 'Манга');
   const getAnimeSubKind = (it: { format?: string }) => (it.format === 'MOVIE' ? 'Фильм' : 'Сериал');
 
-  // Категория «Всё» считает всю неархивную коллекцию (7 записей)
+  // Категория «Всё» считает всю коллекцию (включая старые записи с archived:true, т.к. Архив удалён — 8 записей)
   const allRes = KirokuEngine.computeCategoryStatusCounts(sample, {
     cat: 'Всё',
     getMangaSubKind,
     getAnimeSubKind
   });
-  assert.equal(allRes.counts['Все'], 7);
+  assert.equal(allRes.counts['Все'], 8);
   assert.equal(allRes.counts['Смотрю/Читаю'], 2);
-  assert.equal(allRes.counts['В планах'], 1);
+  assert.equal(allRes.counts['В планах'], 2);
   assert.equal(allRes.counts['Просмотрено/Прочитано'], 2);
   assert.equal(allRes.counts['Отложено'], 1);
   assert.equal(allRes.counts['Брошено'], 1);
@@ -652,15 +652,16 @@ test('computeCategoryStatusCounts filters status tab counts strictly by selected
   });
   assert.equal(ranobeRes.reviewCount, 0);
 
-  // Категория «Кино и сериалы» + подтип «Фильм» (1 неархивный фильм)
+  // Категория «Кино и сериалы» + подтип «Фильм» (2 фильма, включая бывший архивный)
   const kinoAll = KirokuEngine.computeCategoryStatusCounts(sample, {
     cat: 'Кино и сериалы',
     videoSubKind: 'Все',
     getMangaSubKind,
     getAnimeSubKind
   });
-  assert.equal(kinoAll.counts['Все'], 2);
+  assert.equal(kinoAll.counts['Все'], 3);
   assert.equal(kinoAll.counts['Просмотрено/Прочитано'], 1);
+  assert.equal(kinoAll.counts['В планах'], 1);
   assert.equal(kinoAll.counts['Брошено'], 1);
 
   const kinoMoviesOnly = KirokuEngine.computeCategoryStatusCounts(sample, {
@@ -669,8 +670,9 @@ test('computeCategoryStatusCounts filters status tab counts strictly by selected
     getMangaSubKind,
     getAnimeSubKind
   });
-  assert.equal(kinoMoviesOnly.counts['Все'], 1);
+  assert.equal(kinoMoviesOnly.counts['Все'], 2);
   assert.equal(kinoMoviesOnly.counts['Просмотрено/Прочитано'], 1);
+  assert.equal(kinoMoviesOnly.counts['В планах'], 1);
   assert.equal(kinoMoviesOnly.counts['Брошено'], 0);
 
   // Подтип Манги: только «Манхва»
@@ -731,4 +733,85 @@ test('validateLoadedChunks detects incomplete or missing cloud chunks so partial
   ];
   assert.equal(KirokuEngine.validateLoadedChunks(corrupted, 2).valid, false);
 });
+
+test('unpackCollectionChunks migrates legacy archived:true items to archived:false and omits archived on pack', () => {
+  const legacyChunk = [{
+    chunkIdx: 0,
+    chunkTotal: 1,
+    payloadJson: JSON.stringify([{ id: 501, title: 'Old Archived Anime', archived: true, watchedEps: 7 }])
+  }];
+  const unpacked = KirokuEngine.unpackCollectionChunks(legacyChunk);
+  assert.equal(unpacked.length, 1);
+  assert.equal(unpacked[0].archived, false);
+  assert.equal(unpacked[0].watchedEps, 7);
+
+  const repacked = KirokuEngine.packCollectionChunks([
+    { id: 501, title: 'A', archived: true, watchedEps: 7 },
+    { id: 502, title: 'B', watchedEps: 0 }
+  ]);
+  const reUnpacked = KirokuEngine.unpackCollectionChunks(repacked);
+  assert.equal(reUnpacked[0].archived, undefined);
+  assert.equal(reUnpacked[0].watchedEps, 7);
+  assert.equal(reUnpacked[1].watchedEps, undefined);
+});
+
+test('smart episode/chapter progress tracker locks completed titles, allows dropped/paused/watching edits, and excludes movies', () => {
+  assert.equal(KirokuEngine.isTrackableProgressItem({ category: 'Аниме', format: 'TV', eps: 12 }), true);
+  assert.equal(KirokuEngine.isTrackableProgressItem({ category: 'Сериал', eps: 10 }), true);
+  assert.equal(KirokuEngine.isTrackableProgressItem({ category: 'Манга', eps: 150 }), true);
+  assert.equal(KirokuEngine.isTrackableProgressItem({ category: 'Ранобэ', eps: 40 }), true);
+  assert.equal(KirokuEngine.isTrackableProgressItem({ category: 'Фильм', dur: 120 }), false);
+  assert.equal(KirokuEngine.isTrackableProgressItem({ category: 'Аниме', format: 'MOVIE', eps: 1, dur: 110 }), false);
+
+  assert.equal(KirokuEngine.getProgressUnit({ category: 'Манга' }), 'гл.');
+  assert.equal(KirokuEngine.getProgressUnit({ category: 'Ранобэ' }), 'гл.');
+  assert.equal(KirokuEngine.getProgressUnit({ category: 'Аниме' }), 'эп.');
+
+  // Watching -> step +1 up to total
+  const anime: Record<string, any> = { id: 1, category: 'Аниме', format: 'TV', status: 'Смотрю/Читаю', eps: 12, watchedEps: 5, rewatchCount: 1 };
+  assert.equal(KirokuEngine.isProgressLocked(anime), false);
+  const s1 = KirokuEngine.stepWatchedEps(anime, 1);
+  assert.equal(s1.changed, true);
+  assert.equal(s1.locked, false);
+  assert.equal(anime.watchedEps, 6);
+
+  // Dropped -> keeps 6 and remains editable
+  anime.status = 'Брошено';
+  KirokuEngine.applyStatusProgressTransition(anime, 'Брошено');
+  assert.equal(anime.watchedEps, 6);
+  assert.equal(KirokuEngine.isProgressLocked(anime), false);
+  KirokuEngine.stepWatchedEps(anime, 1);
+  assert.equal(anime.watchedEps, 7);
+
+  // Completed -> auto-fills to 12, preserves rewatchCount, and LOCKS editing
+  anime.status = 'Просмотрено/Прочитано';
+  KirokuEngine.applyStatusProgressTransition(anime, 'Просмотрено/Прочитано');
+  assert.equal(anime.watchedEps, 12);
+  assert.equal(anime.rewatchCount, 1);
+  assert.equal(KirokuEngine.isProgressLocked(anime), true);
+
+  const lockedStep = KirokuEngine.stepWatchedEps(anime, -1);
+  assert.equal(lockedStep.locked, true);
+  assert.equal(lockedStep.changed, false);
+  assert.equal(anime.watchedEps, 12);
+
+  // Switch back to Отложено -> unlocks editing
+  anime.status = 'Отложено';
+  assert.equal(KirokuEngine.isProgressLocked(anime), false);
+  const unlockedSet = KirokuEngine.setWatchedEps(anime, 8);
+  assert.equal(unlockedSet.locked, false);
+  assert.equal(unlockedSet.changed, true);
+  assert.equal(anime.watchedEps, 8);
+
+  // Reaches total flag when stepping from 11 to 12
+  KirokuEngine.setWatchedEps(anime, 11);
+  const reachRes = KirokuEngine.stepWatchedEps(anime, 1);
+  assert.equal(reachRes.reachedTotal, true);
+  assert.equal(anime.watchedEps, 12);
+  // Clamping above total does not exceed eps
+  const capRes = KirokuEngine.stepWatchedEps(anime, 5);
+  assert.equal(capRes.changed, false);
+  assert.equal(anime.watchedEps, 12);
+});
+
 

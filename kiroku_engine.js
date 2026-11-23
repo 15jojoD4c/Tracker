@@ -27,14 +27,15 @@
       'dirty',
       'userId',
       '_docId',
-      'kind'
+      'kind',
+      'archived'
     ]);
     for (const [k, v] of Object.entries(raw)) {
       if (skipKeys.has(k) || v === undefined) continue;
       if (v === '' || v === null) continue;
       if (Array.isArray(v) && v.length === 0) continue;
-      if (v === false && (k === 'archived' || k === 'fav' || k === 'pin' || k === 'ongoing' || k === 'needsReview' || k === 'isAdult')) continue;
-      if (v === 0 && (k === 'rewatchCount' || k === 'completedAt' || k === 'aniId' || k === 'mal' || k === 'eps' || k === 'vols' || k === 'dur')) continue;
+      if (v === false && (k === 'fav' || k === 'pin' || k === 'ongoing' || k === 'needsReview' || k === 'isAdult')) continue;
+      if (v === 0 && (k === 'rewatchCount' || k === 'watchedEps' || k === 'completedAt' || k === 'aniId' || k === 'mal' || k === 'eps' || k === 'vols' || k === 'dur')) continue;
       out[k] = v;
     }
     // Если постер — огромный base64 (>120 КБ), не раздуваем облачный чанк
@@ -102,6 +103,7 @@
       if (!Array.isArray(arr)) continue;
       for (const it of arr) {
         if (!it || it.id === undefined || it.id === null) continue;
+        if (it.archived) it.archived = false;
         byId.set(String(it.id), it);
       }
     }
@@ -681,7 +683,7 @@
   // строго в рамках выбранной категории/подкатегории
   function computeCategoryStatusCounts(itemsList, opts) {
     const list = (Array.isArray(itemsList) ? itemsList : [])
-      .filter(i => i && !i.archived && matchesCategoryFilter(i, opts));
+      .filter(i => i && matchesCategoryFilter(i, opts));
 
     const counts = {
       'Все': list.length,
@@ -737,6 +739,86 @@
     };
   }
 
+  // --- Умный трекер прогресса серий / глав ---
+  function isTrackableProgressItem(item) {
+    if (!item || typeof item !== 'object') return false;
+    const catName = String(item.category || '').trim();
+    if (catName === 'Фильм') return false;
+    if (catName === 'Манга' || catName === 'Ранобэ' || catName === 'Сериал') return true;
+    if (catName === 'Аниме') {
+      const fmt = String(item.format || '').trim().toUpperCase();
+      if (fmt === 'MOVIE') return false;
+      const epsVal = Number(item.eps) || 0;
+      const durVal = Number(item.dur) || 0;
+      if (epsVal === 1 && durVal >= 50 && fmt !== 'TV' && !item.ongoing) return false;
+      return true;
+    }
+    return false;
+  }
+
+  function getProgressUnit(item) {
+    const catName = String(item?.category || '').trim();
+    return (catName === 'Манга' || catName === 'Ранобэ') ? 'гл.' : 'эп.';
+  }
+
+  function isProgressLocked(item) {
+    if (!item || typeof item !== 'object') return false;
+    return item.status === 'Просмотрено/Прочитано';
+  }
+
+  function clampWatchedEps(val, totalEps) {
+    const clean = Math.max(0, Math.floor(Number(val) || 0));
+    const maxTotal = Math.max(0, Math.floor(Number(totalEps) || 0));
+    if (maxTotal > 0) return Math.min(clean, maxTotal);
+    return Math.min(clean, 99999);
+  }
+
+  function normalizeItemProgress(item) {
+    if (!item || typeof item !== 'object') return 0;
+    const total = Math.max(0, Math.floor(Number(item.eps) || 0));
+    let cur = clampWatchedEps(item.watchedEps, total);
+    if (item.status === 'Просмотрено/Прочитано' && total > 0 && cur < total) {
+      cur = total;
+    }
+    item.watchedEps = cur;
+    return cur;
+  }
+
+  function applyStatusProgressTransition(item, newStatus) {
+    if (!item || typeof item !== 'object') return 0;
+    const total = Math.max(0, Math.floor(Number(item.eps) || 0));
+    let next = clampWatchedEps(item.watchedEps, total);
+    if (newStatus === 'Просмотрено/Прочитано' && total > 0) {
+      next = total;
+    }
+    item.watchedEps = next;
+    return next;
+  }
+
+  function setWatchedEps(item, nextValue) {
+    if (!item || typeof item !== 'object') return { changed: false, locked: false, value: 0, reachedTotal: false };
+    if (isProgressLocked(item)) {
+      const cur = normalizeItemProgress(item);
+      return { changed: false, locked: true, value: cur, reachedTotal: false };
+    }
+    const total = Math.max(0, Math.floor(Number(item.eps) || 0));
+    const prev = clampWatchedEps(item.watchedEps, total);
+    const next = clampWatchedEps(nextValue, total);
+    item.watchedEps = next;
+    return {
+      changed: next !== prev,
+      locked: false,
+      value: next,
+      reachedTotal: total > 0 && next >= total && prev < total
+    };
+  }
+
+  function stepWatchedEps(item, delta) {
+    if (!item || typeof item !== 'object') return { changed: false, locked: false, value: 0, reachedTotal: false };
+    const prev = Math.max(0, Math.floor(Number(item.watchedEps) || 0));
+    return setWatchedEps(item, prev + (Number(delta) || 0));
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -767,7 +849,15 @@
     areFormatsAndEpisodesCompatible,
     matchesCategoryFilter,
     computeCategoryStatusCounts,
-    validateLoadedChunks
+    validateLoadedChunks,
+    isTrackableProgressItem,
+    getProgressUnit,
+    isProgressLocked,
+    clampWatchedEps,
+    normalizeItemProgress,
+    applyStatusProgressTransition,
+    setWatchedEps,
+    stepWatchedEps
   };
 
   if (typeof module !== 'undefined' && module.exports) {

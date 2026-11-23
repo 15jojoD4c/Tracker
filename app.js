@@ -605,7 +605,7 @@ window.importData = e => {
           titleEn: x.titleEn || '', titleOrig: x.titleOrig || '',
           alt: x.alt || '', author: x.author || '', studio: x.studio || '', source: x.source || '', ongoing: !!x.ongoing,
           tags: Array.isArray(x.tags) ? x.tags : [], lists: Array.isArray(x.lists) ? x.lists : [], recBy: x.recBy || '',
-          pin: !!x.pin, archived: !!x.archived, eps: +x.eps || 0, vols: +x.vols || 0,
+          pin: !!x.pin, archived: false, eps: +x.eps || 0, watchedEps: Math.max(0, Math.floor(+x.watchedEps || 0)), vols: +x.vols || 0,
           format: x.format || '', aniId: +x.aniId || 0, mal: +x.mal || 0, tmdb: x.tmdb || '', imdbId: x.imdbId || '',
           dur: +x.dur || 0, seasons: +x.seasons || 0, myNote: x.myNote || '', criteria: x.criteria || null
         });
@@ -2001,7 +2001,7 @@ async function startCatalogLinkingForList(targetList, manualTrigger = false) {
   }
   const now = Date.now();
   const queue = (targetList || []).filter(i => {
-    if (!i || i.archived) return false;
+    if (!i) return false;
     if (hasExternalCatalogId(i) && i.poster && i.description && (i.tags || []).length && num(i.eps || i.dur)) return false;
     const lastTry = getItemLastLinkAttempt(i);
     if (!manualTrigger && lastTry && (now - lastTry) < 86400000) return false;
@@ -2160,7 +2160,7 @@ function resumeBackgroundCatalogLinkingIfNeeded() {
   if (catalogLinkingActive || !items.length) return;
   restoreUncertainMatchesFromStorage();
   const pendingFlag = localStorage.getItem(getUidStorageKey('catalogLinkPending'));
-  const unlinked = items.filter(i => !i.archived && !hasExternalCatalogId(i) && (Date.now() - getItemLastLinkAttempt(i)) > 86400000);
+  const unlinked = items.filter(i => !hasExternalCatalogId(i) && (Date.now() - getItemLastLinkAttempt(i)) > 86400000);
   if (pendingFlag && unlinked.length) {
     startCatalogLinkingForList(unlinked, false);
   }
@@ -2169,7 +2169,7 @@ function resumeBackgroundCatalogLinkingIfNeeded() {
 if ($('cleanupAndEnrichBtn')) {
   $('cleanupAndEnrichBtn').onclick = async () => {
     await findAndMergeDuplicatesModal();
-    const needLink = items.filter(i => !i.archived && (!hasExternalCatalogId(i) || !i.poster || (!num(i.eps) && !num(i.dur))));
+    const needLink = items.filter(i => (!hasExternalCatalogId(i) || !i.poster || (!num(i.eps) && !num(i.dur))));
     await startCatalogLinkingForList(needLink, true);
   };
 }
@@ -2273,7 +2273,7 @@ function renderReviewItemsTab() {
   const box = $('reviewItemsBox');
   if (!box) return;
   box.replaceChildren();
-  const revList = items.filter(i => !i.archived && i.needsReview);
+  const revList = items.filter(i => i.needsReview);
   if (!revList.length) {
     box.append(el('div', 'msg', 'Во вкладке «📥 Разобрать» пусто — все записи проверены и связаны с каталогом!'));
     return;
@@ -2372,13 +2372,9 @@ function renderStatusAndCategoryBanner() {
   const st = $('statusFilter').value, lf = $('listFilter').value;
   banner.style.display = 'flex'; banner.replaceChildren();
   const left = el('div'), right = el('div', 'status-summary-metrics');
-  if (st === 'Архив') {
-    left.append(el('b', null, '📦 Архив коллекции'), el('div', 'meta', 'Произведения, временно скрытые из основной коллекции.'));
-  } else {
-    const stLbl = st === 'Все' ? 'Вся активная коллекция' : `Список: «${st}»`;
-    const lLbl = lf !== 'Все' ? ` · Подборка «${$('listFilter').selectedOptions[0]?.textContent.replace('📁 ', '')}»` : '';
-    left.append(el('b', null, `📊 Статистика выборки (${stLbl}${lLbl})`), el('div', 'meta', 'Учитываются произведения внутри выбранного фильтра'));
-  }
+  const stLbl = st === 'Все' ? 'Вся активная коллекция' : `Список: «${st}»`;
+  const lLbl = lf !== 'Все' ? ` · Подборка «${$('listFilter').selectedOptions[0]?.textContent.replace('📁 ', '')}»` : '';
+  left.append(el('b', null, `📊 Статистика выборки (${stLbl}${lLbl})`), el('div', 'meta', 'Учитываются произведения внутри выбранного фильтра'));
   const addP = (l, v) => { const p = el('span', 'status-metric-pill'); p.append(document.createTextNode(l + ': '), el('b', null, v)); right.append(p); };
   addP('Тайтлов', String(lastList.length));
   const an = lastList.filter(i => i.category === 'Аниме');
@@ -2395,7 +2391,7 @@ function renderStatusAndCategoryBanner() {
 
 // ---------- ОТРИСОВКА НОВОГО ГИБРИДНОГО ПРОФИЛЯ (Между Скриншотом 1 и Скриншотом 2) ----------
 function renderAnixartHeroAndCategoryCards() {
-  const vis = getVisibleItems().filter(i => !i.archived);
+  const vis = getVisibleItems();
   const completed = vis.filter(isCompletedItem);
   const doneAnime = completed.filter(i => i.category === 'Аниме');
   const doneVideoAll = completed.filter(i => KINO.includes(i.category));
@@ -2573,7 +2569,7 @@ function updateProfileMetaAndPrivacyUI() {
 
 // Отрисовка блоков профиля по образцу Anixart (Скриншоты 4, 6, 7): Кольцевая диаграмма статусов + Жанры, История просмотра и Оценки
 function renderAnixartProfileExtras() {
-  const vis = getVisibleItems().filter(i => !i.archived);
+  const vis = getVisibleItems();
   const typeGrid = $('anixTypeStatsGrid');
   if (typeGrid) {
     typeGrid.replaceChildren();
@@ -3255,18 +3251,43 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   const authorSpecBox = addClickableSpec('Автор / Режиссёр', activeItem.author, 'author', 'author');
   const studioSpecBox = addClickableSpec('Студия / Издатель', activeItem.studio, 'studio', 'studio');
   if (activeItem.cast) addSpec('В главных ролях', activeItem.cast, 'cast');
+  const formatFullPageDuration = target => {
+    const base = num(target.dur)
+      ? `${target.dur} мин. (${formatWatchTimeRu(getItemMinutes(target))} всего)`
+      : formatWatchTimeRu(getItemMinutes(target));
+    const watched = Math.max(0, Math.floor(num(target.watchedEps)));
+    if (watched > 0 && num(target.dur) > 0 && target.status && target.status !== 'Просмотрено/Прочитано' && target.category !== 'Фильм') {
+      return `${base} · просмотрено ${formatWatchTimeRu(watched * num(target.dur))}`;
+    }
+    return base;
+  };
+  let durationSpecBox = null;
   if (activeItem.category === 'Манга' || activeItem.category === 'Ранобэ') {
     addSpec('Объём (Главы и Тома)', `${num(activeItem.eps) || '?'} гл. · ${num(activeItem.vols) || '?'} т.`, 'volume');
   } else {
     addSpec('Количество серий', num(activeItem.eps) ? `${activeItem.eps} эп.` : (activeItem.category === 'Фильм' ? 'Полнометражный фильм' : 'Не указано'), 'episodes');
-    addSpec('Длительность', num(activeItem.dur) ? `${activeItem.dur} мин. (${formatWatchTimeRu(getItemMinutes(activeItem))} всего)` : formatWatchTimeRu(getItemMinutes(activeItem)), 'duration');
+    durationSpecBox = addSpec('Длительность', formatFullPageDuration(activeItem), 'duration');
   }
+  const syncFullPageDuration = target => {
+    if (!durationSpecBox || !target) return;
+    const valEl = durationSpecBox.querySelector('b');
+    if (valEl) valEl.textContent = formatFullPageDuration(target);
+  };
   addSpec('Внешний рейтинг', (activeItem.extRating || activeItem.ext) ? `★ ${activeItem.extRating || activeItem.ext}` : '—', 'extRating');
   addSpec('Моя оценка', activeItem.rating ? `★ ${activeItem.rating} / 10` : 'Не оценено', 'myRating');
   if (inCol) {
     const addDt = formatAddedDateRu(inCol);
     if (addDt) addSpec(`Добавлено в «${getStatusLabelForCategory(inCol.status, inCol.category)}»`, addDt, 'added');
   }
+
+  const tpProgressBox = el('div', 'ep-tracker-bar tp-ep-tracker-wrap');
+  tpProgressBox.style.display = 'none';
+  const syncFullPageProgress = target => {
+    if (typeof renderEpisodeProgressControl === 'function') {
+      renderEpisodeProgressControl(tpProgressBox, target || null, updated => syncFullPageDuration(updated));
+    }
+    syncFullPageDuration(target || activeItem);
+  };
 
   const fullPageSimBox = el('div', 'chips');
   fullPageSimBox.style.marginTop = '10px';
@@ -3290,6 +3311,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   {
     let curMatch = items.find(x => (activeItem.id && String(x.id) === String(activeItem.id)) || same(x, activeItem));
     renderFullPageListChips(curMatch);
+    syncFullPageProgress(curMatch);
     const stB = el('button', 'btn qa-trigger', curMatch ? `✓ ${SHORT_ST_BTN[curMatch.status] || curMatch.status}${curMatch.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾');
     stB.type = 'button';
     stB.onclick = e => {
@@ -3302,6 +3324,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
         const lCnt = updated && Array.isArray(updated.lists) ? updated.lists.length : 0;
         listBtnFp.textContent = lCnt ? `📁 В подборке (${lCnt})` : '📁 В подборку';
         renderFullPageListChips(updated);
+        syncFullPageProgress(updated);
       });
     };
     actRow.append(stB);
@@ -3321,6 +3344,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
             stPill.dataset.s = curMatch.status;
           }
           renderFullPageListChips(curMatch);
+          syncFullPageProgress(curMatch);
         });
       }
     };
@@ -3347,7 +3371,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   };
   actRow.append(simBtnFp);
 
-  heroInfo.append(badgesRow, titleH1, subNames, specsGrid, tagsBox, fullPageListsBox, actRow, fullPageSimBox);
+  heroInfo.append(badgesRow, titleH1, subNames, specsGrid, tpProgressBox, tagsBox, fullPageListsBox, actRow, fullPageSimBox);
   hero.append(heroArtBg, posterImg, heroInfo);
 
   const pageRenderTok = (window._fullPageRenderTok = (window._fullPageRenderTok || 0) + 1);
@@ -4026,7 +4050,7 @@ async function downloadProfilePngBusinessCard() {
     ctx.restore();
 
     // 4. Имя, дата и статистика времени
-    const vis = getVisibleItems().filter(i => !i.archived);
+    const vis = getVisibleItems();
     const completed = vis.filter(isCompletedItem);
     const totalWatchMins = completed.filter(i => i.category === 'Аниме' || KINO.includes(i.category)).reduce((s, i) => s + getItemMinutes(i), 0);
     const totalEps = completed.filter(i => i.category === 'Аниме' || i.category === 'Сериал').reduce((s, i) => s + getItemEpisodesCount(i), 0);
@@ -4750,10 +4774,22 @@ function refresh(opts = {}) {
   if ($('reviewItemsBox')?.style.display !== 'none') renderReviewItemsTab();
 }
 
-// Синхронизация прокрутки (включая тач-блокировку фона) и кнопки закрытия в модальных окнах
+// Синхронизация прокрутки (включая тач-блокировку фона, мобильный свайп вниз для закрытия шторок и кнопки закрытия)
 {
   const mods = [...document.querySelectorAll('.modal')]; let back = null;
+  const resetModalSwipeVisual = m => {
+    if (!m) return;
+    m.style.backgroundColor = '';
+    const mc = m.querySelector('.mc');
+    if (mc) {
+      mc.classList.remove('is-dragging');
+      mc.style.transform = '';
+    }
+  };
   const sync = () => {
+    mods.forEach(m => {
+      if (!m.style.display || m.style.display === 'none') resetModalSwipeVisual(m);
+    });
     const open = mods.find(m => m.style.display && m.style.display !== 'none');
     const locked = Boolean(open);
     document.documentElement.classList.toggle('modal-open', locked);
@@ -4782,6 +4818,7 @@ function refresh(opts = {}) {
 
   let _mTouchX = 0;
   let _mTouchY = 0;
+  let _swipeState = null;
   const findVerticalScrollerInModal = target => {
     let cur = target;
     while (cur && cur !== document.body && cur !== document.documentElement) {
@@ -4795,11 +4832,45 @@ function refresh(opts = {}) {
     }
     return null;
   };
+  const areAllScrollersAtTop = (target, mcEl) => {
+    if (!mcEl || mcEl.scrollTop > 1) return false;
+    let cur = target;
+    while (cur && cur !== mcEl && cur !== document.body) {
+      if (cur.nodeType === 1) {
+        const st = getComputedStyle(cur);
+        if ((st.overflowY === 'auto' || st.overflowY === 'scroll') && cur.scrollTop > 1) {
+          return false;
+        }
+      }
+      cur = cur.parentElement;
+    }
+    return true;
+  };
   document.addEventListener('touchstart', e => {
+    _swipeState = null;
     if (!document.documentElement.classList.contains('modal-open')) return;
-    if (e.touches && e.touches.length) {
+    if (e.touches && e.touches.length === 1) {
       _mTouchX = e.touches[0].clientX;
       _mTouchY = e.touches[0].clientY;
+      if (window.innerWidth <= 768) {
+        const t = e.target;
+        if (t && t.closest && !t.closest('#cropCanvas, input[type="range"], .qa-float-menu')) {
+          const mcEl = t.closest('.modal .mc');
+          const modalEl = mcEl ? mcEl.closest('.modal') : null;
+          if (modalEl && modalEl.id !== 'cropModal' && areAllScrollersAtTop(t, mcEl)) {
+            _swipeState = {
+              modal: modalEl,
+              mc: mcEl,
+              startX: _mTouchX,
+              startY: _mTouchY,
+              lastY: _mTouchY,
+              startTime: Date.now(),
+              eligible: true,
+              active: false
+            };
+          }
+        }
+      }
     }
   }, { passive: true });
   document.addEventListener('touchmove', e => {
@@ -4807,6 +4878,29 @@ function refresh(opts = {}) {
     if (!e.touches || !e.touches.length) return;
     const t = e.target;
     if (t && t.closest && (t.closest('#cropCanvas') || t.closest('input[type="range"]'))) return;
+
+    if (_swipeState && _swipeState.eligible) {
+      const dx = e.touches[0].clientX - _swipeState.startX;
+      const dy = e.touches[0].clientY - _swipeState.startY;
+      if (!_swipeState.active) {
+        if ((Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) || dy < -6) {
+          _swipeState.eligible = false;
+        } else if (dy > 8 && Math.abs(dy) > Math.abs(dx) * 1.15) {
+          _swipeState.active = true;
+          _swipeState.mc.classList.add('is-dragging');
+        }
+      }
+      if (_swipeState.active) {
+        e.preventDefault();
+        const pullY = Math.max(0, dy);
+        _swipeState.lastY = e.touches[0].clientY;
+        _swipeState.mc.style.transform = `translateY(${pullY}px)`;
+        const bgAlpha = Math.max(0.12, 0.72 * (1 - pullY / 360));
+        _swipeState.modal.style.backgroundColor = `rgba(0,0,0,${bgAlpha.toFixed(2)})`;
+        return;
+      }
+    }
+
     const insideMc = t && t.closest ? t.closest('.modal .mc, .qa-float-menu') : null;
     if (!insideMc) {
       e.preventDefault();
@@ -4826,6 +4920,29 @@ function refresh(opts = {}) {
       e.preventDefault();
     }
   }, { passive: false });
+  const finishModalSwipe = isCancel => {
+    if (!_swipeState) return;
+    const st = _swipeState;
+    _swipeState = null;
+    if (!st.active) return;
+    const dy = Math.max(0, st.lastY - st.startY);
+    const dt = Math.max(1, Date.now() - st.startTime);
+    const velocity = dy / dt;
+    st.mc.classList.remove('is-dragging');
+    if (!isCancel && (dy > 95 || (dy > 40 && velocity > 0.55))) {
+      st.mc.style.transform = 'translateY(100%)';
+      st.modal.style.backgroundColor = 'rgba(0,0,0,0)';
+      setTimeout(() => {
+        resetModalSwipeVisual(st.modal);
+        closeTopModal(false);
+      }, 180);
+    } else {
+      st.mc.style.transform = '';
+      st.modal.style.backgroundColor = '';
+    }
+  };
+  document.addEventListener('touchend', () => finishModalSwipe(false), { passive: true });
+  document.addEventListener('touchcancel', () => finishModalSwipe(true), { passive: true });
 }
 $('modalX').onclick = () => closeTopModal(false);
 document.querySelectorAll('#accMenu .mi, #accMenu .mrow').forEach(n => n.addEventListener('click', e => e.stopPropagation()));
@@ -4949,3 +5066,26 @@ window.addEventListener('popstate', e => {
     _suppressHistoryPush = false;
   }
 });
+
+// Плавающая кнопка «Наверх ↑» для длинных лент (Каталог, Моя коллекция, Профиль, Полная страница)
+{
+  const stBtn = $('scrollTopBtn');
+  if (stBtn) {
+    let _stTick = false;
+    const updateScrollTopBtn = () => {
+      _stTick = false;
+      const y = window.scrollY || document.documentElement.scrollTop || 0;
+      stBtn.classList.toggle('show', y > 500);
+    };
+    window.addEventListener('scroll', () => {
+      if (!_stTick) {
+        _stTick = true;
+        requestAnimationFrame(updateScrollTopBtn);
+      }
+    }, { passive: true });
+    stBtn.onclick = () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    updateScrollTopBtn();
+  }
+}

@@ -15,12 +15,12 @@
 <meta property="og:title" content="Kirokucho">
 <meta property="og:description" content="Kirokucho — трекер фильмов, сериалов, аниме, манги и ранобэ с каталогом и облачной синхронизацией">
 <meta property="og:type" content="website">
-<link rel="preload" href="./kiroku_engine.js?v=20261129" as="script">
-<link rel="preload" href="./app_core.js?v=20261129" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261129" as="script">
-<link rel="preload" href="./app.js?v=20261129" as="script">
-<link rel="stylesheet" href="./style.css?v=20261129">
-<link rel="stylesheet" href="./mobile.css?v=20261129" media="(max-width: 768px)">
+<link rel="preload" href="./kiroku_engine.js?v=20261130" as="script">
+<link rel="preload" href="./app_core.js?v=20261130" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261130" as="script">
+<link rel="preload" href="./app.js?v=20261130" as="script">
+<link rel="stylesheet" href="./style.css?v=20261130">
+<link rel="stylesheet" href="./mobile.css?v=20261130" media="(max-width: 768px)">
 <style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
 </head>
 <body class="auth-checking">
@@ -315,7 +315,6 @@
             <option>Любимое</option>
             <option>Пересматриваю</option>
             <option>Брошено</option>
-            <option value="Архив">📦 Архив</option>
           </select>
           <button class="btn btn-s" id="viewBtn" type="button" title="Переключить вид: Сетка ↔ Список">Вид: Сетка</button>
           <button class="btn btn-s mob-size-btn" id="colMobSizeBtn" type="button" title="Размер карточек на экране" aria-label="Размер карточек">⊞ 2</button>
@@ -333,6 +332,12 @@
                   <option value="yearDesc">По году (новые)</option>
                   <option value="yearAsc">По году (старые)</option>
                 </select>
+              </div>
+              <div class="fld"><label style="font-size:11.5px;color:var(--mu)">Статус выхода</label>
+                <div class="row col-release-toggles" style="gap:6px">
+                  <button class="tb" id="ongBtn" type="button" style="flex:1;justify-content:center">Онгоинг</button>
+                  <button class="tb" id="finBtn" type="button" style="flex:1;justify-content:center">Завершено</button>
+                </div>
               </div>
               <div class="fld"><label style="font-size:11.5px;color:var(--mu)">Фильтр по жанру</label><select id="tagFilter" style="width:100%"><option value="Все">Жанры: Все</option></select></div>
               <div class="fld"><label style="font-size:11.5px;color:var(--mu)">Фильтр по подборке</label><select id="listFilter" style="width:100%"><option value="Все">📁 Все подборки</option></select></div>
@@ -386,9 +391,6 @@
               <button class="kb" data-k="Комикс" type="button">Комикс</button>
             </div>
           </div>
-          <button class="tb" id="ongBtn" type="button">Онгоинг</button>
-          <button class="tb" id="finBtn" type="button">Завершено</button>
-          <button class="tb" id="archiveToggleBtn" type="button">Архив</button>
           <button class="tb on" id="xfBtn" type="button" style="display:none"></button>
           <div id="chips" class="chips"></div>
           <span id="countInfo" style="margin-left:auto;font-size:12px;color:var(--mu)"></span>
@@ -442,6 +444,7 @@
   </div>
   <div class="row3">
     <input type="number" id="inputEps" placeholder="Серий или глав" min="0">
+    <input type="number" id="inputWatchedEps" placeholder="Просмотрено / прочитано" min="0">
     <input type="number" id="inputVols" placeholder="Томов (манга/ранобэ)" min="0">
     <input type="number" id="inputDur" placeholder="Минут на серию/фильм" min="0">
   </div>
@@ -481,6 +484,7 @@
     <button class="btn btn-s" id="detailFavToggleBtn" type="button">🤍 В любимое</button>
     <div class="row" style="gap:4px"><button class="btn btn-s" id="detailRewatchMinusBtn" type="button" title="Убрать 1 пересмотр" style="padding:9px 10px">−1</button><button class="btn btn-s" id="detailRewatchPlusBtn" type="button" title="Добавить +1 к счётчику пересмотров">🔁 Пересмотрено: 0</button></div>
   </div>
+  <div id="detailProgressWrap" class="ep-tracker-bar" style="display:none"></div>
   <div id="detailDescription"></div>
   <div id="detailExtra" class="row"></div>
   <div id="detailCharsSec" class="jutsu-chars-sec" style="display:none"></div>
@@ -559,6 +563,7 @@
 </div></div>
 
 <div id="toasts"></div>
+<button id="scrollTopBtn" class="scroll-top-btn" type="button" title="Наверх" aria-label="Прокрутить наверх">↑</button>
 <nav id="botnav">
   <button data-go="catalog" class="on" type="button"><span>Каталог</span></button>
   <button data-go="collection" type="button"><span>Моя коллекция</span></button>
@@ -713,7 +718,7 @@ const importWithTimeout = (url, ms = 25000) => Promise.race([
   new Promise((_, rej) => setTimeout(() => rej(new Error("Firebase load timeout")), ms))
 ]);
 
-const APP_VER = "20261129";
+const APP_VER = "20261130";
 window.__FIREBASE_CONFIG__ = {
   apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
   authDomain: "mymediatracker-6e179.firebaseapp.com",

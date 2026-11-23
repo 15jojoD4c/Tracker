@@ -1759,6 +1759,19 @@ html[data-grid-size="sm"] .grid:not(.list) .card-ep-plus-btn {
   gap: 8px;
 }
 
+.ep-tracker-ctrl {
+  flex-wrap: nowrap;
+  gap: 5px;
+}
+
+.ep-season-sel {
+  min-width: 52px;
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 0 6px !important;
+  font-size: 13.5px !important;
+}
+
 .tp-ep-tracker-wrap {
   width: 100%;
   margin: 8px 0 4px;

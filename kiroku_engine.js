@@ -819,6 +819,151 @@
     return setWatchedEps(item, prev + (Number(delta) || 0));
   }
 
+  // --- Защита от серверного бага Shikimori GraphQL (манга с Сёдзё-ай/Юри приходит с единственным жанром Yaoi id=65) ---
+  function isShikimoriSuspiciousYaoiOnlyGenres(genres, isAnime = false) {
+    if (isAnime || !Array.isArray(genres) || genres.length !== 1) return false;
+    const g = genres[0];
+    if (!g || typeof g !== 'object') return false;
+    const idStr = String(g.id ?? '').trim();
+    const nameLower = String(g.name || '').trim().toLowerCase();
+    const ruLower = String(g.russian || '').trim().toLowerCase();
+    return idStr === '65' || nameLower === 'yaoi' || ruLower === 'яой';
+  }
+
+  function sanitizeSuspiciousShikiTags(existingTags, trustedTags) {
+    const trusted = (Array.isArray(trustedTags) ? trustedTags : [])
+      .map(s => String(s || '').trim())
+      .filter(Boolean);
+    if (!trusted.length) return Array.isArray(existingTags) ? existingTags.slice() : [];
+    const seen = new Set();
+    const out = [];
+    for (const t of trusted) {
+      const k = t.toLowerCase();
+      if (!seen.has(k)) {
+        seen.add(k);
+        out.push(t);
+      }
+    }
+    return out;
+  }
+
+  // --- Кросс-матчинг японского аниме из TMDB (Фильмы/Сериалы) с категорией «Аниме» для исключения дубликатов ---
+  function extractCjkCore(str) {
+    if (!str) return '';
+    const matches = String(str).match(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+/g);
+    return matches ? matches.join('') : '';
+  }
+
+  function isTmdbJapaneseAnime(item) {
+    if (!item || typeof item !== 'object') return false;
+    if (item.isTmdbAnime === true) return true;
+    const cat = String(item.category || '');
+    if (cat !== 'Фильм' && cat !== 'Сериал' && cat !== 'Мультфильм') return false;
+    const genreIds = Array.isArray(item.tmdbGenreIds) ? item.tmdbGenreIds.map(Number) : [];
+    const tagsLower = (Array.isArray(item.tags) ? item.tags : []).map(t => String(t || '').toLowerCase());
+    const hasAnim = genreIds.includes(16) || tagsLower.includes('мультфильм') || tagsLower.includes('animation') || tagsLower.includes('аниме');
+    if (!hasAnim) return false;
+    const lang = String(item.origLang || item.originalLanguage || '').toLowerCase();
+    const countries = Array.isArray(item.originCountry) ? item.originCountry.map(c => String(c || '').toUpperCase()) : [];
+    if (lang === 'ja' || countries.includes('JP')) return true;
+    const origTitle = String(item.orig || item.titleOrig || '');
+    return /[\u3040-\u30ff]/.test(origTitle);
+  }
+
+  function areCategoriesCrossCompatibleForTmdbAnime(a, b) {
+    if (!a || !b) return false;
+    const catA = String(a.category || '');
+    const catB = String(b.category || '');
+    const pairCheck = (animeItem, kinoItem) => {
+      if (String(animeItem.category || '') !== 'Аниме') return false;
+      const kCat = String(kinoItem.category || '');
+      if (kCat !== 'Фильм' && kCat !== 'Сериал' && kCat !== 'Мультфильм') return false;
+      if (!isTmdbJapaneseAnime(kinoItem)) return false;
+      const aFmt = inferNormalizedFormat(animeItem);
+      const isAnimeMovie = aFmt === 'MOVIE';
+      if (kCat === 'Фильм' && aFmt && !isAnimeMovie && (Number(animeItem.eps) || 0) > 2) return false;
+      if (kCat === 'Сериал' && isAnimeMovie) return false;
+      return true;
+    };
+    return pairCheck(a, b) || pairCheck(b, a);
+  }
+
+  // --- Компактный трекер сезонов и серий (статистика хранит и считает только суммарные watchedEps) ---
+  function normalizeSeasonsMeta(seasonsMeta, totalEps = 0, seasonsCount = 0) {
+    if (Array.isArray(seasonsMeta) && seasonsMeta.length) {
+      const byNum = new Map();
+      for (const s of seasonsMeta) {
+        if (!s || typeof s !== 'object') continue;
+        const n = Math.floor(Number(s.n ?? s.season_number ?? s.season) || 0);
+        const eps = Math.floor(Number(s.eps ?? s.episode_count ?? s.episodes) || 0);
+        if (n > 0 && eps > 0) {
+          byNum.set(n, { n, eps });
+        }
+      }
+      const list = [...byNum.values()].sort((a, b) => a.n - b.n);
+      if (list.length) return list;
+    }
+    const sc = Math.floor(Number(seasonsCount) || 0);
+    const tot = Math.floor(Number(totalEps) || 0);
+    if (sc > 1 && tot >= sc) {
+      const base = Math.floor(tot / sc);
+      let rem = tot - base * sc;
+      const out = [];
+      for (let idx = 1; idx <= sc; idx++) {
+        const extra = rem > 0 ? 1 : 0;
+        if (rem > 0) rem--;
+        out.push({ n: idx, eps: base + extra });
+      }
+      return out;
+    }
+    return [];
+  }
+
+  function watchedEpsToSeasonEp(watchedEps, seasonsMeta) {
+    const list = normalizeSeasonsMeta(seasonsMeta);
+    const total = list.reduce((sum, s) => sum + s.eps, 0);
+    const w = Math.max(0, Math.floor(Number(watchedEps) || 0));
+    if (!list.length) {
+      return { season: 1, ep: w, seasonTotal: 0, totalEps: 0, watchedEps: w };
+    }
+    if (w <= 0) {
+      return { season: list[0].n, ep: 0, seasonTotal: list[0].eps, totalEps: total, watchedEps: 0 };
+    }
+    const clamped = Math.min(w, total);
+    let acc = 0;
+    for (const s of list) {
+      if (clamped <= acc + s.eps) {
+        return {
+          season: s.n,
+          ep: clamped - acc,
+          seasonTotal: s.eps,
+          totalEps: total,
+          watchedEps: clamped
+        };
+      }
+      acc += s.eps;
+    }
+    const last = list[list.length - 1];
+    return { season: last.n, ep: last.eps, seasonTotal: last.eps, totalEps: total, watchedEps: total };
+  }
+
+  function seasonEpToWatchedEps(seasonNum, epInSeason, seasonsMeta) {
+    const list = normalizeSeasonsMeta(seasonsMeta);
+    if (!list.length) return Math.max(0, Math.floor(Number(epInSeason) || 0));
+    const targetN = Math.floor(Number(seasonNum) || list[0].n);
+    let offset = 0;
+    let targetSeason = list[0];
+    for (const s of list) {
+      if (s.n === targetN) {
+        targetSeason = s;
+        break;
+      }
+      if (s.n < targetN) offset += s.eps;
+    }
+    const cleanEp = Math.max(0, Math.min(targetSeason.eps, Math.floor(Number(epInSeason) || 0)));
+    return offset + cleanEp;
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -857,7 +1002,15 @@
     normalizeItemProgress,
     applyStatusProgressTransition,
     setWatchedEps,
-    stepWatchedEps
+    stepWatchedEps,
+    isShikimoriSuspiciousYaoiOnlyGenres,
+    sanitizeSuspiciousShikiTags,
+    extractCjkCore,
+    isTmdbJapaneseAnime,
+    areCategoriesCrossCompatibleForTmdbAnime,
+    normalizeSeasonsMeta,
+    watchedEpsToSeasonEp,
+    seasonEpToWatchedEps
   };
 
   if (typeof module !== 'undefined' && module.exports) {
@@ -866,4 +1019,5 @@
   if (root) {
     root.KirokuEngine = api;
   }
+
 })(typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : this));

@@ -3324,7 +3324,11 @@ const same = (a, b) => {
     if (Number(a.shikiId) > 0 && Number(b.shikiId) > 0 && Number(a.shikiId) === Number(b.shikiId)) return true;
     if (a.mdId && b.mdId && String(a.mdId) === String(b.mdId)) return true;
   }
-  if (!sameCat(a.category, b.category)) return false;
+  const crossTmdbAnime = !sameCat(a.category, b.category)
+    && typeof KirokuEngine !== 'undefined'
+    && typeof KirokuEngine.areCategoriesCrossCompatibleForTmdbAnime === 'function'
+    && KirokuEngine.areCategoriesCrossCompatibleForTmdbAnime(a, b);
+  if (!sameCat(a.category, b.category) && !crossTmdbAnime) return false;
 
   if (Number(a.aniId) > 0 && Number(b.aniId) > 0 && Number(a.aniId) !== Number(b.aniId)) return false;
   if (Number(a.mal) > 0 && Number(b.mal) > 0 && Number(a.mal) !== Number(b.mal)) return false;
@@ -3362,7 +3366,15 @@ const same = (a, b) => {
   const primaryMatch = primaryA.length && primaryB.length && primaryA.some(n => primaryB.includes(n));
   const yearConfirmed = Boolean(ya && yb && Math.abs(ya - yb) <= maxYearDiff);
   const allMatch = !primaryMatch && !formatMismatchForAlts && !epsMismatchForAlts && yearConfirmed && metaA.all.some(n => metaB.all.includes(n));
-  if (!primaryMatch && !allMatch) return false;
+  let cjkMatch = false;
+  if (!primaryMatch && !allMatch && crossTmdbAnime && typeof KirokuEngine !== 'undefined' && KirokuEngine.extractCjkCore) {
+    const cjkA = KirokuEngine.extractCjkCore(a.titleOrig || a.orig || a.title || '');
+    const cjkB = KirokuEngine.extractCjkCore(b.titleOrig || b.orig || b.title || '');
+    if (cjkA && cjkB && cjkA.length >= 2 && cjkA === cjkB && (!ya || !yb || Math.abs(ya - yb) <= 1)) {
+      cjkMatch = true;
+    }
+  }
+  if (!primaryMatch && !allMatch && !cjkMatch) return false;
 
   return true;
 };
@@ -3696,13 +3708,21 @@ function renderEpisodeProgressControl(containerEl, item, onAfterChange = null) {
     return;
   }
   const unit = getItemProgressUnit(item);
-  const total = Math.max(0, Math.floor(num(item.eps)));
+  const isRead = isReadCategory(item.category);
+  const seasonsList = (!isRead && typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.normalizeSeasonsMeta === 'function')
+    ? KirokuEngine.normalizeSeasonsMeta(item.seasonsMeta, Math.max(0, Math.floor(num(item.eps))), Math.max(0, Math.floor(num(item.seasons))))
+    : [];
+  const hasMultiSeasons = seasonsList.length > 1;
+  const seasonsSum = hasMultiSeasons ? seasonsList.reduce((s, x) => s + x.eps, 0) : 0;
+  const total = Math.max(0, Math.floor(num(item.eps))) || seasonsSum;
   const locked = isItemProgressLocked(item);
   if (locked && total > 0 && num(item.watchedEps) < total) {
     item.watchedEps = total;
   }
   const curVal = Math.max(0, Math.floor(num(item.watchedEps)));
-  const isRead = isReadCategory(item.category);
+  const seasonPos = (hasMultiSeasons && typeof KirokuEngine !== 'undefined' && KirokuEngine.watchedEpsToSeasonEp)
+    ? KirokuEngine.watchedEpsToSeasonEp(curVal, seasonsList)
+    : null;
 
   containerEl.style.display = 'flex';
   containerEl.classList.toggle('is-locked', locked);
@@ -3712,6 +3732,9 @@ function renderEpisodeProgressControl(containerEl, item, onAfterChange = null) {
   titleWrap.append(el('span', null, isRead ? 'Прогресс чтения' : 'Прогресс просмотра'));
   if (locked) {
     titleWrap.append(el('small', 'ep-lock-note', '🔒 Завершено — смените статус, чтобы менять'));
+  } else if (hasMultiSeasons && seasonPos) {
+    const pct = total > 0 ? Math.min(100, Math.round((Math.min(curVal, total) / total) * 100)) : 0;
+    titleWrap.append(el('small', null, `Сезон ${seasonPos.season}, серия ${seasonPos.ep} · всего ${Math.min(curVal, total)} / ${total} ${unit} (${pct}%)`));
   } else if (total > 0) {
     const pct = Math.min(100, Math.round((Math.min(curVal, total) / total) * 100));
     titleWrap.append(el('small', null, `Прогресс: ${pct}% · нажмите на число для ввода`));
@@ -3749,6 +3772,30 @@ function renderEpisodeProgressControl(containerEl, item, onAfterChange = null) {
     if (typeof onAfterChange === 'function') onAfterChange(target);
   };
 
+  if (hasMultiSeasons && seasonPos) {
+    const sSel = el('select', 'ep-season-sel');
+    sSel.setAttribute('aria-label', 'Выбор сезона');
+    sSel.title = locked ? 'Смените статус для редактирования' : 'Выберите сезон';
+    sSel.disabled = locked;
+    seasonsList.forEach(s => {
+      const opt = new Option(`С${s.n}`, String(s.n));
+      opt.title = `Сезон ${s.n} (${s.eps} эп.)`;
+      sSel.append(opt);
+    });
+    sSel.value = String(seasonPos.season);
+    sSel.onclick = e => e.stopPropagation();
+    sSel.onchange = e => {
+      e.stopPropagation();
+      if (locked) return;
+      const pickedS = Math.floor(Number(sSel.value) || seasonsList[0].n);
+      const sObj = seasonsList.find(x => x.n === pickedS) || seasonsList[0];
+      const epInTarget = Math.min(Math.max(1, seasonPos.ep || 1), sObj.eps);
+      const nextWatched = KirokuEngine.seasonEpToWatchedEps(pickedS, epInTarget, seasonsList);
+      commitChange(nextWatched);
+    };
+    ctrl.append(sSel);
+  }
+
   const minusBtn = el('button', 'ep-step-btn', '−');
   minusBtn.type = 'button';
   minusBtn.disabled = locked || curVal <= 0;
@@ -3758,26 +3805,43 @@ function renderEpisodeProgressControl(containerEl, item, onAfterChange = null) {
     commitChange(curVal - 1);
   };
 
-  const valLabel = total > 0 ? `${Math.min(curVal, total)} / ${total} ${unit}` : `${curVal} ${unit}`;
+  const valLabel = (hasMultiSeasons && seasonPos)
+    ? `${seasonPos.ep} / ${seasonPos.seasonTotal} ${unit}`
+    : (total > 0 ? `${Math.min(curVal, total)} / ${total} ${unit}` : `${curVal} ${unit}`);
   const valBtn = el('button', 'ep-val-btn', valLabel);
   valBtn.type = 'button';
   valBtn.disabled = locked;
-  valBtn.title = locked ? 'Прогресс зафиксирован для завершённого тайтла' : 'Нажмите, чтобы ввести номер вручную';
+  valBtn.title = locked
+    ? 'Прогресс зафиксирован для завершённого тайтла'
+    : (hasMultiSeasons && seasonPos
+        ? `Сезон ${seasonPos.season}: нажмите, чтобы ввести номер серии (1–${seasonPos.seasonTotal})`
+        : 'Нажмите, чтобы ввести номер вручную');
   valBtn.onclick = e => {
     e.stopPropagation();
     if (locked) return;
     const inp = el('input', 'ep-inline-input');
     inp.type = 'number';
     inp.min = '0';
-    if (total > 0) inp.max = String(total);
-    inp.value = String(curVal);
-    inp.setAttribute('aria-label', isRead ? 'Прочитано глав' : 'Просмотрено серий');
+    if (hasMultiSeasons && seasonPos) {
+      inp.max = String(seasonPos.seasonTotal);
+      inp.value = String(seasonPos.ep);
+      inp.setAttribute('aria-label', `Серия в сезоне ${seasonPos.season}`);
+    } else {
+      if (total > 0) inp.max = String(total);
+      inp.value = String(curVal);
+      inp.setAttribute('aria-label', isRead ? 'Прочитано глав' : 'Просмотрено серий');
+    }
     let finished = false;
     const done = save => {
       if (finished) return;
       finished = true;
       if (save) {
-        commitChange(inp.value);
+        if (hasMultiSeasons && seasonPos && typeof KirokuEngine !== 'undefined' && KirokuEngine.seasonEpToWatchedEps) {
+          const epVal = Math.max(0, Math.min(seasonPos.seasonTotal, Math.floor(Number(inp.value) || 0)));
+          commitChange(KirokuEngine.seasonEpToWatchedEps(seasonPos.season, epVal, seasonsList));
+        } else {
+          commitChange(inp.value);
+        }
       } else {
         renderEpisodeProgressControl(containerEl, item, onAfterChange);
       }
@@ -4857,7 +4921,25 @@ function ruFull(r) {
         if (x) {
           ru = x.russian || '';
           d = ruClean(x.description);
-          if (Array.isArray(x.genres) && x.genres.length && (!r.tags || !r.tags.length)) {
+          const isSuspYaoi = !isAnime && typeof KirokuEngine !== 'undefined' && KirokuEngine.isShikimoriSuspiciousYaoiOnlyGenres
+            && KirokuEngine.isShikimoriSuspiciousYaoiOnlyGenres(x.genres, false);
+          if (isSuspYaoi || r._shikiSuspiciousYaoiOnly) {
+            try {
+              const restManga = await shiki(`/api/${SHK[r.category]}/${r.mal}`);
+              if (Array.isArray(restManga?.genres) && restManga.genres.length) {
+                x.genres = restManga.genres;
+                const cleanRu = restManga.genres.map(g => g.russian || g.name).filter(Boolean);
+                if (cleanRu.length) {
+                  r.tags = (typeof KirokuEngine !== 'undefined' && KirokuEngine.sanitizeSuspiciousShikiTags)
+                    ? KirokuEngine.sanitizeSuspiciousShikiTags(r.tags, cleanRu)
+                    : cleanRu;
+                  r.rawGenres = restManga.genres.map(g => g.name).filter(Boolean);
+                  r.rawTags = r.rawGenres;
+                  r._shikiSuspiciousYaoiOnly = false;
+                }
+              }
+            } catch (eRest) {}
+          } else if (Array.isArray(x.genres) && x.genres.length && (!r.tags || !r.tags.length)) {
             r.tags = x.genres.map(g => g.russian || g.name).filter(Boolean);
           }
           if (Array.isArray(x.studios) && x.studios.length && !r.studio) {
@@ -4896,19 +4978,25 @@ function ruFull(r) {
   })();
 }
 async function ruPreview(r) {
-  if (!r || r.ruDone) return;
-  if (r.tmdb && typeof tmdbInfo === 'function' && (!r.author || !r.studio || !r.trailerId)) {
-    try {
-      const info = await tmdbInfo(r);
-      Object.assign(r, info);
-      r.ruDone = 1;
-      if (rndR === r) {
-        $('rndCredits').textContent = [r.author && 'Режиссёр: ' + r.author, r.studio && 'Студия: ' + r.studio, r.cast && 'В ролях: ' + r.cast].filter(Boolean).join('  •  ');
-        if (typeof rndTagChips === 'function') rndTagChips(r);
-      }
-    } catch (e) {}
+  if (!r) return;
+  if (r.tmdb && typeof tmdbInfo === 'function') {
+    const needsTmdb = !r.author || !r.studio || !r.trailerId || !r.dur || (r.category === 'Сериал' && (!r.eps || !r.seasons));
+    if (needsTmdb) {
+      try {
+        const info = await tmdbInfo(r);
+        Object.assign(r, info);
+        r.ruDone = 1;
+        if (rndR === r) {
+          if (typeof formatRndMetaLine === 'function') $('rndMeta').textContent = formatRndMetaLine(r);
+          $('rndCredits').textContent = [r.author && 'Режиссёр: ' + r.author, r.studio && 'Студия: ' + r.studio, r.countries && 'Страна: ' + r.countries, r.cast && 'В ролях: ' + r.cast].filter(Boolean).join('  •  ');
+          if (r.desc) $('rndDesc').textContent = r.desc;
+          if (typeof rndTagChips === 'function') rndTagChips(r);
+        }
+      } catch (e) {}
+    }
     return;
   }
+  if (r.ruDone) return;
   if (!['AniList', 'Jikan', 'MangaDex', 'Shikimori'].includes(r.src)) return;
   if (!r.desc) $('rndDesc').textContent = 'Загружаю описание на русском…';
   else if (!hasRu(r.desc)) $('rndDesc').textContent = 'Перевожу на русский…';
@@ -4916,6 +5004,7 @@ async function ruPreview(r) {
   if (rndR === r) {
     $('rndTitle').textContent = r.title;
     $('rndNames').textContent = [r.en, r.orig].filter(Boolean).join(' / ');
+    if (typeof formatRndMetaLine === 'function') $('rndMeta').textContent = formatRndMetaLine(r);
     $('rndDesc').textContent = r.desc || 'Описание отсутствует.';
     $('rndCredits').textContent = [r.author && 'Автор: ' + r.author, r.studio && 'Студия: ' + r.studio, r.source && 'Источник: ' + r.source].filter(Boolean).join('  •  ');
     if (typeof rndTagChips === 'function') rndTagChips(r);
@@ -5831,7 +5920,7 @@ $('saveItemBtn').onclick = async () => {
     if (picked.trailerId) it.trailerId = picked.trailerId;
     const old = items.find(x => x.id === it.id);
     if (old) {
-      ['pin', 'seasons', 'format', 'aniId', 'mal', 'tmdb', 'imdbId', 'vols', 'trailerId', 'badgeCharImg', 'badgeCharName', '_docId', 'importBatchId', 'importSource', 'isAdult'].forEach(k => {
+      ['pin', 'seasons', 'seasonsMeta', 'format', 'aniId', 'mal', 'tmdb', 'imdbId', 'vols', 'trailerId', 'badgeCharImg', 'badgeCharName', '_docId', 'importBatchId', 'importSource', 'isAdult', 'isTmdbAnime', 'origLang', 'originCountry', 'tmdbGenreIds'].forEach(k => {
         if (old[k] && !it[k]) it[k] = old[k];
       });
     } else if (user && user.uid) {
@@ -5924,7 +6013,8 @@ function openDetail(id) {
   const compDateStr = (addDateStr ? ` • Добавлено в «${detStLabel}»: ${addDateStr}` : '') + (i.completedAt ? ' • Завершено ' + new Date(i.completedAt).toLocaleDateString('ru-RU') : '');
   const detRelState = getItemReleaseState(i);
   const detRelText = detRelState === 'ongoing' ? ' • ● Онгоинг' : detRelState === 'upcoming' ? ' • Анонс' : ' • Завершён';
-  $('detailMeta').textContent = `${catLabel(i)} • ${i.year || 'Год не указан'}${detRelText}${compDateStr}${i.eps ? ' • ' + i.eps + (i.category === 'Манга' || i.category === 'Ранобэ' ? ' гл.' : ' эп.') : ''}${i.vols ? ' • ' + i.vols + ' ' + pluralRu(i.vols, 'том', 'тома', 'томов') : ''}${i.dur ? ' • ' + i.dur + ' мин' : ''}`;
+  const buildDetailMetaText = () => `${catLabel(i)} • ${i.year || 'Год не указан'}${detRelText}${compDateStr}${i.seasons > 1 ? ' • ' + i.seasons + ' ' + pluralRu(i.seasons, 'сезон', 'сезона', 'сезонов') : ''}${i.eps ? ' • ' + i.eps + (i.category === 'Манга' || i.category === 'Ранобэ' ? ' гл.' : ' эп.') : ''}${i.vols ? ' • ' + i.vols + ' ' + pluralRu(i.vols, 'том', 'тома', 'томов') : ''}${i.dur ? ' • ' + i.dur + ' мин' : ''}`;
+  $('detailMeta').textContent = buildDetailMetaText();
   $('detailNames').textContent = [i.titleEn, i.titleOrig, i.alt].filter(Boolean).join(' / ');
 
   const cr = $('detailCredits'); cr.replaceChildren();
@@ -5972,7 +6062,7 @@ function openDetail(id) {
         const probe = { ...i, desc: '' };
         if (i.tmdb && typeof tmdbInfo === 'function') {
           const info = await tmdbInfo(probe);
-          if (info?.description) probe.desc = info.description;
+          if (info?.desc || info?.description) probe.desc = info.desc || info.description;
         } else if (i.mal || i.aniId || SHK[i.category]) {
           await ruFull(probe);
         }
@@ -6019,6 +6109,23 @@ function openDetail(id) {
   };
 
   renderEpisodeProgressControl($('detailProgressWrap'), i);
+  // Ленивая подгрузка точного расклада сезонов/серий для сериалов из TMDB, если сезоны ещё не сохранены
+  if (i.tmdb && String(i.tmdb).startsWith('tv/') && (!Array.isArray(i.seasonsMeta) || !i.seasonsMeta.length) && typeof tmdbInfo === 'function') {
+    tmdbInfo(i).then(info => {
+      let changed = false;
+      if (Array.isArray(info?.seasonsMeta) && info.seasonsMeta.length) { i.seasonsMeta = info.seasonsMeta; changed = true; }
+      if (info?.seasons && !i.seasons) { i.seasons = info.seasons; changed = true; }
+      if (info?.eps && !i.eps) { i.eps = info.eps; changed = true; }
+      if (info?.dur && !i.dur) { i.dur = info.dur; changed = true; }
+      if (changed) {
+        saveLocalItems();
+        if (String(curId) === String(id)) {
+          $('detailMeta').textContent = buildDetailMetaText();
+          renderEpisodeProgressControl($('detailProgressWrap'), i);
+        }
+      }
+    }).catch(() => {});
+  }
 
   // Отдельная кнопка-сердечко «Любимое» (при добавлении в Любимое тайтл автоматически становится просмотренным/прочитанным)
   const favB = $('detailFavToggleBtn');

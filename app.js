@@ -2712,7 +2712,7 @@ class CharacterSeiyuuManager {
       const mType = item.category === 'Аниме' ? 'ANIME' : 'MANGA';
       const isAnime = item.category === 'Аниме';
       const hasDirectId = Boolean(Number(item.aniId) > 0 || Number(item.mal) > 0);
-      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal status bannerImage description(asHtml:false) format source duration episodes volumes chapters title{romaji english native} synonyms startDate{year month day} endDate{year month day} nextAiringEpisode{airingAt episode} trailer{id site} studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}} relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,FAVOURITES_DESC,RELEVANCE],perPage:50){edges{role node{name{full native}image{large}favourites}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
+      const q = `query($id:Int,$mal:Int,$s:String,$t:MediaType){Media(id:$id,idMal:$mal,search:$s,type:$t){id idMal status bannerImage description(asHtml:false) format source duration episodes volumes chapters genres tags{name rank isMediaSpoiler} title{romaji english native} synonyms startDate{year month day} endDate{year month day} nextAiringEpisode{airingAt episode} trailer{id site} studios(isMain:true){nodes{name}} staff(perPage:12){edges{role node{name{full}}}} relations{edges{relationType node{id idMal title{romaji english} format type coverImage{large} startDate{year} averageScore}}} characters(sort:[ROLE,FAVOURITES_DESC,RELEVANCE],perPage:50){edges{role node{name{full native}image{large}favourites}voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){name{full native}image{large}}}}}}`;
       const vars = { t: mType };
       if (Number(item.aniId) > 0) vars.id = Number(item.aniId);
       else if (Number(item.mal) > 0) vars.mal = Number(item.mal);
@@ -3034,6 +3034,73 @@ class CharacterSeiyuuManager {
         || vids.find(v => v.type === 'Trailer')
         || vids[0];
       const ytKey = cleanYoutubeId(pickedVid?.key);
+
+      const validSeasons = Array.isArray(d?.seasons)
+        ? d.seasons
+            .filter(s => Number(s.season_number) > 0 && Number(s.episode_count) > 0)
+            .sort((a, b) => Number(a.season_number) - Number(b.season_number))
+        : [];
+      const seasonsMeta = validSeasons.map(s => ({ n: Number(s.season_number), eps: Number(s.episode_count) }));
+      const tmdbDur = Number(d?.runtime || (d?.episode_run_time || [])[0] || d?.last_episode_to_air?.runtime || 0);
+      const tmdbEps = Number(d?.number_of_episodes || (seasonsMeta.length ? seasonsMeta.reduce((sum, x) => sum + x.eps, 0) : 0));
+      const tmdbSeasons = Number(d?.number_of_seasons || seasonsMeta.length || 0);
+      const tmdbCountries = (d?.production_countries || []).map(c => c.name).filter(Boolean).slice(0, 3).join(', ');
+      const tmdbTags = Array.isArray(d?.genres) ? d.genres.map(g => g.name || (typeof TG !== 'undefined' && TG[g.id]) || '').filter(Boolean) : [];
+
+      let relationsEdges = [];
+      let franchiseTitle = '';
+      let franchiseIsTvSeasons = false;
+      if (d?.belongs_to_collection?.id) {
+        try {
+          const colData = await fetchTmdbJson(`https://api.themoviedb.org/3/collection/${d.belongs_to_collection.id}?api_key=${encodeURIComponent(tk)}&language=ru-RU`, 5000);
+          const parts = Array.isArray(colData?.parts) ? colData.parts : [];
+          if (parts.length >= 2) {
+            franchiseTitle = colData?.name || d.belongs_to_collection.name || '';
+            const sortedParts = [...parts].sort((a, b) => {
+              const da = a.release_date || '9999-99-99';
+              const db = b.release_date || '9999-99-99';
+              return da.localeCompare(db);
+            });
+            relationsEdges = sortedParts.map(p => ({
+              relationType: 'COLLECTION_PART',
+              node: {
+                tmdb: 'movie/' + p.id,
+                title: { english: p.title || p.original_title || 'Фильм', romaji: p.original_title || p.title || '' },
+                format: 'MOVIE',
+                type: 'TMDB_MOVIE',
+                coverImage: { large: p.poster_path ? 'https://image.tmdb.org/t/p/w342' + p.poster_path : '' },
+                startDate: { year: p.release_date ? Number(String(p.release_date).slice(0, 4)) : 0 },
+                releaseDate: p.release_date || '',
+                averageScore: p.vote_count ? Math.round((Number(p.vote_average) || 0) * 10) : 0,
+                overview: p.overview || '',
+                isCurrent: Number(p.id) === Number(d.id)
+              }
+            }));
+          }
+        } catch (colErr) {}
+      } else if (String(item.tmdb).startsWith('tv/') && validSeasons.length >= 2) {
+        franchiseIsTvSeasons = true;
+        relationsEdges = validSeasons.map(s => ({
+          relationType: 'TV_SEASON',
+          node: {
+            tmdb: item.tmdb,
+            seasonNumber: Number(s.season_number),
+            episodeCount: Number(s.episode_count),
+            title: { english: s.name || `Сезон ${s.season_number}`, romaji: `Сезон ${s.season_number}` },
+            format: 'TV',
+            type: 'TMDB_SEASON',
+            coverImage: {
+              large: s.poster_path
+                ? 'https://image.tmdb.org/t/p/w342' + s.poster_path
+                : (d?.poster_path ? 'https://image.tmdb.org/t/p/w342' + d.poster_path : '')
+            },
+            startDate: { year: s.air_date ? Number(String(s.air_date).slice(0, 4)) : 0 },
+            averageScore: s.vote_average ? Math.round(Number(s.vote_average) * 10) : 0,
+            overview: s.overview || ''
+          }
+        }));
+      }
+
       const res = {
         isAnime: false,
         isLiveAction: true,
@@ -3052,8 +3119,17 @@ class CharacterSeiyuuManager {
           trailer: ytKey ? { site: 'youtube', id: ytKey } : null,
           author: [...new Set([...by, ...dir])].slice(0, 2).join(', '),
           studio: (d?.production_companies || []).slice(0, 2).map(c => c.name).join(', '),
+          countries: tmdbCountries,
           castNames: cast.slice(0, 6).map(c => c.name).filter(Boolean).join(', '),
-          imdbId: d?.external_ids?.imdb_id || ''
+          imdbId: d?.external_ids?.imdb_id || '',
+          duration: tmdbDur,
+          episodes: tmdbEps,
+          seasons: tmdbSeasons,
+          seasonsMeta: seasonsMeta.length ? seasonsMeta : undefined,
+          tmdbTags,
+          franchiseTitle,
+          franchiseIsTvSeasons,
+          relations: relationsEdges.length ? { edges: relationsEdges } : null
         },
         items: cast.slice(0, 20).map((c, idx) => ({ name: c.character || c.name, enName: c.original_name || c.name, role: idx < 4 ? 'MAIN' : 'SUP', img: c.profile_path ? 'https://image.tmdb.org/t/p/w342' + c.profile_path : FALL, vaName: c.name || '', vaImg: c.profile_path ? 'https://image.tmdb.org/t/p/w185' + c.profile_path : '', isLiveActor: true }))
       };
@@ -3220,7 +3296,12 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   const releaseSpecBox = addSpec('Годы / Дата выхода', formatReleasePeriodText(activeItem, null), 'release');
   const releaseStatusSpecBox = addSpec('Статус релиза', formatReleaseStatusLabel(activeItem, null), 'status');
   addSpec('Тип произведения', FORMAT_RU[activeItem.format] || catLabel(activeItem), 'format');
-  addSpec('Первоисточник', activeItem.source || 'Оригинал / Не указан', 'source');
+  const isKinoCategory = activeItem.category === 'Фильм' || activeItem.category === 'Сериал';
+  const sourceSpecBox = addSpec(
+    isKinoCategory && !activeItem.source ? 'Страна' : 'Первоисточник',
+    isKinoCategory && !activeItem.source ? (activeItem.countries || 'Не указана') : (activeItem.source || 'Оригинал / Не указан'),
+    'source'
+  );
   const fillClickableSpecBox = (b, lbl, rawVal, kindType) => {
     if (!b) return b;
     const list = spl(rawVal);
@@ -3261,11 +3342,22 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
     }
     return base;
   };
+  const formatFullPageEpisodes = target => {
+    if (target.category === 'Фильм') return 'Полнометражный фильм';
+    const e = num(target.eps);
+    const s = num(target.seasons);
+    if (e > 0 && s > 1) return `${e} эп. (${s} сез.)`;
+    if (e > 0) return `${e} эп.`;
+    if (s > 1) return `${s} сез.`;
+    return 'Не указано';
+  };
+  let volumeSpecBox = null;
+  let episodesSpecBox = null;
   let durationSpecBox = null;
   if (activeItem.category === 'Манга' || activeItem.category === 'Ранобэ') {
-    addSpec('Объём (Главы и Тома)', `${num(activeItem.eps) || '?'} гл. · ${num(activeItem.vols) || '?'} т.`, 'volume');
+    volumeSpecBox = addSpec('Объём (Главы и Тома)', `${num(activeItem.eps) || '?'} гл. · ${num(activeItem.vols) || '?'} т.`, 'volume');
   } else {
-    addSpec('Количество серий', num(activeItem.eps) ? `${activeItem.eps} эп.` : (activeItem.category === 'Фильм' ? 'Полнометражный фильм' : 'Не указано'), 'episodes');
+    episodesSpecBox = addSpec('Количество серий', formatFullPageEpisodes(activeItem), 'episodes');
     durationSpecBox = addSpec('Длительность', formatFullPageDuration(activeItem), 'duration');
   }
   const syncFullPageDuration = target => {
@@ -3308,8 +3400,8 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
       fullPageListsBox.append(chip);
     });
   };
+  let curMatch = items.find(x => (activeItem.id && String(x.id) === String(activeItem.id)) || same(x, activeItem));
   {
-    let curMatch = items.find(x => (activeItem.id && String(x.id) === String(activeItem.id)) || same(x, activeItem));
     renderFullPageListChips(curMatch);
     syncFullPageProgress(curMatch);
     const stB = el('button', 'btn qa-trigger', curMatch ? `✓ ${SHORT_ST_BTN[curMatch.status] || curMatch.status}${curMatch.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾');
@@ -3321,34 +3413,11 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
         stB.textContent = updated ? `✓ ${SHORT_ST_BTN[updated.status] || updated.status}${updated.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾';
         stPill.textContent = updated ? getStatusLabelForCategory(updated.status, updated.category) : 'В каталоге';
         stPill.dataset.s = updated ? updated.status : 'В планах';
-        const lCnt = updated && Array.isArray(updated.lists) ? updated.lists.length : 0;
-        listBtnFp.textContent = lCnt ? `📁 В подборке (${lCnt})` : '📁 В подборку';
         renderFullPageListChips(updated);
         syncFullPageProgress(updated);
       });
     };
     actRow.append(stB);
-
-    const initListCnt = curMatch && Array.isArray(curMatch.lists) ? curMatch.lists.length : 0;
-    const listBtnFp = el('button', 'btn btn-s', initListCnt ? `📁 В подборке (${initListCnt})` : '📁 В подборку');
-    listBtnFp.type = 'button';
-    listBtnFp.onclick = () => {
-      if (typeof openAddToCollectionModal === 'function') {
-        openAddToCollectionModal(curMatch || activeItem, updated => {
-          curMatch = updated || curMatch;
-          const cnt = curMatch && Array.isArray(curMatch.lists) ? curMatch.lists.length : 0;
-          listBtnFp.textContent = cnt ? `📁 В подборке (${cnt})` : '📁 В подборку';
-          if (curMatch) {
-            stB.textContent = `✓ ${SHORT_ST_BTN[curMatch.status] || curMatch.status}${curMatch.fav ? ' ❤' : ''} ▾`;
-            stPill.textContent = getStatusLabelForCategory(curMatch.status, curMatch.category);
-            stPill.dataset.s = curMatch.status;
-          }
-          renderFullPageListChips(curMatch);
-          syncFullPageProgress(curMatch);
-        });
-      }
-    };
-    actRow.append(listBtnFp);
 
     // Кнопка «✏ Редактировать» отображается ТОЛЬКО у тайтлов, созданных вручную (без привязки к внешнему каталогу)
     if (curMatch && isManualItemEditable(curMatch)) {
@@ -3489,7 +3558,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
         const probe = { ...activeItem, desc: bestText || '' };
         if (activeItem.tmdb && typeof tmdbInfo === 'function' && !bestText) {
           const info = await tmdbInfo(probe);
-          if (info?.description) probe.desc = cleanRawDesc(info.description);
+          if (info?.desc || info?.description) probe.desc = cleanRawDesc(info.desc || info.description);
         } else if (activeItem.mal || activeItem.aniId || SHK[activeItem.category]) {
           await ruFull(probe);
         }
@@ -3546,6 +3615,84 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
       if (inCol && !inCol.studio) { inCol.studio = foundStudio; metaPatchedLocal = true; }
       fillClickableSpecBox(studioSpecBox, 'Студия / Издатель', foundStudio, 'studio');
     }
+    const foundDur = num(mediaMeta?.duration);
+    const foundEps = num(mediaMeta?.episodes || mediaMeta?.chapters);
+    const foundVols = num(mediaMeta?.volumes);
+    const foundSeasons = num(mediaMeta?.seasons);
+    const foundSeasonsMeta = Array.isArray(mediaMeta?.seasonsMeta) && mediaMeta.seasonsMeta.length ? mediaMeta.seasonsMeta : null;
+    if (foundDur > 0 && !num(activeItem.dur)) {
+      activeItem.dur = foundDur;
+      if (inCol && !num(inCol.dur)) { inCol.dur = foundDur; metaPatchedLocal = true; }
+    }
+    if (foundEps > 0 && !num(activeItem.eps)) {
+      activeItem.eps = foundEps;
+      if (inCol && !num(inCol.eps)) { inCol.eps = foundEps; metaPatchedLocal = true; }
+    }
+    if (foundVols > 0 && !num(activeItem.vols)) {
+      activeItem.vols = foundVols;
+      if (inCol && !num(inCol.vols)) { inCol.vols = foundVols; metaPatchedLocal = true; }
+    }
+    if (foundSeasons > 0 && !num(activeItem.seasons)) {
+      activeItem.seasons = foundSeasons;
+      if (inCol && !num(inCol.seasons)) { inCol.seasons = foundSeasons; metaPatchedLocal = true; }
+    }
+    if (foundSeasonsMeta && (!Array.isArray(activeItem.seasonsMeta) || !activeItem.seasonsMeta.length)) {
+      activeItem.seasonsMeta = foundSeasonsMeta;
+      if (inCol && (!Array.isArray(inCol.seasonsMeta) || !inCol.seasonsMeta.length)) {
+        inCol.seasonsMeta = foundSeasonsMeta;
+        metaPatchedLocal = true;
+      }
+    }
+    if (episodesSpecBox) {
+      const bEl = episodesSpecBox.querySelector('b');
+      if (bEl) bEl.textContent = formatFullPageEpisodes(curMatch || activeItem);
+    }
+    if (volumeSpecBox) {
+      const bEl = volumeSpecBox.querySelector('b');
+      const tgt = curMatch || activeItem;
+      if (bEl) bEl.textContent = `${num(tgt.eps) || '?'} гл. · ${num(tgt.vols) || '?'} т.`;
+    }
+    if (sourceSpecBox) {
+      const foundSrc = mediaMeta?.source && typeof SRC !== 'undefined' ? (SRC[mediaMeta.source] || '') : '';
+      const foundCountries = String(mediaMeta?.countries || '').trim();
+      if (isKinoCategory && !activeItem.source && foundCountries) {
+        activeItem.countries = foundCountries;
+        const lblEl = sourceSpecBox.querySelector('span');
+        const bEl = sourceSpecBox.querySelector('b');
+        if (lblEl) lblEl.textContent = 'Страна';
+        if (bEl) bEl.textContent = foundCountries;
+      } else if (foundSrc && !activeItem.source) {
+        activeItem.source = foundSrc;
+        if (inCol && !inCol.source) { inCol.source = foundSrc; metaPatchedLocal = true; }
+        const bEl = sourceSpecBox.querySelector('b');
+        if (bEl) bEl.textContent = foundSrc;
+      }
+    }
+    // Обновление тегов и исправление ошибочного одиночного тега «Яой» у манги по данным AniList/TMDB
+    const freshMetaTags = [];
+    if (Array.isArray(mediaMeta?.tmdbTags) && mediaMeta.tmdbTags.length) {
+      freshMetaTags.push(...mediaMeta.tmdbTags);
+    } else if (Array.isArray(mediaMeta?.genres) || Array.isArray(mediaMeta?.tags)) {
+      (mediaMeta.genres || []).forEach(g => freshMetaTags.push((typeof RU !== 'undefined' && RU[g]) || g));
+      (mediaMeta.tags || []).filter(t => !t.isMediaSpoiler && t.rank >= 60).slice(0, 8).forEach(t => {
+        freshMetaTags.push(typeof ruTag === 'function' ? ruTag(t.name) : t.name);
+      });
+    }
+    const cleanFreshTags = [...new Set(freshMetaTags.filter(Boolean))];
+    const curTagList = Array.isArray(activeItem.tags) ? activeItem.tags : [];
+    const hasSuspiciousSingleYaoi = (activeItem.category === 'Манга' || activeItem.category === 'Ранобэ')
+      && curTagList.length === 1 && String(curTagList[0] || '').trim().toLowerCase() === 'яой';
+    if (cleanFreshTags.length && (!curTagList.length || hasSuspiciousSingleYaoi || activeItem._shikiSuspiciousYaoiOnly)) {
+      activeItem.tags = cleanFreshTags;
+      activeItem._shikiSuspiciousYaoiOnly = false;
+      if (inCol && (!Array.isArray(inCol.tags) || !inCol.tags.length || hasSuspiciousSingleYaoi)) {
+        inCol.tags = cleanFreshTags;
+        metaPatchedLocal = true;
+      }
+      tagsBox.replaceChildren();
+      cleanFreshTags.forEach(t => tagsBox.append(el('span', 'chip', t)));
+    }
+    syncFullPageProgress(curMatch);
     if (metaPatchedLocal) saveLocalItems();
   }
   if (mediaMeta?.castNames && !activeItem.cast) {
@@ -3682,22 +3829,125 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
       }).catch(() => {});
   }
 
-  // Дерево просмотра франшизы с пронумерованным маршрутом, отметками «✓ В коллекции» и корректным определением Ранобэ (Б1 + Ошибка №11)
+  // Дерево просмотра франшизы с пронумерованным маршрутом, отметками «✓ В коллекции» и поддержкой TMDB коллекций / сезонов
   const relEdges = mediaMeta?.relations?.edges || [];
   franchisePanel.dataset.hasContent = relEdges.length > 0 ? '1' : '0';
   if (relEdges.length) {
-    if (mobTabBtns.franchise) mobTabBtns.franchise.textContent = `Франшиза (${relEdges.length})`;
+    const isTvSeasonsList = Boolean(mediaMeta?.franchiseIsTvSeasons);
+    if (isTvSeasonsList) {
+      franchiseHdr.textContent = '📺 Сезоны и порядок просмотра';
+      if (mobTabBtns.franchise) mobTabBtns.franchise.textContent = `Сезоны (${relEdges.length})`;
+    } else if (mediaMeta?.franchiseTitle) {
+      franchiseHdr.textContent = `🌳 Франшиза: ${mediaMeta.franchiseTitle}`;
+      if (mobTabBtns.franchise) mobTabBtns.franchise.textContent = `Франшиза (${relEdges.length})`;
+    } else {
+      if (mobTabBtns.franchise) mobTabBtns.franchise.textContent = `Франшиза (${relEdges.length})`;
+    }
     franchiseSec.style.display = 'block';
     const ORDER_WEIGHT = { PREQUEL: 1, PARENT: 2, SEQUEL: 3, SIDE_STORY: 4, SPIN_OFF: 5, ADAPTATION: 6, SUMMARY: 7, ALTERNATIVE: 8 };
-    const sortedEdges = [...relEdges].sort((a, b) => {
-      const ya = Number(a.node?.startDate?.year) || 9999;
-      const yb = Number(b.node?.startDate?.year) || 9999;
-      if (ya !== yb) return ya - yb;
-      const wa = ORDER_WEIGHT[a.relationType] || 9, wb = ORDER_WEIGHT[b.relationType] || 9;
-      return wa - wb;
-    });
+    const sortedEdges = isTvSeasonsList
+      ? [...relEdges].sort((a, b) => (Number(a.node?.seasonNumber) || 0) - (Number(b.node?.seasonNumber) || 0))
+      : [...relEdges].sort((a, b) => {
+          const ya = Number(a.node?.startDate?.year) || 9999;
+          const yb = Number(b.node?.startDate?.year) || 9999;
+          if (ya !== yb) return ya - yb;
+          const wa = ORDER_WEIGHT[a.relationType] || 9, wb = ORDER_WEIGHT[b.relationType] || 9;
+          return wa - wb;
+        });
     sortedEdges.forEach((edge, idx) => {
       const node = edge.node; if (!node) return;
+      if (node.type === 'TMDB_SEASON') {
+        const sNum = Number(node.seasonNumber) || (idx + 1);
+        const sEps = Number(node.episodeCount) || 0;
+        const activeSeasonsMeta = (curMatch && Array.isArray(curMatch.seasonsMeta) && curMatch.seasonsMeta.length)
+          ? curMatch.seasonsMeta
+          : (mediaMeta?.seasonsMeta || []);
+        const curPos = (curMatch && activeSeasonsMeta.length && typeof KirokuEngine !== 'undefined' && KirokuEngine.watchedEpsToSeasonEp)
+          ? KirokuEngine.watchedEpsToSeasonEp(num(curMatch.watchedEps), activeSeasonsMeta)
+          : null;
+        const isCurrentSeason = Boolean(curMatch && num(curMatch.watchedEps) > 0 && curPos && curPos.season === sNum);
+        const card = el('div', 'tp-rel-card' + (isCurrentSeason ? ' in-col' : ''));
+        const im = el('img');
+        applyPosterImg(im, node.coverImage?.large || activeItem.poster, activeItem);
+        const inf = el('div'); inf.style.minWidth = '0';
+        const sTitle = node.title?.english || `Сезон ${sNum}`;
+        const stepBadge = el('span', 'tp-step-num', `#${sNum}${isCurrentSeason ? ' · Сейчас здесь' : ''}`);
+        const tBold = el('b', null, sTitle);
+        tBold.style.cssText = 'font-size:13px;display:block;margin:2px 0';
+        const metaLine = el('div', 'meta', [
+          sEps ? `${sEps} эп.` : '',
+          node.startDate?.year || '',
+          node.averageScore ? '★ ' + (node.averageScore / 10).toFixed(1) : ''
+        ].filter(Boolean).join(' · '));
+        metaLine.style.margin = '0';
+        if (isCurrentSeason) metaLine.style.color = '#34d399';
+        inf.append(stepBadge, tBold, metaLine);
+        card.append(im, inf);
+        card.title = curMatch ? `Перейти к сезону ${sNum} в трекере серий` : `Сезон ${sNum} (${sEps} эп.)`;
+        card.onclick = () => {
+          if (curMatch && activeSeasonsMeta.length && typeof KirokuEngine !== 'undefined' && KirokuEngine.seasonEpToWatchedEps) {
+            if (isItemProgressLocked(curMatch)) {
+              toast('В статусе «Просмотрено» прогресс зафиксирован. Смените статус для выбора сезона.');
+              return;
+            }
+            const nextW = KirokuEngine.seasonEpToWatchedEps(sNum, 1, activeSeasonsMeta);
+            const res = KirokuEngine.setWatchedEps(curMatch, nextW);
+            if (res.changed) {
+              curMatch.updatedAt = Date.now();
+              cloudSave(curMatch);
+              refresh({ itemId: curMatch.id });
+            }
+            syncFullPageProgress(curMatch);
+            tpProgressBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            toast(`Выбран Сезон ${sNum}, серия 1`);
+          } else {
+            toast('Добавьте сериал в коллекцию, чтобы отмечать прогресс по сезонам');
+          }
+        };
+        relGrid.append(card);
+        return;
+      }
+
+      if (node.type === 'TMDB_MOVIE') {
+        const titleStr = node.title?.english || node.title?.romaji || 'Фильм';
+        const matchedInCol = items.find(i => (node.tmdb && String(i.tmdb) === String(node.tmdb)) || same(i, { title: titleStr, category: 'Фильм', year: node.startDate?.year || '' }));
+        const card = el('div', 'tp-rel-card' + (matchedInCol || node.isCurrent ? ' in-col' : ''));
+        const im = el('img');
+        applyPosterImg(im, node.coverImage?.large, { category: 'Фильм' });
+        const inf = el('div'); inf.style.minWidth = '0';
+        const stepBadge = el('span', 'tp-step-num', `#${idx + 1} · ${node.isCurrent ? 'Текущая часть' : 'Часть серии'}`);
+        const tBold = el('b', null, titleStr); tBold.style.cssText = 'font-size:13px;display:block;margin:2px 0';
+        const metaLine = el('div', 'meta', [
+          'Фильм',
+          node.startDate?.year || '',
+          node.averageScore ? '★ ' + (node.averageScore / 10).toFixed(1) : '',
+          matchedInCol ? `✓ В коллекции (${getStatusLabelForCategory(matchedInCol.status, matchedInCol.category)})` : ''
+        ].filter(Boolean).join(' · '));
+        metaLine.style.margin = '0';
+        if (matchedInCol) metaLine.style.color = '#34d399';
+        inf.append(stepBadge, tBold, metaLine);
+        card.append(im, inf);
+        card.onclick = () => {
+          if (node.isCurrent) return;
+          openFullTitlePage({
+            tmdb: node.tmdb,
+            title: titleStr,
+            en: node.title?.romaji || '',
+            orig: node.title?.romaji || '',
+            poster: isValidPosterUrl(node.coverImage?.large) ? node.coverImage.large : '',
+            year: node.startDate?.year ? String(node.startDate.year) : '',
+            ext: node.averageScore ? (node.averageScore / 10).toFixed(1) : '',
+            desc: node.overview || '',
+            category: 'Фильм',
+            src: 'TMDB',
+            url: 'https://www.themoviedb.org/' + node.tmdb,
+            tags: []
+          });
+        };
+        relGrid.append(card);
+        return;
+      }
+
       const titleStr = node.title?.english || node.title?.romaji || 'Произведение';
       const resolvedCat = node.type === 'ANIME' ? 'Аниме' : node.format === 'NOVEL' ? 'Ранобэ' : 'Манга';
       const matchedInCol = items.find(i => (node.id && Number(i.aniId) === Number(node.id)) || (node.idMal && Number(i.mal) === Number(node.idMal)) || same(i, { title: titleStr, category: resolvedCat }));

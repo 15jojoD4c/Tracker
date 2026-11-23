@@ -814,4 +814,141 @@ test('smart episode/chapter progress tracker locks completed titles, allows drop
   assert.equal(anime.watchedEps, 12);
 });
 
+test('isShikimoriSuspiciousYaoiOnlyGenres and sanitizeSuspiciousShikiTags catch and replace Shikimori GraphQL manga Yaoi bug', () => {
+  // Manga with single Yaoi (id=65) -> suspicious (Shikimori GraphQL overwrites Shoujo Ai/Shounen Ai with Yaoi)
+  assert.equal(KirokuEngine.isShikimoriSuspiciousYaoiOnlyGenres([{ id: '65', name: 'Yaoi', russian: 'Яой' }], false), true);
+  assert.equal(KirokuEngine.isShikimoriSuspiciousYaoiOnlyGenres([{ id: 65, name: 'Yaoi', russian: 'Яой' }], false), true);
+  // Anime is NOT affected
+  assert.equal(KirokuEngine.isShikimoriSuspiciousYaoiOnlyGenres([{ id: '65', name: 'Yaoi', russian: 'Яой' }], true), false);
+  // Multi-genre manga is NOT suspicious
+  assert.equal(KirokuEngine.isShikimoriSuspiciousYaoiOnlyGenres([
+    { id: '65', name: 'Yaoi', russian: 'Яой' },
+    { id: '62', name: 'Romance', russian: 'Романтика' }
+  ], false), false);
+  // Non-Yaoi single genre is NOT suspicious
+  assert.equal(KirokuEngine.isShikimoriSuspiciousYaoiOnlyGenres([{ id: '73', name: 'Shoujo Ai', russian: 'Сёдзе-ай' }], false), false);
+
+  // Sanitize replaces bogus Yaoi with trusted REST/AniList Yuri genres
+  assert.deepEqual(
+    KirokuEngine.sanitizeSuspiciousShikiTags(['Яой'], ['Сёдзе-ай', 'Романтика', 'Школа', 'романтика']),
+    ['Сёдзе-ай', 'Романтика', 'Школа']
+  );
+  // Empty trusted tags falls back safely without losing existing tags
+  assert.deepEqual(KirokuEngine.sanitizeSuspiciousShikiTags(['Яой'], []), ['Яой']);
+});
+
+test('TMDB Japanese anime detection and cross-catalog compatibility match Naruto without false-matching live-action', () => {
+  assert.equal(KirokuEngine.extractCjkCore('NARUTO -ナルト-'), 'ナルト');
+  assert.equal(KirokuEngine.extractCjkCore('ナルト'), 'ナルト');
+  assert.equal(KirokuEngine.extractCjkCore('NARUTO -ナルト- 疾風伝'), 'ナルト疾風伝');
+
+  const tmdbNaruto = {
+    category: 'Сериал',
+    title: 'Наруто',
+    orig: 'ナルト',
+    tmdbGenreIds: [16, 10759, 10765],
+    origLang: 'ja',
+    originCountry: ['JP']
+  };
+  const aniNaruto = {
+    category: 'Аниме',
+    title: 'Naruto',
+    titleOrig: 'NARUTO -ナルト-',
+    format: 'TV',
+    eps: 220
+  };
+  const aniNarutoMovie = {
+    category: 'Аниме',
+    title: 'Naruto Movie',
+    format: 'MOVIE',
+    eps: 1
+  };
+  const liveActionSeries = {
+    category: 'Сериал',
+    title: 'Клан Сопрано',
+    orig: 'The Sopranos',
+    tmdbGenreIds: [18, 80],
+    origLang: 'en',
+    originCountry: ['US']
+  };
+  const jpLiveAction = {
+    category: 'Сериал',
+    title: 'Alice in Borderland',
+    orig: '今際の国のアリス',
+    tmdbGenreIds: [18, 9648],
+    origLang: 'ja',
+    originCountry: ['JP']
+  };
+
+  assert.equal(KirokuEngine.isTmdbJapaneseAnime(tmdbNaruto), true);
+  assert.equal(KirokuEngine.isTmdbJapaneseAnime(liveActionSeries), false);
+  assert.equal(KirokuEngine.isTmdbJapaneseAnime(jpLiveAction), false);
+
+  assert.equal(KirokuEngine.areCategoriesCrossCompatibleForTmdbAnime(aniNaruto, tmdbNaruto), true);
+  assert.equal(KirokuEngine.areCategoriesCrossCompatibleForTmdbAnime(tmdbNaruto, aniNaruto), true);
+  // TV TMDB anime should not cross-match an anime Movie
+  assert.equal(KirokuEngine.areCategoriesCrossCompatibleForTmdbAnime(aniNarutoMovie, tmdbNaruto), false);
+  // Live-action Japanese drama should not cross-match Anime
+  assert.equal(KirokuEngine.areCategoriesCrossCompatibleForTmdbAnime(aniNaruto, jpLiveAction), false);
+});
+
+test('Season + Episode helpers map Sopranos S4 E9 <-> 48/86 watchedEps accurately across season boundaries', () => {
+  // The Sopranos real season breakdown: 13 + 13 + 13 + 13 + 13 + 21 = 86
+  const sopranosMeta = [
+    { n: 1, eps: 13 },
+    { n: 2, eps: 13 },
+    { n: 3, eps: 13 },
+    { n: 4, eps: 13 },
+    { n: 5, eps: 13 },
+    { n: 6, eps: 21 }
+  ];
+  assert.equal(KirokuEngine.seasonEpToWatchedEps(4, 9, sopranosMeta), 48);
+  assert.deepEqual(KirokuEngine.watchedEpsToSeasonEp(48, sopranosMeta), {
+    season: 4,
+    ep: 9,
+    seasonTotal: 13,
+    totalEps: 86,
+    watchedEps: 48
+  });
+
+  // Boundary transitions: S1 E13 -> 13, S2 E1 -> 14, S6 E21 -> 86
+  assert.equal(KirokuEngine.seasonEpToWatchedEps(1, 13, sopranosMeta), 13);
+  assert.deepEqual(KirokuEngine.watchedEpsToSeasonEp(13, sopranosMeta), {
+    season: 1,
+    ep: 13,
+    seasonTotal: 13,
+    totalEps: 86,
+    watchedEps: 13
+  });
+  assert.deepEqual(KirokuEngine.watchedEpsToSeasonEp(14, sopranosMeta), {
+    season: 2,
+    ep: 1,
+    seasonTotal: 13,
+    totalEps: 86,
+    watchedEps: 14
+  });
+  assert.equal(KirokuEngine.seasonEpToWatchedEps(6, 21, sopranosMeta), 86);
+  assert.deepEqual(KirokuEngine.watchedEpsToSeasonEp(86, sopranosMeta), {
+    season: 6,
+    ep: 21,
+    seasonTotal: 21,
+    totalEps: 86,
+    watchedEps: 86
+  });
+
+  // 0 watched -> S1 E0
+  assert.deepEqual(KirokuEngine.watchedEpsToSeasonEp(0, sopranosMeta), {
+    season: 1,
+    ep: 0,
+    seasonTotal: 13,
+    totalEps: 86,
+    watchedEps: 0
+  });
+
+  // Fallback even-split when only seasonsCount and totalEps are known
+  const fallbackMeta = KirokuEngine.normalizeSeasonsMeta(null, 25, 2);
+  assert.deepEqual(fallbackMeta, [{ n: 1, eps: 13 }, { n: 2, eps: 12 }]);
+});
+
+
 

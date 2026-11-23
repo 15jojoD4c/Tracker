@@ -4,7 +4,7 @@ const decode = s => { const t = document.createElement('textarea'); t.innerHTML 
 const SRC = {ORIGINAL: 'Оригинал', MANGA: 'Манга', LIGHT_NOVEL: 'Ранобэ', VISUAL_NOVEL: 'Визуальная новелла', VIDEO_GAME: 'Игра', GAME: 'Игра', NOVEL: 'Книга', WEB_NOVEL: 'Книга', COMIC: 'Комикс'};
 const RU = {Action:'Экшен',Adventure:'Приключения',Comedy:'Комедия',Drama:'Драма',Ecchi:'Этти',Fantasy:'Фэнтези',Horror:'Ужасы','Mahou Shoujo':'Махо-сёдзё',Mecha:'Меха',Music:'Музыка',Mystery:'Детектив',Psychological:'Психология',Romance:'Романтика','Sci-Fi':'Научная фантастика','Slice of Life':'Повседневность',Sports:'Спорт',Supernatural:'Сверхъестественное',Thriller:'Триллер',Hentai:'Хентай (18+)'};
 const TG = {28:'Боевик',12:'Приключения',16:'Мультфильм',35:'Комедия',80:'Криминал',99:'Документальный',18:'Драма',10751:'Семейный',14:'Фэнтези',36:'История',27:'Ужасы',10402:'Музыка',9648:'Детектив',10749:'Мелодрама',878:'Фантастика',53:'Триллер',10752:'Военный',37:'Вестерн',10759:'Боевик и приключения',10765:'Фантастика и фэнтези',10768:'Война и политика',10770:'Телефильм',10762:'Детский',10763:'Новости',10764:'Реалити-шоу',10766:'Мыльная опера',10767:'Ток-шоу'};
-const TAGRU = {"Josei":"Дзёсэй","Kids":"Детское","Seinen":"Сэйнэн","Shoujo":"Сёдзё","Shounen":"Сёнэн","Boys' Love":"Яой / Сёнэн-ай (Boys’ Love)","Girls' Love":"Юри / Сёдзё-ай (Girls’ Love)","Yaoi":"Яой","Yuri":"Юри","Harem":"Гарем","Reverse Harem":"Обратный гарем","Love Triangle":"Любовный треугольник","Unrequited Love":"Безответная любовь","Age Gap":"Разница в возрасте","Polyamorous":"Полиамория","Matchmaking":"Сватовство","Marriage":"Брак","Cohabitation":"Совместная жизнь","Heterosexual":"Гетеро","Bisexual":"Бисексуальность","Transgender":"Трансгендерность","LGBTQ+ Themes":"ЛГБТ-темы","Isekai":"Исэкай","Reincarnation":"Реинкарнация","Magic":"Магия","Super Power":"Суперсилы","Time Travel":"Путешествия во времени","Time Skip":"Скачок во времени","Time Loop":"Временная петля","Post-Apocalyptic":"Постапокалипсис","Dystopian":"Антиутопия","Cyberpunk":"Киберпанк","Steampunk":"Стимпанк","Alchemy":"Алхимия","Witch":"Ведьмы","Vampire":"Вампиры","Werewolf":"Оборотни","Zombie":"Зомби","Demons":"Демоны","Gods":"Боги","Ghost":"Призраки","Dragons":"Драконы","Elf":"Эльфы","Aliens":"Пришельцы","Robots":"Роботы","Ninja":"Ниндзя","Samurai":"Самураи","Pirates":"Пираты","Military":"Военное","War":"Война","Space":"Космос","Mythology":"Мифология","Religion":"Религия","Politics":"Политика","Royal Affairs":"Королевские интриги","Slavery":"Рабство","Survival":"Выживание","Revenge":"Месть","Crime":"Криминал","Detective":"Детектив","Police":"Полиция","Gangs":"Банды","Yakuza":"Якудза","Espionage":"Шпионаж","Assassins":"Убийцы","Terrorism":"Терроризм","Tragedy":"Трагедия","Parody":"Пародия","Satire":"Сатира","Coming of Age":"Взросление","Anti-Hero":"Антигерой","Bullying":"Буллинг","Body Horror":"Боди-хоррор","Gore":"Жестокость (гор)","Suicide":"Суицид","Death Game":"Игра на выживание","Battle Royale":"Королевская битва","Video Games":"Видеоигры","Virtual World":"Виртуальный мир","Game":"Игры","Idol":"Айдолы","Cute Girls Doing Cute Things":"Милые девочки","Iyashikei":"Ийясикэй (умиротворение)","Otaku Culture":"Культура отаку","Gender Bending":"Смена пола","Crossdressing":"Кроссдрессинг","Body Swapping":"Обмен телами","Super Hero":"Супергерои","Superhero":"Супергерои","Food":"Еда","Cosplay":"Косплей","Dancing":"Танцы","Band":"Музыкальная группа","Classic Literature":"Классическая литература","Fairy Tale":"Сказка","Kaiju":"Кайдзю","Cultivation":"Культивация","Wuxia":"Уся","Martial Arts":"Боевые искусства","Swordplay":"Фехтование","Gambling":"Азартные игры","Chuunibyou":"Тюнибё","Tsundere":"Цундере","Yandere":"Яндере","Kuudere":"Кудере","Dissociative Identities":"Раздвоение личности","Amnesia":"Амнезия","Memory Manipulation":"Манипуляции памятью","Mind Control":"Контроль разума","Twins":"Близнецы","Found Family":"Найденная семья","Family Life":"Семейная жизнь","Rural":"Деревня","Urban":"Город","School":"Школа","College":"Колледж","Work":"Работа","Medieval":"Средневековье","Historical":"Историческое","Ancient China":"Древний Китай","Afterlife":"Загробная жизнь","Angels":"Ангелы","Fairy":"Феи","Monster Girl":"Монстро-девочки","Anthropomorphism":"Антропоморфизм","Animals":"Животные","Ensemble Cast":"Большой ансамбль","Male Protagonist":"Мужской протагонист","Female Protagonist":"Женская протагонистка","Primarily Female Cast":"В основном женский каст","Primarily Male Cast":"В основном мужской каст","Primarily Child Cast":"В основном детский каст","Primarily Adult Cast":"В основном взрослый каст","Teacher":"Учитель","Student Council":"Студсовет","Full Color":"Цветная","4-koma":"4-кома","Anthology":"Антология","Episodic":"Эпизодическое","Gag Humor":"Гэг-юмор","Black Comedy":"Чёрная комедия","Slapstick":"Слэпстик","Surreal Comedy":"Сюрреалистичная комедия","Shapeshifting":"Превращения","Illusions":"Иллюзии","Lost Civilization":"Утраченная цивилизация","Rescue":"Спасение","Nudity":"Обнажёнка","Drugs":"Наркотики"};
+const TAGRU = {"Josei":"Дзёсэй","Kids":"Детское","Seinen":"Сэйнэн","Shoujo":"Сёдзё","Shounen":"Сёнэн","Boys' Love":"Яой / Сёнэн-ай (Boys’ Love)","Boys Love":"Яой / Сёнэн-ай","Shounen Ai":"Яой / Сёнэн-ай","Girls' Love":"Юри / Сёдзё-ай (Girls’ Love)","Girls Love":"Юри / Сёдзё-ай","Shoujo Ai":"Юри / Сёдзё-ай","Yaoi":"Яой","Yuri":"Юри","Harem":"Гарем","Reverse Harem":"Обратный гарем","Love Triangle":"Любовный треугольник","Unrequited Love":"Безответная любовь","Age Gap":"Разница в возрасте","Polyamorous":"Полиамория","Matchmaking":"Сватовство","Marriage":"Брак","Cohabitation":"Совместная жизнь","Heterosexual":"Гетеро","Bisexual":"Бисексуальность","Transgender":"Трансгендерность","LGBTQ+ Themes":"ЛГБТ-темы","Isekai":"Исэкай","Reincarnation":"Реинкарнация","Magic":"Магия","Super Power":"Суперсилы","Time Travel":"Путешествия во времени","Time Skip":"Скачок во времени","Time Loop":"Временная петля","Post-Apocalyptic":"Постапокалипсис","Dystopian":"Антиутопия","Cyberpunk":"Киберпанк","Steampunk":"Стимпанк","Alchemy":"Алхимия","Witch":"Ведьмы","Vampire":"Вампиры","Werewolf":"Оборотни","Zombie":"Зомби","Demons":"Демоны","Gods":"Боги","Ghost":"Призраки","Dragons":"Драконы","Elf":"Эльфы","Aliens":"Пришельцы","Robots":"Роботы","Ninja":"Ниндзя","Samurai":"Самураи","Pirates":"Пираты","Military":"Военное","War":"Война","Space":"Космос","Mythology":"Мифология","Religion":"Религия","Politics":"Политика","Royal Affairs":"Королевские интриги","Slavery":"Рабство","Survival":"Выживание","Revenge":"Месть","Crime":"Криминал","Detective":"Детектив","Police":"Полиция","Gangs":"Банды","Yakuza":"Якудза","Espionage":"Шпионаж","Assassins":"Убийцы","Terrorism":"Терроризм","Tragedy":"Трагедия","Parody":"Пародия","Satire":"Сатира","Coming of Age":"Взросление","Anti-Hero":"Антигерой","Bullying":"Буллинг","Body Horror":"Боди-хоррор","Gore":"Жестокость (гор)","Suicide":"Суицид","Death Game":"Игра на выживание","Battle Royale":"Королевская битва","Video Games":"Видеоигры","Virtual World":"Виртуальный мир","Game":"Игры","Idol":"Айдолы","Cute Girls Doing Cute Things":"Милые девочки","Iyashikei":"Ийясикэй (умиротворение)","Otaku Culture":"Культура отаку","Gender Bending":"Смена пола","Crossdressing":"Кроссдрессинг","Body Swapping":"Обмен телами","Super Hero":"Супергерои","Superhero":"Супергерои","Food":"Еда","Cosplay":"Косплей","Dancing":"Танцы","Band":"Музыкальная группа","Classic Literature":"Классическая литература","Fairy Tale":"Сказка","Kaiju":"Кайдзю","Cultivation":"Культивация","Wuxia":"Уся","Martial Arts":"Боевые искусства","Swordplay":"Фехтование","Gambling":"Азартные игры","Chuunibyou":"Тюнибё","Tsundere":"Цундере","Yandere":"Яндере","Kuudere":"Кудере","Dissociative Identities":"Раздвоение личности","Amnesia":"Амнезия","Memory Manipulation":"Манипуляции памятью","Mind Control":"Контроль разума","Twins":"Близнецы","Found Family":"Найденная семья","Family Life":"Семейная жизнь","Rural":"Деревня","Urban":"Город","School":"Школа","College":"Колледж","Work":"Работа","Medieval":"Средневековье","Historical":"Историческое","Ancient China":"Древний Китай","Afterlife":"Загробная жизнь","Angels":"Ангелы","Fairy":"Феи","Monster Girl":"Монстро-девочки","Anthropomorphism":"Антропоморфизм","Animals":"Животные","Ensemble Cast":"Большой ансамбль","Male Protagonist":"Мужской протагонист","Female Protagonist":"Женская протагонистка","Primarily Female Cast":"В основном женский каст","Primarily Male Cast":"В основном мужской каст","Primarily Child Cast":"В основном детский каст","Primarily Adult Cast":"В основном взрослый каст","Teacher":"Учитель","Student Council":"Студсовет","Full Color":"Цветная","4-koma":"4-кома","Anthology":"Антология","Episodic":"Эпизодическое","Gag Humor":"Гэг-юмор","Black Comedy":"Чёрная комедия","Slapstick":"Слэпстик","Surreal Comedy":"Сюрреалистичная комедия","Shapeshifting":"Превращения","Illusions":"Иллюзии","Lost Civilization":"Утраченная цивилизация","Rescue":"Спасение","Nudity":"Обнажёнка","Drugs":"Наркотики"};
 const ruTag = n => TAGRU[n] || n;
 
 function findCachedEnForRuQuery(qStr, type) {
@@ -197,7 +197,7 @@ const SHIKI_MANGA_GENRE_IDS = {
   Action: 56, Adventure: 68, Comedy: 49, Drama: 50, Ecchi: 51, Fantasy: 57, Horror: 80, Hentai: 602,
   'Mahou Shoujo': 160, Mecha: 83, Music: 78, Mystery: 46, Psychological: 67, Romance: 62,
   'Sci-Fi': 53, 'Slice of Life': 54, Sports: 76, Supernatural: 48, Thriller: 153,
-  Yuri: 75, "Girls' Love": 75, 'Girls Love': 75, Yaoi: 65, "Boys' Love": 65, 'Boys Love': 65,
+  Yuri: 75, "Girls' Love": 73, 'Girls Love': 73, Yaoi: 65, "Boys' Love": 55, 'Boys Love': 55,
   Isekai: 172, Reincarnation: 161,
   Vampire: 64, Military: 70, School: 60, Mythology: 72, Space: 85, Gore: 127,
   Seinen: 52, Shounen: 47, Shoujo: 63, Josei: 87, Iyashikei: 154, Harem: 71,
@@ -343,7 +343,9 @@ const MANGADEX_TAG_IDS = {
   Villainess: 'd14322ac-4d6f-4e9b-afd9-629d5f4d8a41'
 };
 
-function mapShikimoriGraphQLNode(d, type, isNovelHint = false) {
+const _shikiRestGenresCache = new Map();
+
+function mapShikimoriGraphQLNode(d, type, isNovelHint = false, queryHint = null) {
   const isAnime = type === 'ANIME';
   const ruName = d.russian || d.english || d.name || '';
   const enName = d.english || d.name || '';
@@ -357,8 +359,17 @@ function mapShikimoriGraphQLNode(d, type, isNovelHint = false) {
   if (malNum && d.russian) RUC[ep + malNum] = d.russian;
   const posterUrl = pickShikiGraphQLPoster(d.poster);
   const posterFallbacks = [d.poster?.originalUrl, d.poster?.mainUrl].filter(isValidPosterUrl);
-  const rawGenres = (d.genres || []).map(g => g.name).filter(Boolean);
-  const ruTags = (d.genres || []).map(g => g.russian || RU[g.name] || ruTag(g.name) || g.name).filter(Boolean);
+  const suspiciousYaoiOnly = typeof KirokuEngine !== 'undefined' && KirokuEngine.isShikimoriSuspiciousYaoiOnlyGenres
+    ? KirokuEngine.isShikimoriSuspiciousYaoiOnlyGenres(d.genres, isAnime)
+    : false;
+  let rawGenres = (d.genres || []).map(g => g.name).filter(Boolean);
+  let ruTags = (d.genres || []).map(g => g.russian || RU[g.name] || ruTag(g.name) || g.name).filter(Boolean);
+  // Серверный баг Shikimori GraphQL: манга с Сёдзё-ай (73) / Сёнэн-ай (55) приходит с единственным жанром Yaoi (65).
+  // Если запрос был по Юри — сразу подставляем Юри и помечаем для уточнения из REST/AniList.
+  if (suspiciousYaoiOnly && queryHint && queryHint.queriedYuri && !queryHint.queriedYaoi) {
+    rawGenres = ['Shoujo Ai', 'Yuri'];
+    ruTags = ['Юри / Сёдзё-ай'];
+  }
   let ytId = '';
   if (Array.isArray(d.videos) && d.videos.length) {
     const pv = d.videos.find(v => /pv|trailer/i.test(v.kind || '')) || d.videos[0];
@@ -402,10 +413,49 @@ function mapShikimoriGraphQLNode(d, type, isNovelHint = false) {
     ruTitle: d.russian ? 1 : 0,
     ruDone: d.description && hasRu(d.description) ? 1 : 0,
     _fromShikiFallback: true,
+    _shikiSuspiciousYaoiOnly: suspiciousYaoiOnly,
     category: catName,
     kind: subK || catName,
     subKind: subK
   };
+}
+
+// Уточнение истинных жанров манги через Shikimori REST (обходит баг GraphQL с Yaoi=65 вместо Shoujo Ai/Shounen Ai)
+async function resolveSuspiciousShikiMangaGenres(cards, extSignal = null) {
+  if (!Array.isArray(cards) || !cards.length) return cards;
+  const suspects = cards.filter(c => c && c._shikiSuspiciousYaoiOnly && c.mal && c.category !== 'Аниме').slice(0, 10);
+  if (!suspects.length) return cards;
+  await Promise.all(suspects.map(async c => {
+    if (extSignal && extSignal.aborted) return;
+    const ep = SHK[c.category] || 'mangas';
+    const key = ep + ':' + c.mal;
+    let genres = _shikiRestGenresCache.get(key);
+    if (!genres) {
+      try {
+        const rest = await shiki(`/api/${ep}/${c.mal}`);
+        if (Array.isArray(rest?.genres) && rest.genres.length) {
+          genres = rest.genres;
+          _shikiRestGenresCache.set(key, genres);
+          if (_shikiRestGenresCache.size > 300) _shikiRestGenresCache.delete(_shikiRestGenresCache.keys().next().value);
+        }
+      } catch (e) {}
+    }
+    if (Array.isArray(genres) && genres.length) {
+      const cleanRaw = genres.map(g => g.name).filter(Boolean);
+      const cleanRu = genres.map(g => g.russian || RU[g.name] || ruTag(g.name) || g.name).filter(Boolean);
+      if (cleanRaw.length) {
+        c.rawGenres = cleanRaw;
+        c.rawTags = cleanRaw;
+      }
+      if (cleanRu.length) {
+        c.tags = (typeof KirokuEngine !== 'undefined' && KirokuEngine.sanitizeSuspiciousShikiTags)
+          ? KirokuEngine.sanitizeSuspiciousShikiTags(c.tags, cleanRu)
+          : cleanRu;
+      }
+      c._shikiSuspiciousYaoiOnly = false;
+    }
+  }));
+  return cards;
 }
 
 function mapJikanNode(x, isAnime = true, isNovelHint = false) {
@@ -670,13 +720,15 @@ async function _shikiCatalogFallback(search, type, o = {}) {
     : 'chapters volumes publishers{name}';
   const gql = `query(${typeDefs}){${field}(${argPass}){id malId name russian english japanese synonyms kind status score airedOn{year month day} releasedOn{year month day} isCensored genres{id name russian} description poster{originalUrl mainUrl} ${extraFields}}}`;
 
-  // Для Аниме Shikimori разделяет 129 (Girls Love / Сёдзё-ай) и 34 (Yuri), а также 133 (Boys Love / Сёнен-ай) и 33 (Yaoi).
+  // Shikimori разделяет Girls Love / Сёдзё-ай (129 аниме / 73 манга) и Yuri (34 аниме / 75 манга),
+  // а также Boys Love / Сёнэн-ай (133 аниме / 55 манга) и Yaoi (33 аниме / 65 манга).
   // Запрос через запятую в Shikimori работает как логическое И, поэтому запускаем оба ID параллельно за 1 проход.
   const incAll = [...(o.genre || []), ...(o.tag || [])];
-  const hasYuri = incAll.some(t => t === 'Yuri' || t === "Girls' Love" || t === 'Girls Love');
-  const hasYaoi = incAll.some(t => t === 'Yaoi' || t === "Boys' Love" || t === 'Boys Love');
+  const hasYuri = incAll.some(t => t === 'Yuri' || t === "Girls' Love" || t === 'Girls Love' || t === 'Shoujo Ai');
+  const hasYaoi = incAll.some(t => t === 'Yaoi' || t === "Boys' Love" || t === 'Boys Love' || t === 'Shounen Ai');
+  const queryHint = { queriedYuri: hasYuri, queriedYaoi: hasYaoi };
   let optsList = [o];
-  if (isAnime && (hasYuri || hasYaoi)) {
+  if (hasYuri || hasYaoi) {
     const expandPair = (optsArr, targets, primary, alt) => optsArr.flatMap(cur => {
       const replaceNames = arr => (arr || []).map(x => targets.includes(x) ? primary : x);
       const replaceNamesAlt = arr => (arr || []).map(x => targets.includes(x) ? alt : x);
@@ -685,8 +737,8 @@ async function _shikiCatalogFallback(search, type, o = {}) {
         { ...cur, genre: replaceNamesAlt(cur.genre), tag: replaceNamesAlt(cur.tag) }
       ];
     });
-    if (hasYuri) optsList = expandPair(optsList, ['Yuri', "Girls' Love", 'Girls Love'], "Girls' Love", 'Yuri');
-    if (hasYaoi) optsList = expandPair(optsList, ['Yaoi', "Boys' Love", 'Boys Love'], "Boys' Love", 'Yaoi');
+    if (hasYuri) optsList = expandPair(optsList, ['Yuri', "Girls' Love", 'Girls Love', 'Shoujo Ai'], "Girls' Love", 'Yuri');
+    if (hasYaoi) optsList = expandPair(optsList, ['Yaoi', "Boys' Love", 'Boys Love', 'Shounen Ai'], "Boys' Love", 'Yaoi');
   }
 
   let mapped = [];
@@ -695,9 +747,10 @@ async function _shikiCatalogFallback(search, type, o = {}) {
       const vars = buildShikiGraphQLVars(search, type, optItem);
       const data = await shikiGraphQL(gql, vars);
       const list = data?.[field];
-      return Array.isArray(list) ? list.map(d => mapShikimoriGraphQLNode(d, type, isNovel)) : [];
+      return Array.isArray(list) ? list.map(d => mapShikimoriGraphQLNode(d, type, isNovel, queryHint)) : [];
     }));
     mapped = lists.length === 1 ? lists[0] : interleaveAndDedupCatalogLists(lists);
+    if (!isAnime) await resolveSuspiciousShikiMangaGenres(mapped);
   } catch (gqlErr) {
     const fbTasks = [_jikanCatalogRaw(search, type, o).catch(() => [])];
     if (!isAnime && !o.idMal && !o.idMalIn) fbTasks.push(_mangadexCatalogRaw(search, o).catch(() => []));
@@ -733,10 +786,11 @@ async function _shikiDirectOnly(search, type, o = {}, extSignal = null) {
   const gql = `query(${typeDefs}){${field}(${argPass}){id malId name russian english japanese synonyms kind status score airedOn{year month day} releasedOn{year month day} isCensored genres{id name russian} description poster{originalUrl mainUrl} ${extraFields}}}`;
 
   const incAll = [...(o.genre || []), ...(o.tag || [])];
-  const hasYuri = incAll.some(t => t === 'Yuri' || t === "Girls' Love" || t === 'Girls Love');
-  const hasYaoi = incAll.some(t => t === 'Yaoi' || t === "Boys' Love" || t === 'Boys Love');
+  const hasYuri = incAll.some(t => t === 'Yuri' || t === "Girls' Love" || t === 'Girls Love' || t === 'Shoujo Ai');
+  const hasYaoi = incAll.some(t => t === 'Yaoi' || t === "Boys' Love" || t === 'Boys Love' || t === 'Shounen Ai');
+  const queryHint = { queriedYuri: hasYuri, queriedYaoi: hasYaoi };
   let optsList = [o];
-  if (isAnime && (hasYuri || hasYaoi)) {
+  if (hasYuri || hasYaoi) {
     const expandPair = (optsArr, targets, primary, alt) => optsArr.flatMap(cur => {
       const replaceNames = arr => (arr || []).map(x => targets.includes(x) ? primary : x);
       const replaceNamesAlt = arr => (arr || []).map(x => targets.includes(x) ? alt : x);
@@ -745,17 +799,18 @@ async function _shikiDirectOnly(search, type, o = {}, extSignal = null) {
         { ...cur, genre: replaceNamesAlt(cur.genre), tag: replaceNamesAlt(cur.tag) }
       ];
     });
-    if (hasYuri) optsList = expandPair(optsList, ['Yuri', "Girls' Love", 'Girls Love'], "Girls' Love", 'Yuri');
-    if (hasYaoi) optsList = expandPair(optsList, ['Yaoi', "Boys' Love", 'Boys Love'], "Boys' Love", 'Yaoi');
+    if (hasYuri) optsList = expandPair(optsList, ['Yuri', "Girls' Love", 'Girls Love', 'Shoujo Ai'], "Girls' Love", 'Yuri');
+    if (hasYaoi) optsList = expandPair(optsList, ['Yaoi', "Boys' Love", 'Boys Love', 'Shounen Ai'], "Boys' Love", 'Yaoi');
   }
 
   const lists = await Promise.all(optsList.map(async optItem => {
     const vars = buildShikiGraphQLVars(search, type, optItem);
     const data = await shikiGraphQL(gql, vars, extSignal);
     const list = data?.[field];
-    return Array.isArray(list) ? list.map(d => mapShikimoriGraphQLNode(d, type, isNovel)) : [];
+    return Array.isArray(list) ? list.map(d => mapShikimoriGraphQLNode(d, type, isNovel, queryHint)) : [];
   }));
   let mapped = lists.length === 1 ? lists[0] : interleaveAndDedupCatalogLists(lists);
+  if (!isAnime) await resolveSuspiciousShikiMangaGenres(mapped, extSignal);
   if (isAnime) {
     if (o.el) mapped = mapped.filter(x => !x.eps || x.eps < o.el);
     if (o.eg) mapped = mapped.filter(x => x.eps > o.eg);
@@ -911,8 +966,11 @@ async function _tmdbRaw(search, path, media, page = 1) {
     const isUpc = Boolean(relDateStr && new Date(relDateStr).getTime() > nowMs);
     const p342 = x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '';
     const p500 = x.poster_path ? 'https://image.tmdb.org/t/p/w500' + x.poster_path : '';
+    const originCountry = Array.isArray(x.origin_country) ? x.origin_country : [];
+    const origLang = x.original_language || '';
+    const isTmdbAnime = ids.includes(16) && (origLang === 'ja' || originCountry.includes('JP'));
     return {
-      title: x.title || x.name, en: x.original_language === 'en' ? orig : '', orig, alt: '',
+      title: x.title || x.name, en: origLang === 'en' ? orig : '', orig, alt: '',
       poster: p342,
       posterFallbacks: [p342, p500].filter(Boolean),
       banner: x.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + x.backdrop_path : '',
@@ -920,7 +978,12 @@ async function _tmdbRaw(search, path, media, page = 1) {
       upcoming: isUpc,
       releaseStatus: x.status || (isUpc ? 'NOT_YET_RELEASED' : ''),
       year: relDateStr.slice(0, 4), ext: x.vote_count ? x.vote_average.toFixed(1) : '',
-      tags: ids.map(g => TG[g]).filter(Boolean), tmdb: x.media_type + '/' + x.id, src: 'TMDB', url: 'https://www.themoviedb.org/' + x.media_type + '/' + x.id, desc: x.overview || '',
+      tags: ids.map(g => TG[g]).filter(Boolean),
+      tmdbGenreIds: ids,
+      origLang,
+      originCountry,
+      isTmdbAnime,
+      tmdb: x.media_type + '/' + x.id, src: 'TMDB', url: 'https://www.themoviedb.org/' + x.media_type + '/' + x.id, desc: x.overview || '',
       category: x.media_type === 'tv' ? 'Сериал' : 'Фильм'
     };
   });
@@ -956,14 +1019,30 @@ async function tmdbInfo(r) {
     || vids.find(v => v.type === 'Trailer')
     || vids[0];
   const trailerId = cleanYoutubeId(pickedVid?.key);
+  const seasonsMeta = Array.isArray(d.seasons)
+    ? d.seasons
+        .filter(s => Number(s.season_number) > 0 && Number(s.episode_count) > 0)
+        .map(s => ({ n: Number(s.season_number), eps: Number(s.episode_count) }))
+        .sort((a, b) => a.n - b.n)
+    : [];
+  const originCountry = Array.isArray(d.origin_country) ? d.origin_country : [];
+  const origLang = d.original_language || '';
+  const genreIds = Array.isArray(d.genres) ? d.genres.map(g => Number(g.id)).filter(Boolean) : [];
+  const isTmdbAnime = genreIds.includes(16) && (origLang === 'ja' || originCountry.includes('JP'));
   const out = {
     author: [...new Set([...by, ...dir])].slice(0, 2).join(', '),
     studio: (d.production_companies || []).slice(0, 2).map(c => c.name).join(', '),
     cast: castNames,
+    countries: (d.production_countries || []).map(c => c.name).filter(Boolean).slice(0, 3).join(', '),
     ongoing: d.status === 'Returning Series' || d.status === 'In Production',
-    dur: d.runtime || (d.episode_run_time || [])[0] || 0,
-    eps: d.number_of_episodes || 0,
-    seasons: d.number_of_seasons || 0,
+    dur: d.runtime || (d.episode_run_time || [])[0] || (d.last_episode_to_air?.runtime || 0) || 0,
+    eps: d.number_of_episodes || (seasonsMeta.length ? seasonsMeta.reduce((s, x) => s + x.eps, 0) : 0),
+    seasons: d.number_of_seasons || seasonsMeta.length || 0,
+    seasonsMeta: seasonsMeta.length ? seasonsMeta : undefined,
+    tmdbGenreIds: genreIds.length ? genreIds : undefined,
+    origLang,
+    originCountry: originCountry.length ? originCountry : undefined,
+    isTmdbAnime,
     trailerId,
     imdbId: d.external_ids?.imdb_id || '',
     endDate: d.last_air_date || '',
@@ -1893,12 +1972,14 @@ const EXTRA_SENSITIVE_TAGS = [
   ["t:Shoujo", "Демография: Сёдзё"], ["t:Josei", "Демография: Дзёсэй"]
 ];
 const CANONICAL_TAG_SYNONYMS = {
-  "Yuri": ["Yuri", "Girls' Love", "Girls Love", "Юри", "Сёдзё-ай", "Юри / Сёдзё-ай (Girls’ Love)", "Юри (Yuri / Сёдзё-ай)", "Юри (Yuri — женская любовь)"],
-  "Girls' Love": ["Yuri", "Girls' Love", "Girls Love", "Юри", "Сёдзё-ай", "Юри / Сёдзё-ай (Girls’ Love)", "Юри (Yuri / Сёдзё-ай)", "Юри (Yuri — женская любовь)"],
-  "Girls Love": ["Yuri", "Girls' Love", "Girls Love", "Юри", "Сёдзё-ай", "Юри / Сёдзё-ай (Girls’ Love)", "Юри (Yuri / Сёдзё-ай)", "Юри (Yuri — женская любовь)"],
-  "Yaoi": ["Yaoi", "Boys' Love", "Boys Love", "Яой", "Сёнен-ай", "Сёнэн-ай", "Яой / Сёнэн-ай (Boys’ Love)", "Яой (Yaoi / Сёнэн-ай)", "Яой (Yaoi — мужская любовь)"],
-  "Boys' Love": ["Yaoi", "Boys' Love", "Boys Love", "Яой", "Сёнен-ай", "Сёнэн-ай", "Яой / Сёнэн-ай (Boys’ Love)", "Яой (Yaoi / Сёнэн-ай)", "Яой (Yaoi — мужская любовь)"],
-  "Boys Love": ["Yaoi", "Boys' Love", "Boys Love", "Яой", "Сёнен-ай", "Сёнэн-ай", "Яой / Сёнэн-ай (Boys’ Love)", "Яой (Yaoi / Сёнэн-ай)", "Яой (Yaoi — мужская любовь)"],
+  "Yuri": ["Yuri", "Girls' Love", "Girls Love", "Shoujo Ai", "Юри", "Сёдзё-ай", "Сёдзе-ай", "Юри / Сёдзё-ай", "Юри / Сёдзё-ай (Girls’ Love)", "Юри (Yuri / Сёдзё-ай)", "Юри (Yuri — женская любовь)"],
+  "Girls' Love": ["Yuri", "Girls' Love", "Girls Love", "Shoujo Ai", "Юри", "Сёдзё-ай", "Сёдзе-ай", "Юри / Сёдзё-ай", "Юри / Сёдзё-ай (Girls’ Love)", "Юри (Yuri / Сёдзё-ай)", "Юри (Yuri — женская любовь)"],
+  "Girls Love": ["Yuri", "Girls' Love", "Girls Love", "Shoujo Ai", "Юри", "Сёдзё-ай", "Сёдзе-ай", "Юри / Сёдзё-ай", "Юри / Сёдзё-ай (Girls’ Love)", "Юри (Yuri / Сёдзё-ай)", "Юри (Yuri — женская любовь)"],
+  "Shoujo Ai": ["Yuri", "Girls' Love", "Girls Love", "Shoujo Ai", "Юри", "Сёдзё-ай", "Сёдзе-ай", "Юри / Сёдзё-ай", "Юри / Сёдзё-ай (Girls’ Love)", "Юри (Yuri / Сёдзё-ай)", "Юри (Yuri — женская любовь)"],
+  "Yaoi": ["Yaoi", "Boys' Love", "Boys Love", "Shounen Ai", "Яой", "Сёнен-ай", "Сёнэн-ай", "Яой / Сёнэн-ай", "Яой / Сёнэн-ай (Boys’ Love)", "Яой (Yaoi / Сёнэн-ай)", "Яой (Yaoi — мужская любовь)"],
+  "Boys' Love": ["Yaoi", "Boys' Love", "Boys Love", "Shounen Ai", "Яой", "Сёнен-ай", "Сёнэн-ай", "Яой / Сёнэн-ай", "Яой / Сёнэн-ай (Boys’ Love)", "Яой (Yaoi / Сёнэн-ай)", "Яой (Yaoi — мужская любовь)"],
+  "Boys Love": ["Yaoi", "Boys' Love", "Boys Love", "Shounen Ai", "Яой", "Сёнен-ай", "Сёнэн-ай", "Яой / Сёнэн-ай", "Яой / Сёнэн-ай (Boys’ Love)", "Яой (Yaoi / Сёнэн-ай)", "Яой (Yaoi — мужская любовь)"],
+  "Shounen Ai": ["Yaoi", "Boys' Love", "Boys Love", "Shounen Ai", "Яой", "Сёнен-ай", "Сёнэн-ай", "Яой / Сёнэн-ай", "Яой / Сёнэн-ай (Boys’ Love)", "Яой (Yaoi / Сёнэн-ай)", "Яой (Yaoi — мужская любовь)"],
   "Gore": ["Gore", "Violence", "Graphic Violence", "Жестокость (гор)", "Жестокость и насилие"],
   "Drugs": ["Drugs", "Narcotics", "Наркотики"]
 };
@@ -2631,9 +2712,19 @@ function enrichCatalogCardInPlace(target, src) {
     }
     return out;
   };
-  if (Array.isArray(src.tags) && src.tags.length) target.tags = mergeStrList(target.tags, src.tags);
-  if (Array.isArray(src.rawGenres) && src.rawGenres.length) target.rawGenres = mergeStrList(target.rawGenres, src.rawGenres);
-  if (Array.isArray(src.rawTags) && src.rawTags.length) target.rawTags = mergeStrList(target.rawTags, src.rawTags);
+  // Защита от подмешивания ошибочного тега «Яой» из бага Shikimori GraphQL в карточки с доверенными жанрами AniList/MangaDex
+  const srcSuspiciousYaoi = Boolean(src._shikiSuspiciousYaoiOnly);
+  const targetSuspiciousYaoi = Boolean(target._shikiSuspiciousYaoiOnly);
+  if (targetSuspiciousYaoi && !srcSuspiciousYaoi && Array.isArray(src.tags) && src.tags.length) {
+    target.tags = mergeStrList([], src.tags);
+    if (Array.isArray(src.rawGenres) && src.rawGenres.length) target.rawGenres = mergeStrList([], src.rawGenres);
+    if (Array.isArray(src.rawTags) && src.rawTags.length) target.rawTags = mergeStrList([], src.rawTags);
+    target._shikiSuspiciousYaoiOnly = false;
+  } else if (!(srcSuspiciousYaoi && Array.isArray(target.tags) && target.tags.length)) {
+    if (Array.isArray(src.tags) && src.tags.length) target.tags = mergeStrList(target.tags, src.tags);
+    if (Array.isArray(src.rawGenres) && src.rawGenres.length) target.rawGenres = mergeStrList(target.rawGenres, src.rawGenres);
+    if (Array.isArray(src.rawTags) && src.rawTags.length) target.rawTags = mergeStrList(target.rawTags, src.rawTags);
+  }
 
   // Русское название и описание в приоритете (из Shikimori / MangaDex RU / TMDB)
   if (hasRu(src.title) && !hasRu(target.title)) {
@@ -3052,7 +3143,8 @@ const primaryNamesSet = o => {
 };
 
 function buildCollectionLookupIndex(pool = items) {
-  const byTmdb = new Map(), byImdb = new Map(), byAniId = new Map(), byMal = new Map(), byShikiId = new Map(), byMdId = new Map(), byNormTitle = new Map();
+  const byTmdb = new Map(), byImdb = new Map(), byAniId = new Map(), byMal = new Map(), byShikiId = new Map(), byMdId = new Map(), byNormTitle = new Map(), byCjk = new Map();
+  const cjkFn = (typeof KirokuEngine !== 'undefined' && KirokuEngine.extractCjkCore) ? KirokuEngine.extractCjkCore : (() => '');
   (pool || []).forEach(it => {
     if (!it) return;
     if (it.tmdb) byTmdb.set(String(it.tmdb), it);
@@ -3068,8 +3160,14 @@ function buildCollectionLookupIndex(pool = items) {
       if (!arr) { arr = []; byNormTitle.set(nt, arr); }
       arr.push(it);
     });
+    const cjkCore = cjkFn(it.titleOrig || it.orig || it.title || '');
+    if (cjkCore && cjkCore.length >= 2) {
+      let arr = byCjk.get(cjkCore);
+      if (!arr) { arr = []; byCjk.set(cjkCore, arr); }
+      arr.push(it);
+    }
   });
-  return { byTmdb, byImdb, byAniId, byMal, byShikiId, byMdId, byNormTitle };
+  return { byTmdb, byImdb, byAniId, byMal, byShikiId, byMdId, byNormTitle, byCjk };
 }
 
 function findInCollectionWithIndex(r, idx) {
@@ -3106,6 +3204,20 @@ function findInCollectionWithIndex(r, idx) {
       if (checked.has(cand)) continue;
       checked.add(cand);
       if (same(cand, r)) return cand;
+    }
+  }
+  // Кросс-поиск по оригинальному японскому названию (CJK), например «Наруто» (TMDB: ナルト) <-> «Naruto» (AniList: NARUTO -ナルト-)
+  if (idx.byCjk && idx.byCjk.size && typeof KirokuEngine !== 'undefined' && KirokuEngine.extractCjkCore) {
+    const cjkR = KirokuEngine.extractCjkCore(r.orig || r.titleOrig || r.title || '');
+    if (cjkR && cjkR.length >= 2) {
+      const bucket = idx.byCjk.get(cjkR);
+      if (bucket) {
+        for (const cand of bucket) {
+          if (checked.has(cand)) continue;
+          checked.add(cand);
+          if (same(cand, r)) return cand;
+        }
+      }
     }
   }
   return null;
@@ -3920,6 +4032,30 @@ function renderOnDemandSimilarButton(r, container) {
   container.append(btn);
 }
 
+function formatRndMetaLine(r) {
+  if (!r) return '';
+  const rndRelState = typeof getItemReleaseState === 'function' ? getItemReleaseState(r) : (r.ongoing ? 'ongoing' : r.upcoming ? 'upcoming' : 'finished');
+  const rndRelLabel = rndRelState === 'ongoing' ? 'Онгоинг' : rndRelState === 'upcoming' ? 'Анонс' : 'Завершён';
+  const parts = [r.year, catLabel(r), r.ext ? '★ ' + r.ext + (r.src ? ' (' + r.src + ')' : '') : ''];
+  if (r.category === 'Сериал' && (num(r.seasons) > 0 || num(r.eps) > 0)) {
+    const sTxt = num(r.seasons) > 0 ? `${num(r.seasons)} сез.` : '';
+    const eTxt = num(r.eps) > 0 ? `${num(r.eps)} эп.` : '';
+    parts.push([sTxt, eTxt].filter(Boolean).join(' · '));
+  } else if (r.category === 'Аниме' && num(r.eps) > 0) {
+    parts.push(`${num(r.eps)} эп.`);
+  } else if ((r.category === 'Манга' || r.category === 'Ранобэ') && (num(r.vols) > 0 || num(r.eps) > 0)) {
+    parts.push([num(r.vols) > 0 ? `${num(r.vols)} т.` : '', num(r.eps) > 0 ? `${num(r.eps)} гл.` : ''].filter(Boolean).join(' · '));
+  }
+  if (num(r.dur) > 0 && r.category !== 'Манга' && r.category !== 'Ранобэ') {
+    const durStr = (typeof formatDurationWithTotal === 'function')
+      ? formatDurationWithTotal(r.dur, r.category === 'Фильм' ? 1 : (num(r.eps) || 1), r.category)
+      : `${num(r.dur)} мин.`;
+    if (durStr) parts.push(durStr);
+  }
+  parts.push(rndRelLabel);
+  return parts.filter(Boolean).join(' | ');
+}
+
 function syncRndAddBtnUI(r) {
   const a = $('rndAdd');
   if (!a || !r) return;
@@ -3927,11 +4063,6 @@ function syncRndAddBtnUI(r) {
   a.disabled = false;
   a.classList.add('qa-trigger');
   a.textContent = m ? `${SHORT_ST_ICON[m.status] || '●'} ${SHORT_ST_BTN[m.status] || m.status}${m.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾';
-  const lb = $('rndListBtn');
-  if (lb) {
-    const cnt = m && Array.isArray(m.lists) ? m.lists.length : 0;
-    lb.textContent = cnt ? `📁 В подборке (${cnt})` : '📁 В подборку';
-  }
 }
 
 function showPreview(r, rnd) {
@@ -3943,9 +4074,7 @@ function showPreview(r, rnd) {
   applyPosterImg($('rndPoster'), r.poster, r);
   $('rndTitle').textContent = r.title;
   $('rndNames').textContent = [r.en, r.orig].filter(Boolean).join(' / ');
-  const rndRelState = typeof getItemReleaseState === 'function' ? getItemReleaseState(r) : (r.ongoing ? 'ongoing' : r.upcoming ? 'upcoming' : 'finished');
-  const rndRelLabel = rndRelState === 'ongoing' ? 'Онгоинг' : rndRelState === 'upcoming' ? 'Анонс' : 'Завершён';
-  $('rndMeta').textContent = [r.year, catLabel(r), r.ext ? '★ ' + r.ext + (r.src ? ' (' + r.src + ')' : '') : '', rndRelLabel].filter(Boolean).join(' | ');
+  $('rndMeta').textContent = formatRndMetaLine(r);
   $('rndCredits').textContent = [r.author && 'Автор: ' + r.author, r.studio && 'Студия: ' + r.studio, r.source && 'Источник: ' + r.source].filter(Boolean).join('  •  ');
   rndTagChips(r);
   const dKeyRnd = 'd_' + getRuCacheKey(r);
@@ -3966,7 +4095,12 @@ function showPreview(r, rnd) {
     const chSec = $('rndCharsSec');
     chSec.replaceChildren();
     chSec.style.display = 'block';
-    const hintBtn = el('button', 'chars-fullpage-hint', '👤 Персонажи, сэйю, трейлер и франшиза доступны на полной странице тайтла →');
+    const hintText = (r.category === 'Фильм' || r.category === 'Сериал')
+      ? '🎬 Актёры, трейлер, сезоны и франшиза доступны на полной странице тайтла →'
+      : (r.category === 'Манга' || r.category === 'Ранобэ')
+        ? '📖 Персонажи, подробности и франшиза доступны на полной странице тайтла →'
+        : '👤 Персонажи, сэйю, трейлер и франшиза доступны на полной странице тайтла →';
+    const hintBtn = el('button', 'chars-fullpage-hint', hintText);
     hintBtn.type = 'button';
     hintBtn.onclick = () => {
       $('rndModal').style.display = 'none';
@@ -4010,14 +4144,6 @@ $('cgThree').onclick = cgThree;
 $('cgRand').onclick = cgRandom;
 $('rndMore').onclick = cgRandom;
 $('rndEdit').onclick = () => { closeAll(true); openAdd(null); fillForm(rndR); if (rndR.tmdb) tmdbExtra(rndR).catch(() => {}); };
-if ($('rndListBtn')) {
-  $('rndListBtn').onclick = e => {
-    e.stopPropagation();
-    if (rndR && typeof openAddToCollectionModal === 'function') {
-      openAddToCollectionModal(rndR, () => syncRndAddBtnUI(rndR));
-    }
-  };
-}
 $('rndAdd').onclick = e => {
   e.stopPropagation();
   openQuickAddStatusMenu($('rndAdd'), rndR, () => syncRndAddBtnUI(rndR));

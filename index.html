@@ -17,12 +17,12 @@
 <meta property="og:type" content="website">
 <link rel="icon" href="./favicon.ico" sizes="any">
 <!-- ВАЖНО: при обновлении версии кэша (?v=...) синхронно меняй и const APP_VER внизу index.html -->
-<link rel="preload" href="./kiroku_engine.js?v=20261202" as="script">
-<link rel="preload" href="./app_core.js?v=20261202" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261202" as="script">
-<link rel="preload" href="./app.js?v=20261202" as="script">
-<link rel="stylesheet" href="./style.css?v=20261202">
-<link rel="stylesheet" href="./mobile.css?v=20261202" media="(max-width: 768px)">
+<link rel="preload" href="./kiroku_engine.js?v=20261203" as="script">
+<link rel="preload" href="./app_core.js?v=20261203" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261203" as="script">
+<link rel="preload" href="./app.js?v=20261203" as="script">
+<link rel="stylesheet" href="./style.css?v=20261203">
+<link rel="stylesheet" href="./mobile.css?v=20261203" media="(max-width: 768px)">
 <style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
 </head>
 <body class="auth-checking">
@@ -157,7 +157,7 @@
             <input type="number" id="cgYear2" placeholder="Год до" aria-label="Год до" min="1900" max="2100" style="width:76px;padding:5px 6px;border:0;background:transparent">
           </div>
           <select id="cgLen"></select>
-          <select id="cgAge" title="Возрастной контент"><option value="">Без 18+</option><option value="all">С 18+</option><option value="only">Только 18+</option></select>
+          <select id="cgAge" title="Возрастной контент"><option value="">Все (вкл. 18+)</option><option value="no">Без 18+</option><option value="only">Только 18+</option></select>
           <select id="cgCountry"><option value="">Любая страна</option><option value="US">США</option><option value="RU">Россия</option><option value="GB">Великобритания</option><option value="FR">Франция</option><option value="DE">Германия</option><option value="JP">Япония</option><option value="KR">Южная Корея</option><option value="CN">Китай</option><option value="IN">Индия</option></select>
           <button class="tb" id="cgReset" type="button">Сбросить <span id="cgActiveFiltersBadge"></span></button>
         </div>
@@ -721,7 +721,7 @@ const importWithTimeout = (url, ms = 25000) => Promise.race([
 ]);
 
 // ВАЖНО: должна совпадать с параметром ?v=... в <head> выше
-const APP_VER = "20261202";
+const APP_VER = "20261203";
 window.__FIREBASE_CONFIG__ = {
   apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
   authDomain: "mymediatracker-6e179.firebaseapp.com",

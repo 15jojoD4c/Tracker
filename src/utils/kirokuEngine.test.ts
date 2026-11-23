@@ -1121,5 +1121,66 @@ test('isTmdbJapaneseAnime detects pure-Kanji anime like 呪術廻戦 when tmdbIn
   assert.equal(KirokuEngine.isTmdbJapaneseAnime(cnDonghua), false);
 });
 
+test('resolveDisplayFormatLabel shows Манхва, Маньхуа and Комикс instead of generic Манга even when format is MANGA', () => {
+  const FORMAT_RU = {
+    TV: 'TV-сериал',
+    MOVIE: 'Полнометражный фильм',
+    MANGA: 'Манга',
+    NOVEL: 'Ранобэ / Новелла',
+    ONE_SHOT: 'Ваншот'
+  };
+
+  assert.equal(
+    KirokuEngine.resolveDisplayFormatLabel({ category: 'Манга', format: 'MANGA', subKind: 'Манхва', kind: 'Манхва' }, FORMAT_RU),
+    'Манхва'
+  );
+  assert.equal(
+    KirokuEngine.resolveDisplayFormatLabel({ category: 'Манга', format: 'MANGA', subKind: 'Маньхуа', kind: 'Маньхуа' }, FORMAT_RU),
+    'Маньхуа'
+  );
+  assert.equal(
+    KirokuEngine.resolveDisplayFormatLabel({ category: 'Манга', format: 'MANGA', subKind: 'Комикс', kind: 'Комикс' }, FORMAT_RU),
+    'Комикс'
+  );
+  assert.equal(
+    KirokuEngine.resolveDisplayFormatLabel({ category: 'Манга', format: 'MANGA', subKind: 'Манга', kind: 'Манга' }, FORMAT_RU),
+    'Манга'
+  );
+  assert.equal(
+    KirokuEngine.resolveDisplayFormatLabel({ category: 'Манга', format: 'ONE_SHOT', subKind: 'Манга' }, FORMAT_RU),
+    'Ваншот'
+  );
+  assert.equal(
+    KirokuEngine.resolveDisplayFormatLabel({ category: 'Ранобэ', format: 'NOVEL', subKind: '' }, FORMAT_RU),
+    'Ранобэ / Новелла'
+  );
+  assert.equal(
+    KirokuEngine.resolveDisplayFormatLabel({ category: 'Аниме', format: 'TV' }, FORMAT_RU),
+    'TV-сериал'
+  );
+});
+
+test('resolveAdultFilterFlag and matchesAdultFilter include 18+ by default, hide on no, and isolate on only', () => {
+  assert.equal(KirokuEngine.resolveAdultFilterFlag(''), undefined);
+  assert.equal(KirokuEngine.resolveAdultFilterFlag('all'), undefined);
+  assert.equal(KirokuEngine.resolveAdultFilterFlag('no'), false);
+  assert.equal(KirokuEngine.resolveAdultFilterFlag('only'), true);
+
+  const adultYuriManga = { title: '100 дней юри', isAdult: true, rawGenres: ['Romance', 'Hentai'], tags: ['Юри', 'Хентай (18+)'] };
+  const normalManga = { title: 'Берсерк', isAdult: false, rawGenres: ['Action'], tags: ['Экшен'] };
+
+  // Default ('') shows both normal and 18+ titles
+  assert.equal(KirokuEngine.matchesAdultFilter(adultYuriManga, ''), true);
+  assert.equal(KirokuEngine.matchesAdultFilter(normalManga, ''), true);
+
+  // Explicit 'no' (Без 18+) hides 18+ titles
+  assert.equal(KirokuEngine.matchesAdultFilter(adultYuriManga, 'no'), false);
+  assert.equal(KirokuEngine.matchesAdultFilter(normalManga, 'no'), true);
+
+  // Explicit 'only' (Только 18+) shows only 18+ titles
+  assert.equal(KirokuEngine.matchesAdultFilter(adultYuriManga, 'only'), true);
+  assert.equal(KirokuEngine.matchesAdultFilter(normalManga, 'only'), false);
+});
+
 
 

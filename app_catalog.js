@@ -273,6 +273,8 @@ function buildShikiGraphQLVars(search, type, o = {}) {
   } else if (o.ad === true) {
     vars.censored = false;
     if (!genreTokens.includes(String(hentaiId))) genreTokens.push(String(hentaiId));
+  } else {
+    vars.censored = false;
   }
   if (genreTokens.length) vars.genre = [...new Set(genreTokens)].join(',');
   if (o.ag && Number(o.ag) >= 60) vars.score = Math.floor(Number(o.ag) / 10);
@@ -670,7 +672,7 @@ async function _mangadexCatalogRaw(search, o = {}) {
   p.append('hasAvailableChapters', 'true');
   if (search) p.set('title', String(search));
 
-  const ratings = o.ad === true ? ['erotica', 'pornographic'] : o.ad === undefined ? ['safe', 'suggestive', 'erotica'] : ['safe', 'suggestive'];
+  const ratings = o.ad === true ? ['erotica', 'pornographic'] : o.ad === undefined ? ['safe', 'suggestive', 'erotica', 'pornographic'] : ['safe', 'suggestive'];
   ratings.forEach(r => p.append('contentRating[]', r));
 
   if (o.country === 'JP') p.append('originalLanguage[]', 'ja');
@@ -860,8 +862,8 @@ async function _anilistRaw(search, type, o = {}) {
     if (!en) {
       try {
         const field = type === 'ANIME' ? 'animes' : 'mangas';
-        const qSh = `query($s:String){${field}(search:$s,limit:3){id name}}`;
-        const dSh = await shikiGraphQL(qSh, { s: search });
+        const qSh = `query($s:String,$c:Boolean){${field}(search:$s,limit:3,censored:$c){id name}}`;
+        const dSh = await shikiGraphQL(qSh, { s: search, c: o.ad === false });
         if (dSh?.[field]?.[0]?.name) en = dSh[field][0].name;
       } catch (e) {}
     }
@@ -892,8 +894,8 @@ async function _anilistDirectOnly(search, type, o = {}, extSignal = null) {
     if (!en) {
       try {
         const field = type === 'ANIME' ? 'animes' : 'mangas';
-        const qSh = `query($s:String){${field}(search:$s,limit:3){id name}}`;
-        const dSh = await shikiGraphQL(qSh, { s: search }, extSignal);
+        const qSh = `query($s:String,$c:Boolean){${field}(search:$s,limit:3,censored:$c){id name}}`;
+        const dSh = await shikiGraphQL(qSh, { s: search, c: o.ad === false }, extSignal);
         if (dSh?.[field]?.[0]?.name) en = dSh[field][0].name;
       } catch (e) {}
     }
@@ -954,9 +956,10 @@ async function fetchTmdbJson(targetUrl, timeoutMs = 4200) {
 
 async function _tmdbRaw(search, path, media, page = 1) {
   const k = getActiveTmdbKey();
+  const includeAdultTmdb = ($('cgAge')?.value || '') !== 'no';
   const targetUrl = path
     ? `https://api.themoviedb.org/3${path}${path.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(k)}&language=ru-RU&page=${page}`
-    : `https://api.themoviedb.org/3/search/multi?api_key=${encodeURIComponent(k)}&language=ru-RU&include_adult=false&query=${encodeURIComponent(search)}&page=${page}`;
+    : `https://api.themoviedb.org/3/search/multi?api_key=${encodeURIComponent(k)}&language=ru-RU&include_adult=${includeAdultTmdb ? 'true' : 'false'}&query=${encodeURIComponent(search)}&page=${page}`;
   const j = await fetchTmdbJson(targetUrl);
   const nowMs = Date.now();
   const isReturningFilter = Boolean(path && path.includes('with_status=0'));
@@ -971,6 +974,7 @@ async function _tmdbRaw(search, path, media, page = 1) {
     const isTmdbAnime = ids.includes(16) && (origLang === 'ja' || originCountry.includes('JP'));
     return {
       title: x.title || x.name, en: origLang === 'en' ? orig : '', orig, alt: '',
+      isAdult: Boolean(x.adult),
       poster: p342,
       posterFallbacks: [p342, p500].filter(Boolean),
       banner: x.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + x.backdrop_path : '',
@@ -1453,14 +1457,19 @@ function buildStats(b) {
 
   const addSection = (title, rows) => {
     if (!rows.length) return;
-    const h = el('h4', null, title);
-    h.style.margin = '12px 0 6px';
-    b.append(h);
+    const det = el('details', 'stats-acc');
+    const sum = el('summary', 'stats-acc-sum');
+    const meta = el('span', 'stats-acc-meta');
+    meta.append(el('span', 'stats-acc-cnt', String(rows.length)), el('span', 'stats-acc-chev', '▸'));
+    sum.append(el('span', null, title), meta);
+    const body = el('div', 'stats-acc-body');
     rows.forEach(([label, valText]) => {
       const r = el('div', 'sr');
       r.append(el('span', null, label), el('span', 'sr-val', valText));
-      b.append(r);
+      body.append(r);
     });
+    det.append(sum, body);
+    b.append(det);
   };
 
   // 1. По типам (Аниме, Фильмы, Сериалы, Манга, Ранобэ): точное количество штук цифрами и средняя оценка
@@ -2008,7 +2017,7 @@ function mapTmdbGenreIdForMedia(idStr, mediaType) {
 }
 
 function aniOptions() {
-  const adult = ($('cgAge')?.value || '') !== '';
+  const adult = ($('cgAge')?.value || '') !== 'no';
   const flt = arr => arr.filter(([v]) => (adult || v !== 'g:Hentai' || cgTagState.has(v)));
   const groupRomance = [
     ['g:Romance', 'Романтика'],
@@ -2553,10 +2562,18 @@ function verifyCatalogItemMatchesFilters(r) {
   if (cg.ongOnly && !r.ongoing) return false;
   if (cg.finOnly && !isCatalogItemFinished(r)) return false;
 
+  if (isVideo || r.src === 'TMDB') {
+    if (ageMode === 'no' && r.isAdult) return false;
+  }
+
   if (!isVideo && r.src !== 'TMDB') {
-    const hasHentai = (r.rawGenres || []).includes('Hentai') || (r.tags || []).some(t => /хентай|hentai/i.test(t));
-    if (ageMode === '' && (r.isAdult || hasHentai)) return false;
-    if (ageMode === 'only' && !(r.isAdult || hasHentai)) return false;
+    if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.matchesAdultFilter === 'function') {
+      if (!KirokuEngine.matchesAdultFilter(r, ageMode)) return false;
+    } else {
+      const hasHentai = (r.rawGenres || []).includes('Hentai') || (r.tags || []).some(t => /хентай|hentai/i.test(t));
+      if (ageMode === 'no' && (r.isAdult || hasHentai)) return false;
+      if (ageMode === 'only' && !(r.isAdult || hasHentai)) return false;
+    }
     if (cg.g === 'Аниме') {
       const ak = $('cgAnimeKind')?.value || '';
       if (ak === 'MOVIE' && r.format && r.format !== 'MOVIE') return false;
@@ -2624,7 +2641,8 @@ async function cgFetchSingleVideo(m, page, q, mode) {
   const hasNarrowVideoFilters = Boolean(gens || withoutGens || yrFrom || yrTo || cty || rt || cg.ongOnly || cg.finOnly || cg.min > 0);
   let path = '';
   if (q && !cg.ongOnly) {
-    path = `/search/${m}?query=${encodeURIComponent(q)}${(yrFrom && yrTo && yrFrom === yrTo) ? '&' + (mv ? 'year' : yk) + '=' + yrFrom : ''}`;
+    const incAdult = ($('cgAge')?.value || '') !== 'no';
+    path = `/search/${m}?query=${encodeURIComponent(q)}&include_adult=${incAdult ? 'true' : 'false'}${(yrFrom && yrTo && yrFrom === yrTo) ? '&' + (mv ? 'year' : yk) + '=' + yrFrom : ''}`;
     return tmdb(null, path, m, page);
   }
   if ((mode === 'actual' || !mode) && !hasNarrowVideoFilters) {
@@ -2955,17 +2973,21 @@ async function cgFetch(page, per, q, mode, optsOverride = null, signal = null) {
     return list;
   };
 
+  const resolvedAdFlag = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.resolveAdultFilterFlag === 'function')
+    ? KirokuEngine.resolveAdultFilterFlag(age)
+    : (age === 'only' ? true : age === 'no' ? false : undefined);
+
   if (g === 'Все') {
     const allStatus = cg.ongOnly ? 'RELEASING' : (cg.finOnly ? 'FINISHED' : undefined);
     const primaryAnime = () => (!isAniListBlockedNow()
-      ? _anilistDirectOnly(q || null, 'ANIME', { page: effPage, per: 10, sort: [q ? 'SEARCH_MATCH' : 'TRENDING_DESC'], status: allStatus, ad: false }, signal)
-          .then(res => (res && res.length) ? res : _shikiDirectOnly(q || '', 'ANIME', { page: effPage, per: 10, sort: ['TRENDING_DESC'], status: allStatus, ad: false }, signal))
-      : _shikiDirectOnly(q || '', 'ANIME', { page: effPage, per: 10, sort: ['TRENDING_DESC'], status: allStatus, ad: false }, signal)
+      ? _anilistDirectOnly(q || null, 'ANIME', { page: effPage, per: 10, sort: [q ? 'SEARCH_MATCH' : 'TRENDING_DESC'], status: allStatus, ad: resolvedAdFlag }, signal)
+          .then(res => (res && res.length) ? res : _shikiDirectOnly(q || '', 'ANIME', { page: effPage, per: 10, sort: ['TRENDING_DESC'], status: allStatus, ad: resolvedAdFlag }, signal))
+      : _shikiDirectOnly(q || '', 'ANIME', { page: effPage, per: 10, sort: ['TRENDING_DESC'], status: allStatus, ad: resolvedAdFlag }, signal)
     ).catch(() => []);
     const primaryManga = () => (!isAniListBlockedNow()
-      ? _anilistDirectOnly(q || null, 'MANGA', { page: effPage, per: 10, sort: [q ? 'SEARCH_MATCH' : 'TRENDING_DESC'], status: allStatus, ad: false }, signal)
-          .then(res => (res && res.length) ? res : _shikiDirectOnly(q || '', 'MANGA', { page: effPage, per: 10, sort: ['TRENDING_DESC'], status: allStatus, ad: false }, signal))
-      : _shikiDirectOnly(q || '', 'MANGA', { page: effPage, per: 10, sort: ['TRENDING_DESC'], status: allStatus, ad: false }, signal)
+      ? _anilistDirectOnly(q || null, 'MANGA', { page: effPage, per: 10, sort: [q ? 'SEARCH_MATCH' : 'TRENDING_DESC'], status: allStatus, ad: resolvedAdFlag }, signal)
+          .then(res => (res && res.length) ? res : _shikiDirectOnly(q || '', 'MANGA', { page: effPage, per: 10, sort: ['TRENDING_DESC'], status: allStatus, ad: resolvedAdFlag }, signal))
+      : _shikiDirectOnly(q || '', 'MANGA', { page: effPage, per: 10, sort: ['TRENDING_DESC'], status: allStatus, ad: resolvedAdFlag }, signal)
     ).catch(() => []);
     const [aRes, mRes, fRes, sRes] = await Promise.all([
       primaryAnime(),
@@ -2990,7 +3012,7 @@ async function cgFetch(page, per, q, mode, optsOverride = null, signal = null) {
 
   const iso = d => d.toISOString().slice(0, 10), today = iso(new Date()), ago = n => iso(new Date(Date.now() - n * 864e5)), num8 = t => Number(t.replace(/-/g, ''));
   const SO = {actual: 'TRENDING_DESC', top: 'SCORE_DESC', trend: 'TRENDING_DESC', date: 'START_DATE_DESC', votes: 'FAVOURITES_DESC', hidden: 'SCORE_DESC', classic: 'SCORE_DESC', rare: 'SCORE_DESC'};
-  const baseOpts = {page: effPage, per: Math.max(per || 24, 24), ad: age === 'only' ? true : age === 'all' ? undefined : false};
+  const baseOpts = {page: effPage, per: Math.max(per || 24, 24), ad: resolvedAdFlag};
   if (cg.ongOnly) baseOpts.status = 'RELEASING';
   else if (cg.finOnly) baseOpts.status = 'FINISHED';
   if (incG.length) baseOpts.genre = incG;
@@ -3580,7 +3602,7 @@ function renderCatalogHeroSlider(itemsList) {
     else badges.append(el('span', 'chip', 'В тренде'));
     if (r.ext) badges.append(el('span', 'star', '★ ' + r.ext));
 
-    const fmtStr = (typeof FORMAT_RU !== 'undefined' && FORMAT_RU[r.format]) ? FORMAT_RU[r.format] : catLabel(r);
+    const fmtStr = displayFormatLabel(r);
     const epsStr = r.eps ? (r.eps + (r.category === 'Манга' || r.category === 'Ранобэ' ? ' гл.' : ' эп.')) : '';
     const sub = el('div', 'cg-hero-meta', [r.year, fmtStr, epsStr].filter(Boolean).join(' • '));
     const tgs = el('div', 'cg-hero-tags', (r.tags || []).slice(0, 3).join(', '));
@@ -3621,7 +3643,7 @@ function cgCard(r) {
   if (rightBadges.children.length) pc.append(rightBadges);
 
   const info = el('div', 'ci'), row = el('div', 'cm');
-  const fmtStr = (typeof FORMAT_RU !== 'undefined' && FORMAT_RU[r.format]) ? FORMAT_RU[r.format] : catLabel(r);
+  const fmtStr = displayFormatLabel(r);
   const epsStr = r.eps ? (r.eps + (r.category === 'Манга' || r.category === 'Ранобэ' ? ' гл.' : ' эп.')) : '';
   row.append(
     el('span', null, [r.year, fmtStr, epsStr].filter(Boolean).join(' • ')),
@@ -3696,9 +3718,9 @@ async function cgLoad(reset) {
       const isVideo = cg.g === 'Кино и сериалы' || cg.g === 'Фильм' || cg.g === 'Сериал';
       const ageMode = $('cgAge')?.value || '';
       let hasHiddenAdult = false;
-      if (!isVideo && ageMode === '') {
+      if (!isVideo && ageMode === 'no') {
         try {
-          const probe = await cgFetch(1, 8, cg.q, $('cgMode').value, { age: 'all', primaryOnly: true }, signal);
+          const probe = await cgFetch(1, 8, cg.q, $('cgMode').value, { age: '', primaryOnly: true }, signal);
           if (t !== cg.t || signal.aborted) return;
           hasHiddenAdult = Array.isArray(probe) && probe.some(x => x && (x.isAdult || (x.rawGenres || []).includes('Hentai') || (x.tags || []).some(tg => /хентай|hentai|этти|ecchi|юри|яой/i.test(tg))));
         } catch (probeErr) {}
@@ -3708,12 +3730,12 @@ async function cgLoad(reset) {
         const hintBox = el('div', 'cg-adult-hint');
         hintBox.append(
           el('b', null, '🔞 Результаты скрыты фильтром «Без 18+»'),
-          el('p', null, 'По выбранному жанру или запросу есть тайтлы с возрастным рейтингом. Ты можешь включить отображение 18+ в один клик.'),
+          el('p', null, 'По выбранному жанру или запросу есть тайтлы с возрастным рейтингом. Ты можешь включить отображение всех тайтлов в один клик.'),
           (() => {
-            const btn = el('button', 'btn', '🔓 Показать с 18+');
+            const btn = el('button', 'btn', '🔓 Показать все (вкл. 18+)');
             btn.type = 'button';
             btn.onclick = () => {
-              if ($('cgAge')) $('cgAge').value = 'all';
+              if ($('cgAge')) $('cgAge').value = '';
               cg.feedSeedPage = 1;
               cgGenres();
               cgLoad(true);
@@ -3752,7 +3774,7 @@ document.querySelectorAll('#cgCats .tb').forEach(b => b.onclick = () => {
   if ($(id)) $(id).onchange = () => { cg.feedSeedPage = 1; updateActiveFiltersCounterUI(); cgLoad(true); };
 });
 $('cgAge').onchange = () => {
-  if ($('cgAge').value === '' && cgTagState.has('g:Hentai')) {
+  if ($('cgAge').value === 'no' && cgTagState.has('g:Hentai')) {
     cgTagState.delete('g:Hentai');
     toast('Фильтр «Хентай (18+)» сброшен при переключении в режим «Без 18+»');
   }

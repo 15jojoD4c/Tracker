@@ -1118,6 +1118,50 @@
     return pool.slice(0, limit).map(x => x.item);
   }
 
+  const MANGA_SUBKIND_SET = new Set(['Манга', 'Манхва', 'Маньхуа', 'Комикс']);
+
+  // Корректная подпись формата/типа для карточек каталога, коллекции и страницы тайтла:
+  // Манхва, Маньхуа и Комикс имеют приоритет над общим FORMAT_RU['MANGA'] («Манга»).
+  function resolveDisplayFormatLabel(item, formatRuMap = null) {
+    if (!item || typeof item !== 'object') return '';
+    const sub = (item.subKind && MANGA_SUBKIND_SET.has(item.subKind))
+      ? item.subKind
+      : ((item.kind && MANGA_SUBKIND_SET.has(item.kind)) ? item.kind : '');
+    if (item.category === 'Манга' && sub && sub !== 'Манга') {
+      return sub;
+    }
+    const fmt = String(item.format || '').trim();
+    if (fmt && formatRuMap && formatRuMap[fmt]) {
+      return formatRuMap[fmt];
+    }
+    if (item.category === 'Манга') return sub || 'Манга';
+    return item.category || '';
+  }
+
+  // Режим возрастного фильтра: '' (по умолчанию) = показывать всё (вкл. 18+), 'no' = без 18+, 'only' = только 18+.
+  function resolveAdultFilterFlag(ageMode) {
+    const v = String(ageMode || '').trim().toLowerCase();
+    if (v === 'only') return true;
+    if (v === 'no') return false;
+    return undefined;
+  }
+
+  function matchesAdultFilter(item, ageMode) {
+    const v = String(ageMode || '').trim().toLowerCase();
+    if (!v || v === 'all') return true;
+    if (!item || typeof item !== 'object') return false;
+    const rawGenres = Array.isArray(item.rawGenres) ? item.rawGenres : [];
+    const tags = Array.isArray(item.tags) ? item.tags : [];
+    const isAdultOrHentai = Boolean(
+      item.isAdult ||
+      rawGenres.includes('Hentai') ||
+      tags.some(t => /хентай|hentai/i.test(String(t || '')))
+    );
+    if (v === 'no') return !isAdultOrHentai;
+    if (v === 'only') return isAdultOrHentai;
+    return true;
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -1169,7 +1213,10 @@
     isCreatorNameMatch,
     getCreatorRoleTier,
     pickPrimaryAuthorsFromStaff,
-    filterAndDedupCreatorWorks
+    filterAndDedupCreatorWorks,
+    resolveDisplayFormatLabel,
+    resolveAdultFilterFlag,
+    matchesAdultFilter
   };
 
   if (typeof module !== 'undefined' && module.exports) {

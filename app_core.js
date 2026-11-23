@@ -592,7 +592,18 @@ const STATS = ['В планах','Смотрю/Читаю','Просмотрен
 const FORMAT_RU = {
   TV: 'TV-сериал', TV_SHORT: 'Короткометражный TV', MOVIE: 'Полнометражный фильм',
   SPECIAL: 'Спешл (Special)', OVA: 'OVA', ONA: 'Веб-сериал (ONA)', MUSIC: 'Музыкальное видео',
-  MANGA: 'Манга', NOVEL: 'Ранобэ / Новелла', ONE_SHOT: 'Ваншот'
+  MANGA: 'Манга', MANHWA: 'Манхва', MANHUA: 'Маньхуа', NOVEL: 'Ранобэ / Новелла', ONE_SHOT: 'Ваншот'
+};
+const displayFormatLabel = i => {
+  if (!i) return '';
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.resolveDisplayFormatLabel === 'function') {
+    return KirokuEngine.resolveDisplayFormatLabel(i, FORMAT_RU);
+  }
+  if (i.category === 'Манга') {
+    const sk = getMangaSubKind(i);
+    if (sk && sk !== 'Манга') return sk;
+  }
+  return (i.format && FORMAT_RU[i.format]) ? FORMAT_RU[i.format] : catLabel(i);
 };
 const REL_RU = {
   PREQUEL: 'Предыстория (Приквел)', SEQUEL: 'Продолжение (Сиквел)', PARENT: 'Основная вселенная',
@@ -3836,7 +3847,7 @@ function createCollectionCardNode(i) {
   if (i.rating) pc.append(el('div', 'mine', '★ ' + i.rating));
 
   const info = el('div', 'ci'), row = el('div', 'cm');
-  const fmtStr = (typeof FORMAT_RU !== 'undefined' && FORMAT_RU[i.format]) ? FORMAT_RU[i.format] : catLabel(i);
+  const fmtStr = displayFormatLabel(i);
   const epsStr = formatCardEpsMeta(i);
   const scoreVal = i.rating ? `★ ${i.rating}` : (i.extRating ? `★ ${i.extRating}` : '');
   row.append(
@@ -3920,7 +3931,7 @@ function patchCollectionCardNode(card, i) {
   if (titleEl) { titleEl.textContent = i.title; titleEl.title = i.title; }
   const cm = card.querySelector('.cm');
   if (cm) {
-    const fmtStr = (typeof FORMAT_RU !== 'undefined' && FORMAT_RU[i.format]) ? FORMAT_RU[i.format] : catLabel(i);
+    const fmtStr = displayFormatLabel(i);
     const epsStr = formatCardEpsMeta(i);
     const scoreVal = i.rating ? `★ ${i.rating}` : (i.extRating ? `★ ${i.extRating}` : '');
     if (cm.children[0]) cm.children[0].textContent = [i.year, fmtStr, epsStr].filter(Boolean).join(' • ');
@@ -4295,13 +4306,21 @@ function getOpenModalsInStackOrder() {
   return MODAL_STACK_ORDER.map(id => $(id)).filter(m => m && m.style.display && m.style.display !== 'none');
 }
 
+let _ignoreModalPopTimer = null;
+function popModalHistorySafely() {
+  window._ignoreNextModalPopState = true;
+  clearTimeout(_ignoreModalPopTimer);
+  _ignoreModalPopTimer = setTimeout(() => { window._ignoreNextModalPopState = false; }, 500);
+  try { history.back(); } catch (e) { window._ignoreNextModalPopState = false; }
+}
+
 function hideModalElement(modalElOrId, fromPopState = false) {
   const m = typeof modalElOrId === 'string' ? $(modalElOrId) : modalElOrId;
   if (!m || !m.style.display || m.style.display === 'none') return;
   m.style.display = 'none';
   const remaining = getOpenModalsInStackOrder();
   if (!fromPopState && remaining.length === 0 && history.state && history.state.modal) {
-    try { history.back(); } catch (e) {}
+    popModalHistorySafely();
   }
 }
 
@@ -4334,7 +4353,7 @@ const closeAll = (fromPopState = false) => {
     if ($(id)) $(id).style.display = 'none';
   });
   if (!fromPopState && openList.length > 0 && history.state && history.state.modal) {
-    try { history.back(); } catch (e) {}
+    popModalHistorySafely();
   }
 };
 

@@ -215,6 +215,17 @@ body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:8px;top:8
 .stats-kpi-box{background:var(--inp);border:1px solid var(--bd);border-radius:var(--rad-sm);padding:9px 11px;display:flex;flex-direction:column;gap:2px}
 .stats-kpi-box b{font-size:16px;color:#fff}
 .stats-kpi-box span{font-size:11.5px;color:var(--mu)}
+.stats-acc{margin:8px 0;border:1px solid var(--bd);border-radius:var(--rad);background:var(--inp);overflow:hidden;transition:border-color .15s}
+.stats-acc[open]{border-color:color-mix(in srgb,var(--ac) 45%,var(--bd))}
+.stats-acc-sum{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;cursor:pointer;list-style:none;user-select:none;font-size:13.5px;font-weight:700;color:var(--tx)}
+.stats-acc-sum::-webkit-details-marker{display:none}
+.stats-acc-sum:hover{background:rgba(255,255,255,.04)}
+.stats-acc-meta{display:inline-flex;align-items:center;gap:8px;flex-shrink:0}
+.stats-acc-cnt{font-size:11.5px;font-weight:600;color:var(--mu);background:rgba(255,255,255,.06);padding:2px 7px;border-radius:999px}
+.stats-acc-chev{font-size:12px;color:var(--mu);transition:transform .18s ease;display:inline-block}
+.stats-acc[open] .stats-acc-chev{transform:rotate(90deg);color:var(--ac)}
+.stats-acc-body{padding:4px 10px 10px;border-top:1px solid var(--bd);display:flex;flex-direction:column;gap:2px}
+.stats-acc-body .sr{background:var(--card);margin:2px 0}
 #importFile,#malXmlFile{display:none}
 
 .ong{display:inline-block;background:#d97706;color:#fff;font-size:10px;font-weight:700;padding:3px 7px;border-radius:var(--rad-sm);letter-spacing:.02em}
@@ -705,8 +716,15 @@ html[data-theme=white] #themeModal .th button.on {
 html[data-theme=white] :is(.menu .sw button, #themeModal .sw button) {
   border-color: rgba(0, 0, 0, 0.22) !important;
 }
-html[data-theme=white] :is(.sr-val, .stats-kpi-box b) {
+html[data-theme=white] :is(.sr-val, .stats-kpi-box b, .stats-acc-sum) {
   color: #14161f !important;
+}
+html[data-theme=white] .stats-acc-sum:hover {
+  background: rgba(0, 0, 0, 0.03) !important;
+}
+html[data-theme=white] .stats-acc-cnt {
+  background: rgba(0, 0, 0, 0.06) !important;
+  color: #4b5563 !important;
 }
 
 /* === Полноэкранный просмотр постеров и фото (Lightbox) === */

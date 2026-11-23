@@ -3340,7 +3340,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   };
   const releaseSpecBox = addSpec('Годы / Дата выхода', formatReleasePeriodText(activeItem, null), 'release');
   const releaseStatusSpecBox = addSpec('Статус релиза', formatReleaseStatusLabel(activeItem, null), 'status');
-  addSpec('Тип произведения', FORMAT_RU[activeItem.format] || catLabel(activeItem), 'format');
+  addSpec('Тип произведения', displayFormatLabel(activeItem), 'format');
   const isKinoCategory = activeItem.category === 'Фильм' || activeItem.category === 'Сериал';
   const sourceSpecBox = addSpec(
     isKinoCategory && !activeItem.source ? 'Страна' : 'Первоисточник',
@@ -5499,6 +5499,10 @@ if ($('restoreSafetyBackupBtn')) {
 }
 
 window.addEventListener('popstate', e => {
+  if (window._ignoreNextModalPopState) {
+    window._ignoreNextModalPopState = false;
+    return;
+  }
   if (!user) return;
   _suppressHistoryPush = true;
   try {

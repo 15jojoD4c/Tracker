@@ -888,12 +888,19 @@
     const tagsLower = (Array.isArray(item.tags) ? item.tags : []).map(t => String(t || '').toLowerCase());
     const hasAnim = genreIds.includes(16) || tagsLower.includes('мультфильм') || tagsLower.includes('animation') || tagsLower.includes('аниме');
     if (!hasAnim) return false;
-    const lang = String(item.origLang || item.originalLanguage || '').toLowerCase();
-    const countries = Array.isArray(item.originCountry) ? item.originCountry.map(c => String(c || '').toUpperCase()) : [];
+    const lang = String(item.origLang || item.originalLanguage || '').toLowerCase().trim();
+    const countries = Array.isArray(item.originCountry) ? item.originCountry.map(c => String(c || '').toUpperCase()).filter(Boolean) : [];
     const countriesStr = String(item.countries || '');
     if (lang === 'ja' || countries.includes('JP') || /япони|japan/i.test(countriesStr)) return true;
+    // Если язык или страна явно указаны и это НЕ Япония (например, Китай/Корея/США) — не путаем с японским аниме
+    if (lang && lang !== 'ja') return false;
+    if (countries.length > 0 && !countries.includes('JP')) return false;
+    if (countriesStr && /китай|china|коре|korea|сша|usa|росси|франц|великобрит/i.test(countriesStr)) return false;
     const origTitle = String(item.orig || item.titleOrig || '');
-    return /[\u3040-\u30ff]/.test(origTitle);
+    // Хирагана/катакана — гарантированно японский; чистые иероглифы (напр. 呪術廻戦, 銀魂) при наличии жанра «Мультфильм» и без чужой страны — тоже аниме
+    if (/[\u3040-\u30ff]/.test(origTitle)) return true;
+    if (!/[\uac00-\ud7af]/.test(origTitle) && /[\u4e00-\u9fff]{2,}/.test(origTitle)) return true;
+    return false;
   }
 
   function areCategoriesCrossCompatibleForTmdbAnime(a, b) {

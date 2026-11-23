@@ -1148,7 +1148,6 @@ function isCompletedItem(item) {
 }
 
 // Фоновое связывание коллекции с каталогом объявлено ниже в блоке управления данными
-function backfillMissingDurations() { resumeBackgroundCatalogLinkingIfNeeded(); }
 
 // ---------- Статистика и блоки Профиля ----------
 const MON = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'], PAL = ['#7c5cff','#38bdf8','#10b981','#f59e0b','#ec4899','#ef4444'];
@@ -1983,8 +1982,6 @@ const CANONICAL_TAG_SYNONYMS = {
   "Gore": ["Gore", "Violence", "Graphic Violence", "Жестокость (гор)", "Жестокость и насилие"],
   "Drugs": ["Drugs", "Narcotics", "Наркотики"]
 };
-const MOVIE_G = [28, 12, 16, 35, 80, 99, 18, 10751, 14, 36, 27, 10402, 9648, 10749, 878, 10770, 53, 10752, 37];
-const TV_G = [10759, 16, 35, 80, 99, 18, 10751, 10762, 9648, 10763, 10764, 10765, 10766, 10767, 10768, 37];
 // Маппинг жанров Фильмов <-> Сериалов для TMDB (Часть 2 Важные баги: 28/12 <-> 10759, 14/878 <-> 10765, 10752 <-> 10768)
 const TMDB_GENRE_EQUIV = {
   '28': ['28', '10759'],
@@ -2649,12 +2646,6 @@ async function cgFetchSingleVideo(m, page, q, mode) {
   return tmdb(null, path, m, page);
 }
 
-function getCurrentAnimeSeasonAndYear() {
-  const d = new Date(), m = d.getMonth(), y = d.getFullYear();
-  const se = (m < 2 || m === 11) ? 'WINTER' : m < 5 ? 'SPRING' : m < 8 ? 'SUMMER' : 'FALL';
-  return { se, sy: y };
-}
-
 function getCatalogItemDedupKeys(r) {
   if (!r) return [];
   const keys = [];
@@ -3143,14 +3134,16 @@ const primaryNamesSet = o => {
 };
 
 function buildCollectionLookupIndex(pool = items) {
-  const byTmdb = new Map(), byImdb = new Map(), byAniId = new Map(), byMal = new Map(), byShikiId = new Map(), byMdId = new Map(), byNormTitle = new Map(), byCjk = new Map();
+  const byId = new Map(), byTmdb = new Map(), byImdb = new Map(), byAniId = new Map(), byMal = new Map(), byShikiId = new Map(), byMdId = new Map(), byNormTitle = new Map(), byCjk = new Map();
   const cjkFn = (typeof KirokuEngine !== 'undefined' && KirokuEngine.extractCjkCore) ? KirokuEngine.extractCjkCore : (() => '');
   (pool || []).forEach(it => {
     if (!it) return;
+    if (it.id != null) byId.set(String(it.id), it);
     if (it.tmdb) byTmdb.set(String(it.tmdb), it);
     if (it.imdbId) byImdb.set(String(it.imdbId), it);
     if (Number(it.aniId) > 0) byAniId.set(Number(it.aniId), it);
-    if (Number(it.mal) > 0) byMal.set(Number(it.mal), it);
+    const malKey = Number(it.mal) || Number(it.shikiId) || 0;
+    if (malKey > 0) byMal.set(malKey, it);
     if (Number(it.shikiId) > 0) byShikiId.set(Number(it.shikiId), it);
     if (it.mdId) byMdId.set(String(it.mdId), it);
     const meta = getCachedItemNormMeta(it);
@@ -3167,13 +3160,13 @@ function buildCollectionLookupIndex(pool = items) {
       arr.push(it);
     }
   });
-  return { byTmdb, byImdb, byAniId, byMal, byShikiId, byMdId, byNormTitle, byCjk };
+  return { byId, byTmdb, byImdb, byAniId, byMal, byShikiId, byMdId, byNormTitle, byCjk };
 }
 
 function findInCollectionWithIndex(r, idx) {
   if (!r || !idx) return null;
-  if (r.id && items.some(x => String(x.id) === String(r.id))) {
-    return items.find(x => String(x.id) === String(r.id)) || null;
+  if (r.id != null) {
+    if (idx.byId && idx.byId.has(String(r.id))) return idx.byId.get(String(r.id));
   }
   const catIdOk = (a, b) => (typeof sameCatForId === 'function' ? sameCatForId(a, b) : sameCat(a, b));
   if (r.tmdb && idx.byTmdb.has(String(r.tmdb))) return idx.byTmdb.get(String(r.tmdb));
@@ -3182,8 +3175,9 @@ function findInCollectionWithIndex(r, idx) {
     const hit = idx.byAniId.get(Number(r.aniId));
     if (catIdOk(hit.category, r.category)) return hit;
   }
-  if (Number(r.mal) > 0 && idx.byMal.has(Number(r.mal))) {
-    const hit = idx.byMal.get(Number(r.mal));
+  const rMalKey = Number(r.mal) || Number(r.shikiId) || 0;
+  if (rMalKey > 0 && idx.byMal.has(rMalKey)) {
+    const hit = idx.byMal.get(rMalKey);
     if (catIdOk(hit.category, r.category)) return hit;
   }
   if (Number(r.shikiId) > 0 && idx.byShikiId && idx.byShikiId.has(Number(r.shikiId))) {
@@ -3299,7 +3293,11 @@ async function quickAdd(r, targetStatus = 'В планах') {
       tags: r.tags || [], author: r.author || '', studio: r.studio || '', source: r.source || '', ongoing: !!r.ongoing, upcoming: !!r.upcoming,
       trailerId: r.trailerId || '',
       shikiId: Number(r.shikiId) || 0,
-      mdId: r.mdId || ''
+      mdId: r.mdId || '',
+      tmdbGenreIds: Array.isArray(r.tmdbGenreIds) && r.tmdbGenreIds.length ? r.tmdbGenreIds.slice() : undefined,
+      origLang: r.origLang || r.originalLanguage || undefined,
+      originCountry: Array.isArray(r.originCountry) && r.originCountry.length ? r.originCountry.slice() : undefined,
+      isTmdbAnime: r.isTmdbAnime === true ? true : undefined
     });
     if (r.tmdb) { try { Object.assign(it, await tmdbInfo(r)); } catch (e) {} }
     if (r.tmdb) it.tmdb = r.tmdb;
@@ -3646,6 +3644,7 @@ let cgSeenItems = [];
 let _cgBusy = false;
 
 async function cgLoad(reset) {
+  window._cgInCreatorView = false;
   clearTimeout(_cgTagDebounceTimer);
   _cgTagDebounceTimer = null;
   updateActiveFiltersCounterUI();
@@ -4047,10 +4046,7 @@ function formatRndMetaLine(r) {
     parts.push([num(r.vols) > 0 ? `${num(r.vols)} т.` : '', num(r.eps) > 0 ? `${num(r.eps)} гл.` : ''].filter(Boolean).join(' · '));
   }
   if (num(r.dur) > 0 && r.category !== 'Манга' && r.category !== 'Ранобэ') {
-    const durStr = (typeof formatDurationWithTotal === 'function')
-      ? formatDurationWithTotal(r.dur, r.category === 'Фильм' ? 1 : (num(r.eps) || 1), r.category)
-      : `${num(r.dur)} мин.`;
-    if (durStr) parts.push(durStr);
+    parts.push(`${num(r.dur)} мин.`);
   }
   parts.push(rndRelLabel);
   return parts.filter(Boolean).join(' | ');

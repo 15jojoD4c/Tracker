@@ -1075,5 +1075,51 @@ test('isCreatorNameMatch, getCreatorRoleTier, pickPrimaryAuthorsFromStaff and fi
   );
 });
 
+test('isTmdbJapaneseAnime detects pure-Kanji anime like 呪術廻戦 when tmdbInfo fails, while rejecting live-action and Chinese animation', () => {
+  // 1. Pure-Kanji anime card from TMDB where tmdbInfo failed (no origLang/originCountry, only Мультфильм tag + titleOrig)
+  const jjkTmdb = {
+    category: 'Сериал',
+    title: 'Магическая битва',
+    titleOrig: '呪術廻戦',
+    tags: ['Мультфильм', 'Боевик и Приключения'],
+    year: '2020'
+  };
+  const jjkAnime = {
+    category: 'Аниме',
+    title: 'Магическая битва',
+    titleOrig: '呪術廻戦',
+    format: 'TV',
+    eps: 24,
+    year: '2020'
+  };
+  assert.equal(KirokuEngine.isTmdbJapaneseAnime(jjkTmdb), true);
+  assert.equal(KirokuEngine.areCategoriesCrossCompatibleForTmdbAnime(jjkAnime, jjkTmdb), true);
+
+  // 2. Live-action series with the exact same Kanji title (NO Мультфильм/Animation tag, no genreId 16) -> MUST NOT merge
+  const jjkLiveAction = {
+    category: 'Сериал',
+    title: 'Магическая битва',
+    titleOrig: '呪術廻戦',
+    tags: ['Боевик', 'Фэнтези'],
+    origLang: 'ja',
+    originCountry: ['JP'],
+    year: '2020'
+  };
+  assert.equal(KirokuEngine.isTmdbJapaneseAnime(jjkLiveAction), false);
+  assert.equal(KirokuEngine.areCategoriesCrossCompatibleForTmdbAnime(jjkAnime, jjkLiveAction), false);
+
+  // 3. Chinese donghua with Kanji title and explicit zh/CN -> MUST NOT be treated as Japanese anime
+  const cnDonghua = {
+    category: 'Сериал',
+    title: 'Магистр дьявольского культа',
+    titleOrig: '魔道祖师',
+    tags: ['Мультфильм', 'Фэнтези'],
+    origLang: 'zh',
+    originCountry: ['CN'],
+    year: '2018'
+  };
+  assert.equal(KirokuEngine.isTmdbJapaneseAnime(cnDonghua), false);
+});
+
 
 

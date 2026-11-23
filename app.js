@@ -4028,7 +4028,12 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
 
 async function openCatalogByCreator(kindType, nameStr, itemCat) {
   if (!nameStr) return;
-  applyMainTabView('catalog');
+  applyMainTabView('catalog', false, { keepCreatorView: true });
+  if (typeof _cgAbortCtrl !== 'undefined' && _cgAbortCtrl) {
+    try { _cgAbortCtrl.abort(); } catch (e) {}
+  }
+  const myCreatorReq = (typeof cg !== 'undefined') ? ++cg.t : 0;
+  window._cgInCreatorView = true;
   cgGrid.replaceChildren(...Array.from({ length: 8 }, () => el('div', 'sk')));
   $('cgMore').style.display = 'none';
   if ($('cgHeroWrap')) $('cgHeroWrap').style.display = 'none';
@@ -4211,6 +4216,7 @@ async function openCatalogByCreator(kindType, nameStr, itemCat) {
         }
       }
     }
+    if ((typeof cg !== 'undefined' && myCreatorReq !== cg.t) || !window._cgInCreatorView) return;
     cgGrid.replaceChildren();
     if (!found.length) {
       cgGrid.append(el('div', 'msg', `Работы для «${nameStr}» не найдены.`));
@@ -4221,6 +4227,7 @@ async function openCatalogByCreator(kindType, nameStr, itemCat) {
     cgMarks();
     ruCards();
   } catch (e) {
+    if ((typeof cg !== 'undefined' && myCreatorReq !== cg.t) || !window._cgInCreatorView) return;
     cgGrid.replaceChildren(el('div', 'msg', 'Не удалось загрузить работы: ' + e.message));
   }
 }
@@ -5080,10 +5087,21 @@ function pushAppHistoryState(stateObj, replace = false) {
 }
 
 // ---------- Переключение 3 главных вкладок: 🌐 Каталог / 📚 Моя коллекция / 👤 Профиль ----------
-function applyMainTabView(v, fromHistory = false) {
+function applyMainTabView(v, fromHistory = false, opts = {}) {
   const mode = (v === 'collection' || v === 'profile') ? v : 'catalog';
   const prevTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || '';
   const wasFullPage = $('titlePageView')?.style.display === 'block';
+  const wasCreatorView = Boolean(window._cgInCreatorView);
+  const resetToHome = Boolean(opts && opts.resetToHome);
+  const keepCreatorView = Boolean(opts && opts.keepCreatorView);
+
+  if (resetToHome) {
+    closeAll(true);
+    if (typeof closeQuickAddStatusMenu === 'function') closeQuickAddStatusMenu();
+    if (typeof closePosterLightbox === 'function') closePosterLightbox();
+    _fullPageHistoryItems.clear();
+  }
+
   document.querySelectorAll('#mainTabs .tab').forEach(x => x.classList.toggle('on', x.dataset.v === mode));
   document.querySelectorAll('#botnav button').forEach(x => x.classList.toggle('on', x.dataset.go === mode));
   try { localStorage.setItem('lastTab', mode); } catch (e) {}
@@ -5109,14 +5127,50 @@ function applyMainTabView(v, fromHistory = false) {
   if (revBox) revBox.style.display = 'none';
   if (colWrap) colWrap.style.display = isCol ? '' : 'none';
   if (isCol) syncHybridStatusTabsUI();
-  if (mode === 'catalog') cgMarks();
-  if (!fromHistory && tabDone && (prevTab !== mode || wasFullPage)) {
-    pushAppHistoryState({ tab: mode, fullPage: false });
+
+  if (resetToHome && !keepCreatorView && wasCreatorView && mode !== 'catalog') {
+    window._cgInCreatorView = false;
+    if (typeof cg !== 'undefined') cg.t++;
+    if ($('cgHeroWrap')) $('cgHeroWrap').style.display = '';
+  }
+
+  if (mode === 'catalog') {
+    if (resetToHome && !keepCreatorView) {
+      const hadSearch = Boolean((typeof cg !== 'undefined' && cg.q) || ($('cgSearch') && $('cgSearch').value.trim()));
+      const heroHidden = Boolean($('cgHeroWrap') && $('cgHeroWrap').style.display === 'none');
+      window._cgInCreatorView = false;
+      if (wasCreatorView || hadSearch || heroHidden || !cgGrid.children.length) {
+        if ($('cgSearch')) $('cgSearch').value = '';
+        if ($('cgClear')) $('cgClear').style.display = 'none';
+        if (typeof cg !== 'undefined') {
+          cg.q = '';
+          cg.feedSeedPage = 1;
+        }
+        if ($('cgHeroWrap')) $('cgHeroWrap').style.display = '';
+        if (typeof cgLoad === 'function') cgLoad(true);
+      } else {
+        cgMarks();
+      }
+    } else {
+      cgMarks();
+    }
+  }
+
+  if (resetToHome) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  if (!fromHistory && tabDone) {
+    if (resetToHome && (wasFullPage || wasCreatorView)) {
+      pushAppHistoryState({ tab: mode, fullPage: false }, true);
+    } else if (prevTab !== mode || wasFullPage) {
+      pushAppHistoryState({ tab: mode, fullPage: false });
+    }
   }
 }
 
 document.querySelectorAll('#mainTabs .tab').forEach(b => {
-  b.onclick = () => applyMainTabView(b.dataset.v);
+  b.onclick = () => applyMainTabView(b.dataset.v, false, { resetToHome: true });
 });
 
 let tabDone = false;

@@ -1,5 +1,3 @@
-import tailwindcss from '@tailwindcss/vite';
-import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
 import {defineConfig} from 'vite';
@@ -7,11 +5,8 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [
-      react(),
-      tailwindcss(),
-      // Copies src/assets into dist/ so root-relative URLs like
-      // "/src/assets/images/..." (e.g. generate_image output) still resolve
-      // in production builds. Do not remove.
+      // Copies unbundled vanilla JS/CSS/favicon and static assets into dist/
+      // for production builds (GitHub Pages & Vite preview). Do not remove.
       {
         name: 'copy-unbundled-src-assets',
         apply: 'build',
@@ -33,7 +28,7 @@ export default defineConfig(() => {
           if (fs.existsSync(rootAssets)) {
             fs.cpSync(rootAssets, distRootAssets, {recursive: true, force: true});
           }
-          for (const file of ['style.css', 'mobile.css', 'kiroku_engine.js', 'app_core.js', 'app_catalog.js', 'app.js']) {
+          for (const file of ['favicon.ico', 'style.css', 'mobile.css', 'kiroku_engine.js', 'app_core.js', 'app_catalog.js', 'app.js']) {
             const srcFile = path.resolve(__dirname, file);
             if (fs.existsSync(srcFile)) {
               fs.copyFileSync(srcFile, path.resolve(distDir, file));

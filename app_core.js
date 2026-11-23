@@ -645,7 +645,6 @@ const resetProfObjectToDefault = () => {
 };
 const getUidStorageKey = prefix => prefix + '_' + (user && user.uid ? user.uid : 'local_user');
 
-let storageWarned = false;
 let _cloudProfLoaded = false;
 const isBase64DataUrl = v => typeof v === 'string' && v.startsWith('data:');
 
@@ -2096,88 +2095,6 @@ async function checkMigrateLocalItemsToCloud(manual = false) {
   }
 }
 
-// Одноразовая миграция старых документов в Firestore (включая перенос ID на префикс uid_ и добавление kind/userId)
-async function migrateOldDocsToKindSchema(manual = false) {
-  if (!user || user.isLocal || !auth.currentUser) {
-    if (manual) toast('Миграция доступна только при входе в облачный аккаунт', true);
-    return;
-  }
-  if (isCloudQuotaBlocked()) {
-    if (manual) toast('Миграция невозможна: дневной лимит Firebase исчерпан.', true);
-    return;
-  }
-  try {
-    const ops = [];
-    const uid = user.uid;
-    const ownSnap = await withCloudTimeout(getDocs(query(collection(db, 'items'), where('userId', '==', uid))));
-    ownSnap.docs.forEach(d => {
-      const raw = d.data();
-      if (raw.isProfile || d.id === 'prof_' + uid || d.id === 'prof_rucache_' + uid) {
-        if (raw.kind !== 'profile' || 'statsSummary' in raw || 'friends' in raw) {
-          const clean = stripUndefinedDeep({ ...raw, kind: 'profile', isProfile: true, userId: uid });
-          delete clean.statsSummary;
-          delete clean.email;
-          delete clean.ownerEmail;
-          delete clean.friends;
-          ops.push(['set', d.id, clean]);
-        }
-      } else if (raw.isReport || raw.kind === 'report') {
-        ops.push(['del', d.id, null]);
-      } else if (!raw.isWallComment && !raw.isRecInbox && !raw.secretCredKey && raw.kind !== 'friendReq' && raw.kind !== 'dm') {
-        const itemId = raw.id || d.id.replace(new RegExp('^' + uid + '_'), '') || newId();
-        const targetDocId = d.id.startsWith(uid + '_') ? d.id : `${uid}_${itemId}`;
-        const subK = raw.category === 'Манхва' ? 'Манхва' : (raw.subKind || (MANGA_SUBKINDS.includes(raw.kind) ? raw.kind : (raw.category === 'Манга' ? 'Манга' : '')));
-        const needsMove = d.id !== targetDocId;
-        if (needsMove || raw.kind !== 'title' || (subK && raw.subKind !== subK) || '_knownStatusFromImport' in raw) {
-          const updated = stripUndefinedDeep({
-            ...raw,
-            id: Number(itemId) || itemId,
-            _docId: targetDocId,
-            category: raw.category === 'Манхва' ? 'Манга' : raw.category,
-            subKind: subK,
-            kind: 'title',
-            userId: uid
-          });
-          delete updated._knownStatusFromImport;
-          delete updated.lastLinkAttempt;
-          delete updated._normCache;
-          ops.push(['set', targetDocId, updated]);
-          if (needsMove) ops.push(['del', d.id, null]);
-        }
-      }
-    });
-
-    const markMigrated = () => {
-      try { localStorage.setItem('schemaMigratedV4_' + uid, '1'); } catch (e) {}
-      prof.schemaMigratedV4 = true;
-      setCloudSyncMeta({ schemaMigratedV4: true }, uid);
-      profSaveLocal();
-      setDoc(doc(db, 'items', 'prof_' + uid), { kind: 'profile', isProfile: true, userId: uid, schemaMigratedV4: true }, { merge: true }).catch(() => {});
-    };
-
-    if (!ops.length) {
-      markMigrated();
-      if (manual) toast('Все твои записи уже соответствуют актуальной схеме облака ✓');
-      return;
-    }
-
-    if (manual) toast(`Обновляю записи под новую схему: ${ops.length} операций…`);
-    for (let i = 0; i < ops.length; i += 350) {
-      const b = writeBatch(db);
-      ops.slice(i, i + 350).forEach(([type, id, data]) => {
-        if (type === 'del') b.delete(doc(db, 'items', id));
-        else b.set(doc(db, 'items', id), data);
-      });
-      await track(b.commit());
-    }
-    markMigrated();
-    toast(`Миграция завершена: выполнено ${ops.length} операций ✓`);
-  } catch (e) {
-    handleCloudError(e, false);
-    if (manual) toast('Ошибка миграции старых записей: ' + (e.code || e.message), true);
-  }
-}
-
 async function flushPendingCloudChanges(showToast = false) {
   if (!user || user.isLocal || isCloudWriteBlocked()) return false;
   const uid = user.uid;
@@ -3478,11 +3395,6 @@ const findDuplicateMatch = (candidate, pool = items, prebuiltIndex = null) => {
     return same(existing, candidate);
   }) || null;
 };
-
-function isAdultItem(it) {
-  if (it.isAdult) return true;
-  return (it.tags || []).some(t => /хентай|hentai|18\+|эротик/i.test(t));
-}
 
 function getVisibleItems() {
   return items;

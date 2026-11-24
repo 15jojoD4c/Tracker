@@ -1448,6 +1448,242 @@ test('decodeFirestoreRestDocument decodes nested Firestore REST fields cleanly',
   });
 });
 
+test('isReadCategory and getStatusLabelForCategory consistently use reading labels for manga/ranobe/manhwa and watching labels for video', () => {
+  assert.equal(KirokuEngine.isReadCategory('Манга'), true);
+  assert.equal(KirokuEngine.isReadCategory('Ранобэ'), true);
+  assert.equal(KirokuEngine.isReadCategory('Манхва'), true);
+  assert.equal(KirokuEngine.isReadCategory('Маньхуа'), true);
+  assert.equal(KirokuEngine.isReadCategory('Комикс'), true);
+  assert.equal(KirokuEngine.isReadCategory('Аниме'), false);
+  assert.equal(KirokuEngine.isReadCategory('Фильм'), false);
+
+  assert.equal(KirokuEngine.getStatusLabelForCategory('Просмотрено/Прочитано', 'Манга'), 'Прочитано');
+  assert.equal(KirokuEngine.getStatusLabelForCategory('Смотрю/Читаю', 'Манга'), 'Читаю');
+  assert.equal(KirokuEngine.getStatusLabelForCategory('Пересматриваю', 'Манга'), 'Перечитываю');
+  assert.equal(KirokuEngine.getStatusLabelForCategory('Просмотрено/Прочитано', 'Ранобэ'), 'Прочитано');
+  assert.equal(KirokuEngine.getStatusLabelForCategory('Просмотрено/Прочитано', 'Манхва'), 'Прочитано');
+
+  assert.equal(KirokuEngine.getStatusLabelForCategory('Просмотрено/Прочитано', 'Аниме'), 'Просмотрено');
+  assert.equal(KirokuEngine.getStatusLabelForCategory('Смотрю/Читаю', 'Аниме'), 'Смотрю');
+  assert.equal(KirokuEngine.getStatusLabelForCategory('Пересматриваю', 'Сериал'), 'Пересматриваю');
+
+  assert.equal(KirokuEngine.getStatusLabelForCategory('Просмотрено/Прочитано', 'Всё'), 'Просмотрено / Прочитано');
+  assert.equal(KirokuEngine.getStatusLabelForCategory('Смотрю/Читаю', ''), 'Смотрю / Читаю');
+  assert.equal(KirokuEngine.getStatusLabelForCategory('В планах', 'Манга'), 'В планах');
+});
+
+test('normalizeExternalRatingInput validates 0-10 bounds, handles commas, and strips sentinel custom source', () => {
+  assert.deepEqual(KirokuEngine.normalizeExternalRatingInput('8,65', 'MangaUpdates'), { valid: true, rating: '8.65', source: 'MangaUpdates' });
+  assert.deepEqual(KirokuEngine.normalizeExternalRatingInput('8.50', '  AniList  '), { valid: true, rating: '8.5', source: 'AniList' });
+  assert.deepEqual(KirokuEngine.normalizeExternalRatingInput('', '__custom__'), { valid: true, rating: '', source: '' });
+  assert.deepEqual(KirokuEngine.normalizeExternalRatingInput('7.9', '__custom__'), { valid: true, rating: '7.9', source: '' });
+  assert.equal(KirokuEngine.normalizeExternalRatingInput('10.5', 'AniList').valid, false);
+  assert.equal(KirokuEngine.normalizeExternalRatingInput('-1', 'Shikimori').valid, false);
+  assert.equal(KirokuEngine.normalizeExternalRatingInput('abc', 'IMDb').valid, false);
+});
+
+test('pickFresherLocalItems + hydrateStrippedBase64FromIdb restores uploaded posters when localStorage is newer than IDB, without resurrecting cleared posters', () => {
+  const uploadedDataUrl = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAA==';
+  const badgeDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB';
+  const idbItems = [
+    { id: 1, title: 'Манга с обложкой', poster: uploadedDataUrl, badgeCharImg: badgeDataUrl, updatedAt: 1000 },
+    { id: 2, title: 'Удалили обложку вручную', poster: uploadedDataUrl, updatedAt: 1000 },
+    { id: 3, title: 'Старая запись без маркера', poster: uploadedDataUrl, updatedAt: 1000 }
+  ];
+  const lsItems = [
+    { id: 1, title: 'Манга с обложкой (обновлён прогресс)', poster: '', _posterInIdb: 1, badgeCharImg: '', _badgeInIdb: 1, updatedAt: 2000 },
+    { id: 2, title: 'Удалили обложку вручную', poster: '', updatedAt: 2000 },
+    { id: 3, title: 'Старая запись без маркера', poster: '', updatedAt: 1000 }
+  ];
+
+  const picked = KirokuEngine.pickFresherLocalItems({
+    idbItems,
+    idbUpdatedAt: 1000,
+    lsItems,
+    lsUpdatedAt: 2000,
+    lsMetaCount: 3
+  });
+  assert.equal(picked.source, 'ls');
+  assert.equal(picked.items[0].poster, uploadedDataUrl);
+  assert.equal(picked.items[0].badgeCharImg, badgeDataUrl);
+  assert.equal('_posterInIdb' in picked.items[0], false);
+  assert.equal('_badgeInIdb' in picked.items[0], false);
+  assert.equal(picked.items[1].poster, '');
+  assert.equal(picked.items[2].poster, uploadedDataUrl);
+
+  const sanitized = KirokuEngine.sanitizeItemForChunk({ id: 1, title: 'Test', _posterInIdb: 1, _badgeInIdb: 1 });
+  assert.equal('_posterInIdb' in sanitized, false);
+  assert.equal('_badgeInIdb' in sanitized, false);
+});
+
+test('preserveLocalUploadedPostersOnCloudMerge keeps local base64 cover when cloud lacks poster at same/older updatedAt, but respects newer remote clear', () => {
+  const uploadedDataUrl = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAA==';
+  const localItems = [
+    { id: 10, title: 'Локальная обложка', poster: uploadedDataUrl, updatedAt: 5000 },
+    { id: 11, title: 'Очищена на другом устройстве', poster: uploadedDataUrl, updatedAt: 5000 },
+    { id: 12, title: 'Обложка по ссылке из облака', poster: uploadedDataUrl, updatedAt: 5000 }
+  ];
+  const cloudItems = [
+    { id: 10, title: 'Локальная обложка', poster: '', updatedAt: 5000 },
+    { id: 11, title: 'Очищена на другом устройстве', poster: '', updatedAt: 9000 },
+    { id: 12, title: 'Обложка по ссылке из облака', poster: 'https://example.com/cover.jpg', updatedAt: 5000 }
+  ];
+
+  const merged = KirokuEngine.preserveLocalUploadedPostersOnCloudMerge(cloudItems, localItems);
+  assert.equal(merged[0].poster, uploadedDataUrl);
+  assert.equal(merged[1].poster, '');
+  assert.equal(merged[2].poster, 'https://example.com/cover.jpg');
+});
+
+test('Додзинси subKind/format displays as Додзинси, uses reading status labels, and filters cleanly in Манга category', () => {
+  const fmtRu = { MANGA: 'Манга', DOUJIN: 'Додзинси', ONE_SHOT: 'Ваншот' };
+  assert.equal(KirokuEngine.resolveDisplayFormatLabel({ category: 'Манга', subKind: 'Додзинси', format: 'MANGA' }, fmtRu), 'Додзинси');
+  assert.equal(KirokuEngine.resolveDisplayFormatLabel({ category: 'Манга', format: 'DOUJIN' }, fmtRu), 'Додзинси');
+  assert.equal(KirokuEngine.isReadCategory('Додзинси'), true);
+  assert.equal(KirokuEngine.getStatusLabelForCategory('Просмотрено/Прочитано', 'Додзинси'), 'Прочитано');
+  assert.equal(KirokuEngine.getStatusLabelForCategory('Смотрю/Читаю', 'Додзинси'), 'Читаю');
+
+  const itemDj = { category: 'Манга', subKind: 'Додзинси' };
+  const itemJp = { category: 'Манга', subKind: 'Манга' };
+  const getSub = (x: { subKind?: string }) => x.subKind || 'Манга';
+  assert.equal(KirokuEngine.matchesCategoryFilter(itemDj, { cat: 'Манга', kind: 'Додзинси', getMangaSubKind: getSub }), true);
+  assert.equal(KirokuEngine.matchesCategoryFilter(itemJp, { cat: 'Манга', kind: 'Додзинси', getMangaSubKind: getSub }), false);
+  assert.equal(KirokuEngine.matchesCategoryFilter(itemDj, { cat: 'Манга', kind: 'Все', getMangaSubKind: getSub }), true);
+});
+
+test('Protected system manual collection auto-matches manual/unlinked titles, supports renaming, and locks picker mutations', () => {
+  const sysKey = KirokuEngine.SYSTEM_MANUAL_LIST_KEY;
+  assert.equal(sysKey, '__sys_manual__');
+  assert.equal(KirokuEngine.resolveManualListName({}), 'Добавлено вручную');
+  assert.equal(KirokuEngine.resolveManualListName({ manualFolderName: '  Мои ручные  ' }), 'Мои ручные');
+
+  const profCustom = { manualFolderName: 'Ручные тайтлы' };
+  assert.equal(KirokuEngine.isSystemManualListRef(sysKey, profCustom), true);
+  assert.equal(KirokuEngine.isSystemManualListRef('ручные тайтлы', profCustom), true);
+  assert.equal(KirokuEngine.isSystemManualListRef('Избранное', profCustom), false);
+
+  // Manual items (new with isManual: true and external rating source, plus legacy unlinked)
+  const manualWithExtRating = { id: 1, title: 'Додзинси ручное', isManual: true, extRating: '8.4', extSrc: 'Shikimori' };
+  const legacyUnlinked = { id: 2, title: 'Старый ручной тайтл', extSrc: 'AniList' };
+  const catalogAni = { id: 3, title: 'Наруто', aniId: 20, lists: ['Ручные тайтлы', 'Избранное'] };
+  const catalogShiki = { id: 4, title: 'Берсерк', shikiId: 2, lists: ['Избранное'] };
+  const googleBooksItem = { id: 5, title: 'Batman', extSrc: 'Google Books' };
+
+  assert.equal(KirokuEngine.isManualTitleItem(manualWithExtRating), true);
+  assert.equal(KirokuEngine.isManualTitleItem(legacyUnlinked), true);
+  assert.equal(KirokuEngine.isManualTitleItem(catalogAni), false);
+  assert.equal(KirokuEngine.isManualTitleItem(catalogShiki), false);
+  assert.equal(KirokuEngine.isManualTitleItem(googleBooksItem), false);
+
+  // System filter matches ONLY manual/unlinked items (even if catalogAni had stale folder name in lists)
+  assert.equal(KirokuEngine.itemMatchesListFilter(manualWithExtRating, sysKey, profCustom), true);
+  assert.equal(KirokuEngine.itemMatchesListFilter(legacyUnlinked, sysKey, profCustom), true);
+  assert.equal(KirokuEngine.itemMatchesListFilter(catalogAni, sysKey, profCustom), false);
+  assert.equal(KirokuEngine.itemMatchesListFilter(catalogShiki, sysKey, profCustom), false);
+
+  // Regular user filter still matches item.lists
+  assert.equal(KirokuEngine.itemMatchesListFilter(catalogAni, 'избранное', profCustom), true);
+  assert.equal(KirokuEngine.itemMatchesListFilter(manualWithExtRating, 'избранное', profCustom), false);
+
+  // Stripping accidental system folder names from user lists
+  assert.deepEqual(
+    KirokuEngine.stripSystemManualListFromUserLists(['Ручные тайтлы', sysKey, 'Фэнтези', 'Драма'], profCustom),
+    ['Фэнтези', 'Драма']
+  );
+
+  // Picker lists locked system folder first, blocks duplicate creation, reflects manual vs catalog membership
+  const pickerForManual = KirokuEngine.filterAndListCollections(
+    ['Фэнтези', 'Ручные тайтлы'],
+    ['Фэнтези'],
+    '',
+    { 'фэнтези': 3 },
+    { systemManualName: 'Ручные тайтлы', systemManualCount: 2, isManualItem: true }
+  );
+  assert.equal(pickerForManual.items.length, 2);
+  assert.equal(pickerForManual.items[0].isSystem, true);
+  assert.equal(pickerForManual.items[0].locked, true);
+  assert.equal(pickerForManual.items[0].inList, true);
+  assert.equal(pickerForManual.items[0].count, 2);
+  assert.equal(pickerForManual.items[1].name, 'Фэнтези');
+  assert.equal(pickerForManual.items[1].locked, false);
+
+  const pickerForCatalog = KirokuEngine.filterAndListCollections(
+    ['Фэнтези'],
+    [],
+    'ручные тайтлы',
+    { 'фэнтези': 3 },
+    { systemManualName: 'Ручные тайтлы', systemManualCount: 2, isManualItem: false }
+  );
+  assert.equal(pickerForCatalog.canCreateNew, false);
+  assert.equal(pickerForCatalog.items.length, 1);
+  assert.equal(pickerForCatalog.items[0].isSystem, true);
+  assert.equal(pickerForCatalog.items[0].locked, true);
+  assert.equal(pickerForCatalog.items[0].inList, false);
+});
+
+test('Clickable metadata transitions resolve catalog sections/tags cleanly, serialize history snapshots, and always clear stale search query', () => {
+  // Section mapping
+  assert.equal(KirokuEngine.mapItemCategoryToCatalogSection('Манга'), 'Манга');
+  assert.equal(KirokuEngine.mapItemCategoryToCatalogSection('Додзинси'), 'Манга');
+  assert.equal(KirokuEngine.mapItemCategoryToCatalogSection('Манхва'), 'Манга');
+  assert.equal(KirokuEngine.mapItemCategoryToCatalogSection('Ранобэ'), 'Ранобэ');
+  assert.equal(KirokuEngine.mapItemCategoryToCatalogSection('Фильм'), 'Кино и сериалы');
+  assert.equal(KirokuEngine.mapItemCategoryToCatalogSection('Сериал'), 'Кино и сериалы');
+  assert.equal(KirokuEngine.mapItemCategoryToCatalogSection('Аниме'), 'Аниме');
+
+  // Tag resolution for AniList genres/tags and TMDB video genres
+  const aniPairs = [
+    ['g:Fantasy', 'Фэнтези'],
+    ['t:Shounen', 'Сёнэн (для юношей)'],
+    ['t:Dark Fantasy', 'Тёмное фэнтези / Дарк']
+  ];
+  const videoGenres = { '28': 'Боевик', '14': 'Фэнтези', '18': 'Драма', '878': 'Фантастика' };
+
+  assert.equal(KirokuEngine.resolveCatalogTagKey('Фэнтези', false, aniPairs, videoGenres), 'g:Fantasy');
+  assert.equal(KirokuEngine.resolveCatalogTagKey('Fantasy', false, aniPairs, videoGenres), 'g:Fantasy');
+  assert.equal(KirokuEngine.resolveCatalogTagKey('g:Fantasy', false, aniPairs, videoGenres), 'g:Fantasy');
+  assert.equal(KirokuEngine.resolveCatalogTagKey('Сёнэн', false, aniPairs, videoGenres), 't:Shounen');
+  assert.equal(KirokuEngine.resolveCatalogTagKey('Дарк', false, aniPairs, videoGenres), 't:Dark Fantasy');
+  assert.equal(KirokuEngine.resolveCatalogTagKey('Экшен', true, aniPairs, videoGenres), '28');
+  assert.equal(KirokuEngine.resolveCatalogTagKey('Фэнтези', true, aniPairs, videoGenres), '14');
+  assert.equal(KirokuEngine.resolveCatalogTagKey('Мой личный тег 123', false, aniPairs, videoGenres), '');
+
+  // Catalog history snapshot preserves search, tags, and creator cleanly
+  const catSnap = KirokuEngine.buildCatalogHistorySnapshot({
+    g: 'Манга',
+    q: '  Берсерк  ',
+    tags: [['g:Fantasy', 1], ['g:Horror', -1], ['g:Ignored', 0]],
+    creator: { kindType: 'author', nameStr: ' Кэнтаро Миура ', itemCat: 'Манга' },
+    mode: 'top',
+    ongOnly: true
+  });
+  assert.equal(catSnap.g, 'Манга');
+  assert.equal(catSnap.q, 'Берсерк');
+  assert.deepEqual(catSnap.tags, [['g:Fantasy', 1], ['g:Horror', -1]]);
+  assert.deepEqual(catSnap.creator, { kindType: 'author', nameStr: 'Кэнтаро Миура', itemCat: 'Манга' });
+  assert.equal(catSnap.mode, 'top');
+  assert.equal(catSnap.ongOnly, true);
+
+  // Collection history snapshot preserves search & xf metadata filter
+  const colSnap = KirokuEngine.buildCollectionHistorySnapshot({
+    q: '  Берсерк ',
+    xf: { k: 'author', v: 'Кэнтаро Миура' },
+    tag: 'Фэнтези',
+    list: 'Все'
+  });
+  assert.equal(colSnap.q, 'Берсерк');
+  assert.deepEqual(colSnap.xf, { k: 'author', v: 'Кэнтаро Миура' });
+  assert.equal(colSnap.tag, 'Фэнтези');
+
+  // Metadata transition clears stale search query while keeping the old snapshot untouched for Back navigation
+  const nextColSnap = KirokuEngine.clearSearchForMetadataTransition(colSnap, {
+    xf: { k: 'studio', v: 'OLM' }
+  });
+  assert.equal(colSnap.q, 'Берсерк');
+  assert.equal(nextColSnap.q, '');
+  assert.deepEqual(nextColSnap.xf, { k: 'studio', v: 'OLM' });
+});
+
 
 
 

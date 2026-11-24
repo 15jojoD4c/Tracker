@@ -233,6 +233,8 @@ window.exportData = () => {
       cardStyle: prof.cardStyle, customColor: prof.customColor,
       showMyNotes: !!prof.showMyNotes,
       customLists: prof.customLists || [], listMeta: prof.listMeta || {},
+      manualFolderName: prof.manualFolderName || '',
+      manualFolderMeta: prof.manualFolderMeta || null,
       favChars: prof.favChars || []
     },
     items: myOwnItems.map(({userId, _docId, _knownStatusFromImport, lastLinkAttempt, badgeCharImg, badgeCharName, ...r}) => r)
@@ -545,6 +547,8 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
   if (profBackup) {
     if (profBackup.customLists) prof.customLists = [...new Set([...(prof.customLists || []), ...profBackup.customLists])];
     if (profBackup.listMeta) prof.listMeta = { ...(prof.listMeta || {}), ...profBackup.listMeta };
+    if (profBackup.manualFolderName && !prof.manualFolderName) prof.manualFolderName = profBackup.manualFolderName;
+    if (profBackup.manualFolderMeta && !prof.manualFolderMeta) prof.manualFolderMeta = profBackup.manualFolderMeta;
     if (profBackup.favChars && (!prof.favChars || !prof.favChars.length)) prof.favChars = profBackup.favChars;
     if (profBackup.equippedMedals && (!prof.equippedMedals || !prof.equippedMedals.length)) prof.equippedMedals = profBackup.equippedMedals;
     profCloud();
@@ -590,8 +594,8 @@ window.importData = e => {
         const isDone = resolvedStatus === 'Просмотрено/Прочитано' || resolvedStatus === 'Пересматриваю';
         const rawComp = Number(x.completedAt) || 0;
         const compTs = isDone && rawComp > 0 ? rawComp : 0;
-        const catVal = x.category === 'Кино' ? 'Фильм' : (x.category === 'Манхва' || x.category === 'Маньхуа') ? 'Манга' : CATS.includes(x.category) ? x.category : 'Фильм';
-        const subK = x.category === 'Манхва' ? 'Манхва' : x.category === 'Маньхуа' ? 'Маньхуа' : (x.subKind || (MANGA_SUBKINDS.includes(x.kind) ? x.kind : (catVal === 'Манга' ? 'Манга' : '')));
+        const catVal = x.category === 'Кино' ? 'Фильм' : (x.category === 'Манхва' || x.category === 'Маньхуа' || x.category === 'Додзинси') ? 'Манга' : CATS.includes(x.category) ? x.category : 'Фильм';
+        const subK = x.category === 'Манхва' ? 'Манхва' : x.category === 'Маньхуа' ? 'Маньхуа' : x.category === 'Додзинси' ? 'Додзинси' : (x.subKind || (MANGA_SUBKINDS.includes(x.kind) ? x.kind : (catVal === 'Манга' ? 'Манга' : '')));
         return fix({
           id: Number(x.id) || 0,
           title: String(x.title || '').trim(),
@@ -2406,7 +2410,7 @@ function renderStatusAndCategoryBanner() {
   banner.style.display = 'flex'; banner.replaceChildren();
   const left = el('div'), right = el('div', 'status-summary-metrics');
   const stLbl = st === 'Все' ? 'Вся активная коллекция' : `Список: «${st}»`;
-  const lLbl = lf !== 'Все' ? ` · Подборка «${$('listFilter').selectedOptions[0]?.textContent.replace('📁 ', '')}»` : '';
+  const lLbl = lf !== 'Все' ? ` · Подборка «${($('listFilter').selectedOptions[0]?.textContent || '').replace(/^(📁|🔒)\s*/, '')}»` : '';
   left.append(el('b', null, `📊 Статистика выборки (${stLbl}${lLbl})`), el('div', 'meta', 'Учитываются произведения внутри выбранного фильтра'));
   const addP = (l, v) => { const p = el('span', 'status-metric-pill'); p.append(document.createTextNode(l + ': '), el('b', null, v)); right.append(p); };
   addP('Тайтлов', String(lastList.length));
@@ -3275,6 +3279,9 @@ function clearOpenTitlePageSession() {
 
 async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
   if (!itemObj) return;
+  if (!fromHistory && typeof syncCurrentHistoryStateSnapshot === 'function') {
+    syncCurrentHistoryStateSnapshot();
+  }
   closeAll(true);
   const page = $('titlePageView'); if (!page) return;
   $('catalogView').style.display = 'none';
@@ -3330,7 +3337,21 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
   const subNames = el('div', 'meta tp-subnames', [activeItem.titleEn || activeItem.en, activeItem.titleOrig || activeItem.orig].filter(Boolean).join(' / '));
   const specsGrid = el('div', 'tp-specs-grid');
   const tagsBox = el('div', 'chips tp-tags-row'); tagsBox.style.margin = '12px 0';
-  (activeItem.tags || []).forEach(t => tagsBox.append(el('span', 'chip', t)));
+  const renderFullPageTagChips = listArr => {
+    tagsBox.replaceChildren();
+    (listArr || []).forEach(t => {
+      const chip = el('button', 'chip tp-tag-chip', t);
+      chip.type = 'button';
+      chip.title = `Показать в каталоге по жанру/тегу: ${t}`;
+      chip.onclick = () => {
+        if (typeof openCatalogByTag === 'function') {
+          openCatalogByTag(t, activeItem.category);
+        }
+      };
+      tagsBox.append(chip);
+    });
+  };
+  renderFullPageTagChips(activeItem.tags || []);
   const actRow = el('div', 'row tp-act-row'); actRow.style.marginTop = '12px';
 
   const addSpec = (lbl, val, specKey = '') => {
@@ -3465,9 +3486,10 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
   };
   addSpec('Внешний рейтинг', (activeItem.extRating || activeItem.ext) ? `★ ${activeItem.extRating || activeItem.ext}${activeItem.extSrc || activeItem.src ? ` (${activeItem.extSrc || activeItem.src})` : ''}` : '—', 'extRating');
   addSpec('Моя оценка', activeItem.rating ? `★ ${activeItem.rating} / 10` : 'Не оценено', 'myRating');
+  let addedSpecBox = null;
   if (inCol) {
     const addDt = formatAddedDateRu(inCol);
-    if (addDt) addSpec(`Добавлено в «${getStatusLabelForCategory(inCol.status, inCol.category)}»`, addDt, 'added');
+    if (addDt) addedSpecBox = addSpec(`Добавлено в «${getStatusLabelForCategory(inCol.status, inCol.category)}»`, addDt, 'added');
   }
   const idsSpecBox = el('div', 'tp-spec-box');
   idsSpecBox.dataset.spec = 'ids';
@@ -3515,32 +3537,53 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
   fullPageListsBox.style.margin = '6px 0 0';
   const renderFullPageListChips = targetIt => {
     fullPageListsBox.replaceChildren();
-    const curLists = (targetIt && Array.isArray(targetIt.lists)) ? targetIt.lists : [];
+    if (!targetIt) return;
+    if (isManualItemEditable(targetIt)) {
+      const sysName = typeof getManualFolderName === 'function' ? getManualFolderName() : 'Добавлено вручную';
+      const sysChip = el('button', 'chip chip-sys-list', '🔒 ' + sysName);
+      sysChip.type = 'button';
+      sysChip.title = 'Системная подборка для ручных тайтлов (нажми, чтобы открыть)';
+      sysChip.onclick = () => {
+        openCollectionMetadataFilter({ list: SYSTEM_MANUAL_LIST_KEY });
+      };
+      fullPageListsBox.append(sysChip);
+    }
+    const curLists = typeof getUserListsForItem === 'function'
+      ? getUserListsForItem(targetIt)
+      : (Array.isArray(targetIt.lists) ? targetIt.lists : []);
     curLists.forEach(listName => {
-      const chip = el('span', 'chip', '📁 ' + listName);
-      chip.title = 'Открыть подборку';
+      const chip = el('button', 'chip chip-user-list', '📁 ' + listName);
+      chip.type = 'button';
+      chip.title = 'Открыть подборку (убрать можно через меню выбора подборок)';
       chip.onclick = () => {
-        page.style.display = 'none';
-        applyMainTabView('collection');
-        $('listFilter').value = listName.toLowerCase();
-        render(false);
+        openCollectionMetadataFilter({ list: listName.toLowerCase() });
       };
       fullPageListsBox.append(chip);
     });
   };
   let curMatch = items.find(x => (activeItem.id && String(x.id) === String(activeItem.id)) || same(x, activeItem));
   {
+    const fmtFullPageStatusBtn = obj => {
+      if (!obj) return '＋ Выбрать статус ▾';
+      const lbl = getStatusLabelForCategory(obj.status, obj.category || activeItem.category);
+      return `✓ ${lbl || obj.status}${obj.fav ? ' ❤' : ''} ▾`;
+    };
     renderFullPageListChips(curMatch);
     syncFullPageProgress(curMatch);
-    const stB = el('button', 'btn qa-trigger', curMatch ? `✓ ${SHORT_ST_BTN[curMatch.status] || curMatch.status}${curMatch.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾');
+    const stB = el('button', 'btn qa-trigger', fmtFullPageStatusBtn(curMatch));
     stB.type = 'button';
     stB.onclick = e => {
       e.stopPropagation();
       openQuickAddStatusMenu(stB, curMatch || activeItem, updated => {
         curMatch = updated || null;
-        stB.textContent = updated ? `✓ ${SHORT_ST_BTN[updated.status] || updated.status}${updated.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾';
-        stPill.textContent = updated ? getStatusLabelForCategory(updated.status, updated.category) : 'В каталоге';
+        stB.textContent = fmtFullPageStatusBtn(updated);
+        const nextLbl = updated ? getStatusLabelForCategory(updated.status, updated.category || activeItem.category) : 'В каталоге';
+        stPill.textContent = nextLbl;
         stPill.dataset.s = updated ? updated.status : 'В планах';
+        if (addedSpecBox && updated) {
+          const lblSpan = addedSpecBox.querySelector('span');
+          if (lblSpan) lblSpan.textContent = `Добавлено в «${nextLbl}»`;
+        }
         renderFullPageListChips(updated);
         syncFullPageProgress(updated);
       });
@@ -3852,8 +3895,7 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
         inCol.tags = cleanFreshTags;
         metaPatchedLocal = true;
       }
-      tagsBox.replaceChildren();
-      cleanFreshTags.forEach(t => tagsBox.append(el('span', 'chip', t)));
+      renderFullPageTagChips(cleanFreshTags);
     }
     syncFullPageProgress(curMatch);
     if (metaPatchedLocal) saveLocalItems();
@@ -4144,18 +4186,37 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
   }
 }
 
-async function openCatalogByCreator(kindType, nameStr, itemCat) {
+async function openCatalogByCreator(kindType, nameStr, itemCat, fromHistory = false) {
   if (!nameStr) return;
-  applyMainTabView('catalog', false, { keepCreatorView: true });
+  if (!fromHistory && typeof syncCurrentHistoryStateSnapshot === 'function') {
+    syncCurrentHistoryStateSnapshot();
+  }
+  applyMainTabView('catalog', true, { keepCreatorView: true });
   if (typeof _cgAbortCtrl !== 'undefined' && _cgAbortCtrl) {
     try { _cgAbortCtrl.abort(); } catch (e) {}
   }
+  if (typeof clearCatalogSearchBoxOnly === 'function') {
+    clearCatalogSearchBoxOnly();
+  } else {
+    if ($('cgSearch')) $('cgSearch').value = '';
+    if ($('cgClear')) $('cgClear').style.display = 'none';
+    if (typeof cg !== 'undefined') { cg.q = ''; cg.feedSeedPage = 1; }
+    if ($('cgCreatorMatchesBar')) { $('cgCreatorMatchesBar').style.display = 'none'; $('cgCreatorMatchesBar').replaceChildren(); }
+  }
   const myCreatorReq = (typeof cg !== 'undefined') ? ++cg.t : 0;
   window._cgInCreatorView = true;
-  if ($('cgCreatorMatchesBar')) { $('cgCreatorMatchesBar').style.display = 'none'; $('cgCreatorMatchesBar').replaceChildren(); }
+  window._cgCurrentCreator = { kindType: String(kindType || 'author'), nameStr: String(nameStr).trim(), itemCat: String(itemCat || '') };
+  if (typeof renderCatalogActiveChipsBar === 'function') renderCatalogActiveChipsBar();
+  if (!fromHistory) {
+    const snap = typeof captureCatalogHistorySnapshot === 'function'
+      ? captureCatalogHistorySnapshot()
+      : { g: typeof cg !== 'undefined' ? cg.g : 'Аниме', q: '', tags: [], creator: window._cgCurrentCreator };
+    pushAppHistoryState({ tab: 'catalog', fullPage: false, catalogSnap: snap }, false);
+  }
   cgGrid.replaceChildren(...Array.from({ length: 8 }, () => el('div', 'sk')));
   $('cgMore').style.display = 'none';
   if ($('cgHeroWrap')) $('cgHeroWrap').style.display = 'none';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
   toast(`Ищу все работы: ${nameStr}…`);
   const matchCreatorName = (q, cands) => (typeof KirokuEngine !== 'undefined' && KirokuEngine.isCreatorNameMatch)
     ? KirokuEngine.isCreatorNameMatch(q, cands)
@@ -5205,6 +5266,118 @@ function pushAppHistoryState(stateObj, replace = false) {
   } catch (e) {}
 }
 
+function captureCollectionHistorySnapshot() {
+  const raw = {
+    q: $('searchInput')?.value || '',
+    xf: xf ? { k: xf.k, v: xf.v } : null,
+    tag: $('tagFilter')?.value || 'Все',
+    list: $('listFilter')?.value || 'Все',
+    status: $('statusFilter')?.value || 'Все',
+    cat: typeof cat !== 'undefined' ? cat : 'Всё',
+    kind: typeof kind !== 'undefined' ? kind : 'Все',
+    ongOnly: Boolean(typeof ongOnly !== 'undefined' && ongOnly),
+    finOnly: Boolean(typeof finOnly !== 'undefined' && finOnly)
+  };
+  return (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.buildCollectionHistorySnapshot === 'function')
+    ? KirokuEngine.buildCollectionHistorySnapshot(raw)
+    : raw;
+}
+
+function restoreCollectionHistorySnapshot(snap) {
+  if (!snap || typeof snap !== 'object') return false;
+  const s = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.buildCollectionHistorySnapshot === 'function')
+    ? KirokuEngine.buildCollectionHistorySnapshot(snap)
+    : snap;
+  if ($('searchInput')) $('searchInput').value = s.q || '';
+  xf = s.xf ? { k: s.xf.k, v: s.xf.v } : null;
+  if ($('tagFilter')) {
+    const hasOpt = [...$('tagFilter').options].some(o => o.value === s.tag);
+    $('tagFilter').value = hasOpt ? s.tag : 'Все';
+  }
+  if ($('listFilter')) {
+    const hasList = [...$('listFilter').options].some(o => o.value === s.list);
+    $('listFilter').value = hasList ? s.list : 'Все';
+  }
+  if ($('statusFilter')) {
+    const hasSt = [...$('statusFilter').options].some(o => o.value === s.status);
+    $('statusFilter').value = hasSt ? s.status : 'Все';
+  }
+  if (typeof cat !== 'undefined' && s.cat) {
+    cat = s.cat;
+    document.querySelectorAll('#catFilters .fb').forEach(b => b.classList.toggle('on', b.dataset.c === cat));
+  }
+  if (typeof kind !== 'undefined' && s.kind) kind = s.kind;
+  ongOnly = Boolean(s.ongOnly);
+  finOnly = Boolean(s.finOnly);
+  $('ongBtn')?.classList.toggle('on', ongOnly);
+  $('finBtn')?.classList.toggle('on', finOnly);
+  if (typeof syncListFilterActionButtons === 'function') syncListFilterActionButtons();
+  if (typeof renderMyListsFolderBlock === 'function') renderMyListsFolderBlock();
+  if (typeof catCounts === 'function') catCounts();
+  render(false);
+  return true;
+}
+
+function syncCurrentHistoryStateSnapshot() {
+  if (_suppressHistoryPush) return;
+  try {
+    const curTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
+    const isFull = $('titlePageView')?.style.display === 'block';
+    const curState = (history.state && typeof history.state === 'object') ? { ...history.state } : { tab: curTab, fullPage: isFull };
+    if (curState.modal || curState.fullPage || isFull) return;
+    curState.tab = curTab;
+    curState.fullPage = false;
+    if (curTab === 'catalog' && typeof captureCatalogHistorySnapshot === 'function') {
+      curState.catalogSnap = captureCatalogHistorySnapshot();
+    } else if (curTab === 'collection') {
+      curState.collectionSnap = captureCollectionHistorySnapshot();
+    }
+    history.replaceState(curState, '');
+  } catch (e) {}
+}
+
+function openCollectionMetadataFilter(patch = {}, opts = {}) {
+  const fromModal = Boolean(opts && opts.fromModal);
+  const hadModalState = Boolean(fromModal && history.state && history.state.modal);
+  if (!fromModal) {
+    syncCurrentHistoryStateSnapshot();
+  }
+  closeAll(true);
+  clearOpenTitlePageSession();
+  if ($('titlePageView')) $('titlePageView').style.display = 'none';
+  applyMainTabView('collection', true);
+
+  if ($('searchInput')) $('searchInput').value = '';
+  if ('xf' in patch) {
+    xf = patch.xf ? { k: patch.xf.k, v: patch.xf.v } : null;
+    if (xf && $('tagFilter')) $('tagFilter').value = 'Все';
+  }
+  if ('tag' in patch && $('tagFilter')) {
+    xf = null;
+    const tVal = String(patch.tag || 'Все');
+    const hasOpt = [...$('tagFilter').options].some(o => o.value === tVal);
+    $('tagFilter').value = hasOpt ? tVal : 'Все';
+  }
+  if ('list' in patch && $('listFilter')) {
+    xf = null;
+    if ($('tagFilter')) $('tagFilter').value = 'Все';
+    const lVal = String(patch.list || 'Все');
+    const hasOpt = [...$('listFilter').options].some(o => o.value === lVal);
+    $('listFilter').value = hasOpt ? lVal : 'Все';
+    if (typeof syncListFilterActionButtons === 'function') syncListFilterActionButtons();
+    if (typeof renderMyListsFolderBlock === 'function') renderMyListsFolderBlock();
+  }
+  render(false);
+  if (typeof toList === 'function') toList();
+
+  const nextState = {
+    tab: 'collection',
+    fullPage: false,
+    collectionSnap: captureCollectionHistorySnapshot()
+  };
+  pushAppHistoryState(nextState, hadModalState);
+}
+
 // ---------- Переключение 3 главных вкладок: 🌐 Каталог / 📚 Моя коллекция / 👤 Профиль ----------
 function applyMainTabView(v, fromHistory = false, opts = {}) {
   const mode = (v === 'collection' || v === 'profile') ? v : 'catalog';
@@ -5213,6 +5386,10 @@ function applyMainTabView(v, fromHistory = false, opts = {}) {
   const wasCreatorView = Boolean(window._cgInCreatorView);
   const resetToHome = Boolean(opts && opts.resetToHome);
   const keepCreatorView = Boolean(opts && opts.keepCreatorView);
+
+  if (!fromHistory && tabDone && prevTab && prevTab !== mode && !wasFullPage && typeof syncCurrentHistoryStateSnapshot === 'function') {
+    syncCurrentHistoryStateSnapshot();
+  }
 
   if (resetToHome) {
     closeAll(true);
@@ -5250,6 +5427,7 @@ function applyMainTabView(v, fromHistory = false, opts = {}) {
 
   if (resetToHome && !keepCreatorView && wasCreatorView && mode !== 'catalog') {
     window._cgInCreatorView = false;
+    window._cgCurrentCreator = null;
     if (typeof cg !== 'undefined') cg.t++;
     if ($('cgHeroWrap')) $('cgHeroWrap').style.display = '';
   }
@@ -5259,6 +5437,7 @@ function applyMainTabView(v, fromHistory = false, opts = {}) {
       const hadSearch = Boolean((typeof cg !== 'undefined' && cg.q) || ($('cgSearch') && $('cgSearch').value.trim()));
       const heroHidden = Boolean($('cgHeroWrap') && $('cgHeroWrap').style.display === 'none');
       window._cgInCreatorView = false;
+      window._cgCurrentCreator = null;
       if (wasCreatorView || hadSearch || heroHidden || !cgGrid.children.length) {
         if ($('cgSearch')) $('cgSearch').value = '';
         if ($('cgClear')) $('cgClear').style.display = 'none';
@@ -5288,10 +5467,16 @@ function applyMainTabView(v, fromHistory = false, opts = {}) {
   }
 
   if (!fromHistory && tabDone) {
+    const nextState = { tab: mode, fullPage: false };
+    if (mode === 'catalog' && typeof captureCatalogHistorySnapshot === 'function') {
+      nextState.catalogSnap = captureCatalogHistorySnapshot();
+    } else if (mode === 'collection') {
+      nextState.collectionSnap = captureCollectionHistorySnapshot();
+    }
     if (resetToHome && (wasFullPage || wasCreatorView)) {
-      pushAppHistoryState({ tab: mode, fullPage: false }, true);
+      pushAppHistoryState(nextState, true);
     } else if (prevTab !== mode || wasFullPage) {
-      pushAppHistoryState({ tab: mode, fullPage: false });
+      pushAppHistoryState(nextState);
     }
   }
 }
@@ -5427,6 +5612,9 @@ function refresh(opts = {}) {
       const isFull = $('titlePageView')?.style.display === 'block';
       const curTitleKey = history.state?.titleKey || '';
       const alreadyModalState = Boolean(history.state && history.state.modal);
+      if (!alreadyModalState && typeof syncCurrentHistoryStateSnapshot === 'function') {
+        syncCurrentHistoryStateSnapshot();
+      }
       pushAppHistoryState({ tab: curTab, fullPage: isFull, titleKey: curTitleKey, modal: open.id }, alreadyModalState);
       const f = open.querySelector('input:not([type=hidden]),select,textarea,button');
       if (f) setTimeout(() => f.focus({preventScroll: true}), 30);
@@ -5626,16 +5814,24 @@ window.addEventListener('visibilitychange', () => {
         })();
       }
     }
-    if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
-    if (typeof profSaveLocal === 'function') profSaveLocal(true);
+    if (typeof flushLocalItemsNow === 'function' && (typeof hasPendingLocalItemsSave === 'function' ? hasPendingLocalItemsSave() : Boolean(_saveLocalItemsTimer))) {
+      flushLocalItemsNow(false);
+    }
+    if (typeof profSaveLocal === 'function' && (typeof _profLocalTimer !== 'undefined' && _profLocalTimer)) {
+      profSaveLocal(true);
+    }
   }
 });
 
 window.addEventListener('beforeunload', e => {
+  if (typeof flushLocalItemsNow === 'function' && (typeof hasPendingLocalItemsSave === 'function' ? hasPendingLocalItemsSave() : Boolean(_saveLocalItemsTimer))) {
+    flushLocalItemsNow(false);
+  }
   const pendingTotal = (typeof getUnsyncedPendingCounts === 'function') ? getUnsyncedPendingCounts().total : 0;
   if (pend > 0 || pendingTotal > 0) {
-    if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
-    if (typeof profSaveLocal === 'function') profSaveLocal(true);
+    if (typeof profSaveLocal === 'function' && (typeof _profLocalTimer !== 'undefined' && _profLocalTimer)) {
+      profSaveLocal(true);
+    }
     e.preventDefault();
     e.returnValue = '';
   }
@@ -5687,6 +5883,16 @@ window.addEventListener('popstate', e => {
     }
     const targetTab = (e.state && e.state.tab) || document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
     applyMainTabView(targetTab, true);
+    if (targetTab === 'catalog' && e.state && e.state.catalogSnap && typeof restoreCatalogHistorySnapshot === 'function') {
+      restoreCatalogHistorySnapshot(e.state.catalogSnap);
+    } else if (targetTab === 'catalog' && window._cgInCreatorView) {
+      window._cgInCreatorView = false;
+      window._cgCurrentCreator = null;
+      if (typeof renderCatalogActiveChipsBar === 'function') renderCatalogActiveChipsBar();
+      if (typeof cgLoad === 'function') cgLoad(true);
+    } else if (targetTab === 'collection' && e.state && e.state.collectionSnap && typeof restoreCollectionHistorySnapshot === 'function') {
+      restoreCollectionHistorySnapshot(e.state.collectionSnap);
+    }
   } finally {
     _suppressHistoryPush = false;
   }

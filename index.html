@@ -18,12 +18,12 @@
 <link rel="icon" href="./favicon.ico" sizes="any">
 <!-- ВАЖНО: при обновлении версии кэша (?v=...) синхронно меняй и const APP_VER внизу index.html -->
 <style>html,body{background:#0a0b12;color:#f1f3f9;margin:0}html[data-theme=white],html[data-theme=white] body{background:#f4f6fb;color:#14161f}body.auth-checking > *{display:none!important}</style>
-<link rel="preload" href="./kiroku_engine.js?v=20261208" as="script">
-<link rel="preload" href="./app_core.js?v=20261208" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261208" as="script">
-<link rel="preload" href="./app.js?v=20261208" as="script">
-<link rel="stylesheet" href="./style.css?v=20261208">
-<link rel="stylesheet" href="./mobile.css?v=20261208" media="(max-width: 768px)">
+<link rel="preload" href="./kiroku_engine.js?v=20261214" as="script">
+<link rel="preload" href="./app_core.js?v=20261214" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261214" as="script">
+<link rel="preload" href="./app.js?v=20261214" as="script">
+<link rel="stylesheet" href="./style.css?v=20261214">
+<link rel="stylesheet" href="./mobile.css?v=20261214" media="(max-width: 768px)">
 </head>
 <body class="auth-checking">
 
@@ -118,7 +118,7 @@
           <div id="cgSubKindBar" class="cg-subkind-bar" aria-label="Категория"></div>
           <select id="cgAnimeKind" title="Вид аниме"><option value="">Все аниме</option><option value="TV">Аниме-сериалы</option><option value="MOVIE">Аниме-фильмы</option></select>
           <select id="cgVideoKind" style="display:none" title="Вид фильмов и сериалов"><option value="all">Все (фильмы и сериалы)</option><option value="movie">Фильмы</option><option value="tv">Сериалы</option></select>
-          <select id="cgKind" style="display:none" title="Вид манги"><option value="">Все виды</option><option value="JP">Манга</option><option value="KR">Манхва</option><option value="CN">Маньхуа</option><option value="COMIC">Комикс</option></select>
+          <select id="cgKind" style="display:none" title="Вид манги"><option value="">Все виды</option><option value="JP">Манга</option><option value="KR">Манхва</option><option value="CN">Маньхуа</option><option value="DOUJIN">Додзинси</option><option value="COMIC">Комикс</option></select>
           <select id="cgMode" title="Сортировка каталога">
             <option value="actual" selected>Сейчас актуально</option>
             <option value="trend">В тренде недели</option>
@@ -394,6 +394,7 @@
               <button class="kb" data-k="Манга" type="button">Манга</button>
               <button class="kb" data-k="Манхва" type="button">Манхва</button>
               <button class="kb" data-k="Маньхуа" type="button">Маньхуа</button>
+              <button class="kb" data-k="Додзинси" type="button">Додзинси</button>
               <button class="kb" data-k="Комикс" type="button">Комикс</button>
             </div>
           </div>
@@ -424,7 +425,7 @@
   <div class="row" style="gap:16px;padding:4px 2px">
     <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;color:#f472b6;font-weight:700"><input type="checkbox" id="inputFavHeart" style="width:18px;height:18px"> ❤ Отметить как «Любимое» (не сбрасывает статус просмотра)</label>
   </div>
-  <select id="inputKind" style="display:none"><option>Манга</option><option>Манхва</option><option>Маньхуа</option><option>Комикс</option></select>
+  <select id="inputKind" style="display:none"><option>Манга</option><option>Манхва</option><option>Маньхуа</option><option>Додзинси</option><option>Комикс</option></select>
   <div id="manualTitlesSec" style="display:flex;flex-direction:column;gap:8px">
     <div class="fs">Название</div>
     <input type="text" id="inputTitle" placeholder="Название (русское) *">
@@ -434,18 +435,42 @@
       <div class="row2"><input id="inputTitleOrig" placeholder="Оригинальное (яп. / кор. / др.)"><input id="inputAlt" placeholder="Синонимы (через запятую)"></div>
     </div>
   </div>
-  <div class="fs">Постер, год и оценка</div>
+  <div class="fs">Постер и год</div>
   <div class="row"><img id="posterPreview" alt="" referrerpolicy="no-referrer"><div style="flex:1;display:flex;flex-direction:column;gap:8px">
     <input id="inputPoster" placeholder="Ссылка на постер (URL)">
     <div class="row"><input type="file" id="inputPosterFile" accept="image/*" style="flex:1"><button class="btn btn-s" id="clearPoster" type="button">Убрать</button></div>
   </div></div>
-  <div class="row2"><input type="number" id="inputYear" placeholder="Год" min="1900" max="2100"><input type="number" id="inputRating" placeholder="Моя оценка (1-10)" min="1" max="10" step="0.1"></div>
-  <div id="criteriaAnchor"></div>
+  <input type="number" id="inputYear" placeholder="Год выхода (напр. 2024)" min="1900" max="2100">
+
+  <div class="fs">Оценки</div>
+  <div class="ratings-unified-box">
+    <div class="row2 ratings-pair-row">
+      <input type="number" id="inputRating" placeholder="Необязательно (1–10)" min="1" max="10" step="0.1">
+      <input type="number" id="inputExtRating" placeholder="Напр. 8.5 (0–10)" min="0" max="10" step="0.01">
+    </div>
+    <div class="row2">
+      <select id="inputExtSrcSelect">
+        <option value="">— Выбрать площадку —</option>
+        <option value="AniList">AniList</option>
+        <option value="Shikimori">Shikimori</option>
+        <option value="MangaUpdates">MangaUpdates</option>
+        <option value="MyAnimeList">MyAnimeList</option>
+        <option value="MangaDex">MangaDex</option>
+        <option value="TMDB">TMDB</option>
+        <option value="IMDb">IMDb</option>
+        <option value="Кинопоиск">Кинопоиск</option>
+        <option value="__custom__">Другая площадка…</option>
+      </select>
+      <input type="text" id="inputExtSrc" placeholder="Название площадки (напр. ReadManga, NovelUpdates…)">
+    </div>
+    <div class="ext-rating-hint">Моя оценка и сторонний рейтинг хранятся раздельно и не смешиваются</div>
+    <div id="criteriaAnchor"></div>
+  </div>
 
   <div class="fs">Создатели и объём</div>
   <div class="row2"><input id="inputAuthor" placeholder="Автор / режиссёр"><input id="inputStudio" placeholder="Студия / издатель"></div>
   <div class="row2">
-    <select id="inputSource"><option value="">Источник: не указан</option><option>Оригинал</option><option>Манга</option><option>Ранобэ</option><option>Визуальная новелла</option><option>Игра</option><option>Книга</option><option>Комикс</option><option>Другое</option></select>
+    <select id="inputSource"><option value="">Источник: не указан</option><option>Оригинал</option><option>Манга</option><option>Додзинси</option><option>Ранобэ</option><option>Визуальная новелла</option><option>Игра</option><option>Книга</option><option>Комикс</option><option>Другое</option></select>
     <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;padding-top:16px"><input type="checkbox" id="inputOngoing" style="flex:none;width:18px;height:18px;padding:0"> Онгоинг (выходит сейчас)</label>
   </div>
   <div class="row3">
@@ -464,25 +489,11 @@
   <input id="inputLists" placeholder="Подборки (через запятую)">
   <textarea id="inputDescription" placeholder="Синопсис / Описание..."></textarea>
 
-  <div class="fs">Даты, пересмотры и оценка базы</div>
+  <div class="fs">Даты и пересмотры</div>
   <div class="row2">
     <input type="date" id="inputCompletedAt" title="Дата завершения просмотра/чтения">
     <input type="number" id="inputRewatchCount" placeholder="Повторных просмотров (0+)" min="0" max="100">
   </div>
-  <div class="row2">
-    <input type="number" id="inputExtRating" placeholder="Внешняя оценка (напр. 8.5)" min="0" max="10" step="0.01">
-    <input type="text" id="inputExtSrc" list="extSrcList" placeholder="Сайт оценки (AniList, TMDB, Кинопоиск…)">
-  </div>
-  <datalist id="extSrcList">
-    <option value="AniList"></option>
-    <option value="Shikimori"></option>
-    <option value="MyAnimeList"></option>
-    <option value="TMDB"></option>
-    <option value="IMDb"></option>
-    <option value="Кинопоиск"></option>
-    <option value="MangaDex"></option>
-    <option value="Другой сайт"></option>
-  </datalist>
 
   <div class="fs">Как будет выглядеть</div><div id="pvCard" class="pv"></div>
   <div class="mb" style="justify-content:flex-end">
@@ -795,7 +806,7 @@ const importWithTimeout = (url, ms = 25000) => new Promise((resolve, reject) => 
 });
 
 // ВАЖНО: должна совпадать с параметром ?v=... в <head> выше
-const APP_VER = "20261208";
+const APP_VER = "20261214";
 window.__FIREBASE_CONFIG__ = {
   apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
   authDomain: "mymediatracker-6e179.firebaseapp.com",

@@ -109,8 +109,9 @@ async function _fetchTmdbFreshPoster(tmdbId) {
 // Проксирование постеров Shikimori, TMDB и MangaDex через wsrv.nl для стабильной загрузки в РФ без VPN и обхода hotlink-защиты
 function safePosterUrl(u) {
   if (!isValidPosterUrl(u)) return FALL;
-  const s = u.trim();
+  let s = u.trim();
   if (s.startsWith('data:image/')) return s;
+  if (s.startsWith('//')) s = 'https:' + s;
   if (!/^https?:\/\//i.test(s)) return FALL;
   if (/^https?:\/\/((?:desu\.)?shikimori\.(?:one|io|me|org)|image\.tmdb\.org|uploads\.mangadex\.org)\//i.test(s)) {
     return 'https://wsrv.nl/?url=' + encodeURIComponent(s);
@@ -357,18 +358,29 @@ const uiConfirm = (msg, okLabel = 'Продолжить', danger = false) => dlg
 function uiPrompt(title, def = '', ph = '', subText = '') {
   let inp; return dlgOpen(() => { inp = el('input'); inp.value = def; inp.placeholder = ph; $('dlgTitle').textContent = title; $('dlgText').textContent = subText || ''; $('dlgBody').replaceChildren(inp); inp.onkeydown = e => { if (e.key === 'Enter') $('dlgOk').click(); }; setTimeout(() => inp.focus(), 40); }, 'Сохранить', false, () => inp.value);
 }
-function uiListDialog(name, desc, cn, cols) {
+function uiListDialog(name, desc, cn, cols, opts = {}) {
+  const isSystem = Boolean(opts && opts.isSystem);
   let iName, iDesc, cur = cn || '';
   return dlgOpen(() => {
     iName = el('input'); iDesc = el('input'); const sw = el('div', 'c-swatches');
-    iName.value = name || ''; iName.placeholder = 'Название подборки'; iDesc.value = desc || ''; iDesc.placeholder = 'Описание (необязательно)';
+    iName.value = name || ''; iName.placeholder = isSystem ? DEFAULT_MANUAL_LIST_NAME : 'Название подборки'; iDesc.value = desc || ''; iDesc.placeholder = 'Описание (необязательно)';
     const paint = () => [...sw.children].forEach(b => b.classList.toggle('on', b.dataset.c === cur));
     [['', '#64748b'], ...Object.entries(cols)].forEach(([k, hex]) => { const b = el('button', 'c-sw'); b.type = 'button'; b.dataset.c = k; b.style.background = hex; b.title = k || 'Без цвета'; b.onclick = () => { cur = k; paint(); }; sw.append(b); }); paint();
     const f = (l, x) => { const w = el('div', 'fld'); w.append(el('label', null, l), x); return w; };
-    $('dlgTitle').textContent = 'Настройка подборки'; $('dlgText').textContent = 'Оставь название пустым, чтобы удалить подборку (тайтлы останутся в коллекции).';
+    $('dlgTitle').textContent = isSystem ? 'Настройка системной подборки' : 'Настройка подборки';
+    $('dlgText').textContent = isSystem
+      ? 'Системную подборку нельзя удалить, но можно переименовать, добавить описание и выбрать цвет. В неё автоматически попадают все тайтлы, добавленные вручную.'
+      : 'Оставь название пустым, чтобы удалить подборку (тайтлы останутся в коллекции).';
     $('dlgBody').replaceChildren(f('Название', iName), f('Описание', iDesc), f('Цвет метки', sw));
   }, 'Сохранить', false, () => ({name: iName.value.trim(), desc: iDesc.value.trim(), cn: cur}));
 }
+
+const SYSTEM_MANUAL_LIST_KEY = (typeof KirokuEngine !== 'undefined' && KirokuEngine.SYSTEM_MANUAL_LIST_KEY)
+  ? KirokuEngine.SYSTEM_MANUAL_LIST_KEY
+  : '__sys_manual__';
+const DEFAULT_MANUAL_LIST_NAME = (typeof KirokuEngine !== 'undefined' && KirokuEngine.DEFAULT_MANUAL_LIST_NAME)
+  ? KirokuEngine.DEFAULT_MANUAL_LIST_NAME
+  : 'Добавлено вручную';
 
 function isManualItemEditable(it) {
   if (!it) return false;
@@ -379,12 +391,65 @@ function isManualItemEditable(it) {
   return !it.aniId && !it.mal && !it.tmdb && !it.shikiId && !it.mdId && !it.imdbId;
 }
 
+function getManualFolderName(targetProf = prof) {
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.resolveManualListName === 'function') {
+    return KirokuEngine.resolveManualListName(targetProf);
+  }
+  const raw = targetProf && typeof targetProf === 'object' ? targetProf.manualFolderName : '';
+  return String(raw || '').trim() || DEFAULT_MANUAL_LIST_NAME;
+}
+
+function isSystemManualFolder(val, targetProf = prof) {
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.isSystemManualListRef === 'function') {
+    return KirokuEngine.isSystemManualListRef(val, targetProf);
+  }
+  const low = String(val || '').trim().toLowerCase();
+  return Boolean(low && (low === SYSTEM_MANUAL_LIST_KEY || low === getManualFolderName(targetProf).toLowerCase()));
+}
+
+function stripSystemManualFromLists(lists, targetProf = prof) {
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.stripSystemManualListFromUserLists === 'function') {
+    return KirokuEngine.stripSystemManualListFromUserLists(lists, targetProf);
+  }
+  const sysLow = getManualFolderName(targetProf).toLowerCase();
+  return (Array.isArray(lists) ? lists : []).filter(v => {
+    const low = String(v || '').trim().toLowerCase();
+    return Boolean(low && low !== SYSTEM_MANUAL_LIST_KEY && low !== sysLow);
+  });
+}
+
+function getUserListsForItem(it) {
+  return stripSystemManualFromLists(it && Array.isArray(it.lists) ? it.lists : []);
+}
+
+function itemMatchesCollectionListFilter(i, lf) {
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.itemMatchesListFilter === 'function') {
+    return KirokuEngine.itemMatchesListFilter(i, lf, prof);
+  }
+  const clean = String(lf || 'Все').trim();
+  if (!clean || clean === 'Все' || clean.toLowerCase() === 'все') return true;
+  if (clean.toLowerCase() === SYSTEM_MANUAL_LIST_KEY) return isManualItemEditable(i);
+  return (i.lists || []).some(t => String(t || '').toLowerCase() === clean.toLowerCase());
+}
+
+function syncListFilterActionButtons() {
+  const sel = $('listFilter');
+  if (!sel) return;
+  const val = sel.value || 'Все';
+  const canManage = val !== 'Все';
+  const canDelete = canManage && val !== SYSTEM_MANUAL_LIST_KEY;
+  if ($('manageListBtn')) $('manageListBtn').style.display = canManage ? '' : 'none';
+  if ($('deleteListBtn')) $('deleteListBtn').style.display = canDelete ? '' : 'none';
+}
+
 function getAllUserCollectionNames() {
   const seen = new Map();
+  const sysLow = getManualFolderName().toLowerCase();
   const add = raw => {
     const nm = String(raw || '').trim();
     if (!nm) return;
     const key = nm.toLowerCase();
+    if (key === SYSTEM_MANUAL_LIST_KEY || key === sysLow) return;
     if (!seen.has(key)) seen.set(key, nm);
   };
   (prof.customLists || []).forEach(add);
@@ -423,6 +488,10 @@ async function openAddToCollectionModal(targetItem, onUpdated = null) {
   const toggleFolderForItem = async (folderName, isCreate = false) => {
     const cleanName = String(folderName || '').trim();
     if (!cleanName) return;
+    if (isSystemManualFolder(cleanName)) {
+      toast('Системная подборка для ручных тайтлов наполняется автоматически', true);
+      return;
+    }
     let colItem = resolveColItem();
     if (!colItem && typeof quickAdd === 'function') {
       colItem = await quickAdd(targetItem, 'В планах');
@@ -436,7 +505,7 @@ async function openAddToCollectionModal(targetItem, onUpdated = null) {
       addedNewFolder = true;
     }
 
-    colItem.lists = Array.isArray(colItem.lists) ? colItem.lists : [];
+    colItem.lists = getUserListsForItem(colItem);
     const existsInItem = colItem.lists.some(x => x.toLowerCase() === cleanName.toLowerCase());
     if (existsInItem && !isCreate) {
       colItem.lists = colItem.lists.filter(x => x.toLowerCase() !== cleanName.toLowerCase());
@@ -460,24 +529,39 @@ async function openAddToCollectionModal(targetItem, onUpdated = null) {
     if (!listBox) return;
     listBox.replaceChildren();
     const colItem = resolveColItem();
-    const curLists = colItem ? (colItem.lists || []) : [];
+    const curLists = colItem ? getUserListsForItem(colItem) : [];
     const allFolders = getAllUserCollectionNames();
     const countsMap = computeCountsMap();
     const query = searchInput ? searchInput.value : '';
+    const sysName = getManualFolderName();
+    const sysCount = (items || []).filter(isManualItemEditable).length;
+    const isTargetManual = isManualItemEditable(colItem || targetItem);
 
     const data = (typeof KirokuEngine !== 'undefined' && KirokuEngine.filterAndListCollections)
-      ? KirokuEngine.filterAndListCollections(allFolders, curLists, query, countsMap)
+      ? KirokuEngine.filterAndListCollections(allFolders, curLists, query, countsMap, {
+          systemManualName: sysName,
+          systemManualCount: sysCount,
+          isManualItem: isTargetManual
+        })
       : {
-          totalCount: allFolders.length,
+          totalCount: allFolders.length + 1,
           query: String(query || '').trim(),
-          canCreateNew: Boolean(String(query || '').trim() && !allFolders.some(f => f.toLowerCase() === String(query || '').trim().toLowerCase())),
-          items: allFolders
-            .filter(f => !query || f.toLowerCase().includes(String(query).trim().toLowerCase()))
-            .map(name => ({
-              name,
-              inList: curLists.some(x => x.toLowerCase() === name.toLowerCase()),
-              count: countsMap[name.toLowerCase()] || 0
-            }))
+          canCreateNew: Boolean(String(query || '').trim() && !isSystemManualFolder(query) && !allFolders.some(f => f.toLowerCase() === String(query || '').trim().toLowerCase())),
+          items: [
+            ...((!query || sysName.toLowerCase().includes(String(query).trim().toLowerCase()))
+              ? [{ name: sysName, key: SYSTEM_MANUAL_LIST_KEY, inList: isTargetManual, count: sysCount, isSystem: true, locked: true }]
+              : []),
+            ...allFolders
+              .filter(f => !query || f.toLowerCase().includes(String(query).trim().toLowerCase()))
+              .map(name => ({
+                name,
+                key: name.toLowerCase(),
+                inList: curLists.some(x => x.toLowerCase() === name.toLowerCase()),
+                count: countsMap[name.toLowerCase()] || 0,
+                isSystem: false,
+                locked: false
+              }))
+          ]
         };
 
     if (data.canCreateNew) {
@@ -500,6 +584,21 @@ async function openAddToCollectionModal(targetItem, onUpdated = null) {
     }
 
     data.items.forEach(entry => {
+      if (entry.isSystem || entry.locked) {
+        const lockBtn = el('button', 'col-picker-item col-picker-locked' + (entry.inList ? ' on' : ''));
+        lockBtn.type = 'button';
+        lockBtn.disabled = true;
+        lockBtn.setAttribute('aria-disabled', 'true');
+        lockBtn.dataset.folder = SYSTEM_MANUAL_LIST_KEY;
+        lockBtn.title = entry.inList
+          ? 'Системная подборка: ручной тайтл находится в ней автоматически (убрать можно только удалив тайтл из коллекции)'
+          : 'Системная подборка: сюда автоматически попадают только тайтлы, добавленные вручную';
+        const left = el('span', 'col-picker-item-left', `${entry.inList ? '✓ 🔒' : '🔒'} ${entry.name}`);
+        const right = el('span', 'col-picker-item-right', `${entry.count} шт. · ${entry.inList ? 'Авто (нельзя убрать)' : 'Только ручные'}`);
+        lockBtn.append(left, right);
+        listBox.append(lockBtn);
+        return;
+      }
       const rowBtn = el('button', 'col-picker-item' + (entry.inList ? ' on' : ''));
       rowBtn.type = 'button';
       rowBtn.dataset.folder = entry.name;
@@ -538,15 +637,17 @@ async function openAddToCollectionModal(targetItem, onUpdated = null) {
 const CATS = ['Фильм','Сериал','Аниме','Манга','Ранобэ','Мультфильм'];
 const num = v => parseFloat(v) || 0;
 
-// Схема Варианта А: каждый тайтл имеет kind === 'title', а подвид манги (Манга/Манхва/Маньхуа/Комикс) хранится в subKind
-const MANGA_SUBKINDS = ['Манга', 'Манхва', 'Маньхуа', 'Комикс'];
+// Схема Варианта А: каждый тайтл имеет kind === 'title', а подвид манги (Манга/Манхва/Маньхуа/Комикс/Додзинси) хранится в subKind
+const MANGA_SUBKINDS = ['Манга', 'Манхва', 'Маньхуа', 'Комикс', 'Додзинси'];
 const fix = i => {
   if (!i || typeof i !== 'object') return i;
   if (i.category === 'Манхва') { i.category = 'Манга'; i.subKind = 'Манхва'; }
   else if (i.category === 'Маньхуа') { i.category = 'Манга'; i.subKind = 'Маньхуа'; }
+  else if (i.category === 'Додзинси') { i.category = 'Манга'; i.subKind = 'Додзинси'; }
   else if (i.category === 'Манга') {
     if (!i.subKind) {
       if (i.kind && MANGA_SUBKINDS.includes(i.kind)) i.subKind = i.kind;
+      else if (i.format === 'DOUJIN') i.subKind = 'Додзинси';
       else i.subKind = 'Манга';
     }
   } else if (i.category === 'Мультфильм') {
@@ -592,7 +693,7 @@ const STATS = ['В планах','Смотрю/Читаю','Просмотрен
 const FORMAT_RU = {
   TV: 'TV-сериал', TV_SHORT: 'Короткометражный TV', MOVIE: 'Полнометражный фильм',
   SPECIAL: 'Спешл (Special)', OVA: 'OVA', ONA: 'Веб-сериал (ONA)', MUSIC: 'Музыкальное видео',
-  MANGA: 'Манга', MANHWA: 'Манхва', MANHUA: 'Маньхуа', NOVEL: 'Ранобэ / Новелла', ONE_SHOT: 'Ваншот'
+  MANGA: 'Манга', MANHWA: 'Манхва', MANHUA: 'Маньхуа', DOUJIN: 'Додзинси', NOVEL: 'Ранобэ / Новелла', ONE_SHOT: 'Ваншот'
 };
 const displayFormatLabel = i => {
   if (!i) return '';
@@ -614,8 +715,13 @@ let selMode = false;
 const selSet = new Set();
 const reviewSelSet = new Set();
 const uncertainMatchesQueue = [];
-const isReadCategory = c => c === 'Манга' || c === 'Ранобэ';
+const isReadCategory = c => (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.isReadCategory === 'function')
+  ? KirokuEngine.isReadCategory(c)
+  : (c === 'Манга' || c === 'Ранобэ' || c === 'Манхва' || c === 'Маньхуа' || c === 'Комикс' || c === 'Комиксы' || c === 'Додзинси' || c === 'Новелла' || c === 'Ваншот');
 function getStatusLabelForCategory(st, c) {
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.getStatusLabelForCategory === 'function') {
+    return KirokuEngine.getStatusLabelForCategory(st, c);
+  }
   if (!st) return '';
   if (st === 'Смотрю/Читаю') {
     if (isReadCategory(c)) return 'Читаю';
@@ -734,8 +840,14 @@ const stripItemBase64ForLocal = it => {
   if (!it || typeof it !== 'object') return it;
   if (!isBase64DataUrl(it.poster) && !isBase64DataUrl(it.badgeCharImg)) return it;
   const copy = { ...it };
-  if (isBase64DataUrl(copy.poster)) copy.poster = '';
-  if (isBase64DataUrl(copy.badgeCharImg)) copy.badgeCharImg = '';
+  if (isBase64DataUrl(copy.poster)) {
+    copy.poster = '';
+    copy._posterInIdb = 1;
+  }
+  if (isBase64DataUrl(copy.badgeCharImg)) {
+    copy.badgeCharImg = '';
+    copy._badgeInIdb = 1;
+  }
   return copy;
 };
 
@@ -768,11 +880,16 @@ const prepareProfForLocal = pObj => {
 };
 
 let _saveLocalItemsTimer = 0;
+let _localItemsDirty = false;
+const hasPendingLocalItemsSave = () => Boolean(_localItemsDirty || _saveLocalItemsTimer);
+const LOCAL_STORAGE_FULL_POSTERS_MAX_CHARS = 2400000;
 const flushLocalItemsNow = (forceEmpty = false) => {
   clearTimeout(_saveLocalItemsTimer);
   _saveLocalItemsTimer = 0;
+  _localItemsDirty = false;
   if (!loaded) return;
   const uidKey = getUidStorageKey('items');
+  const idbItems = items.map(it => (it && typeof it === 'object') ? { ...it } : it);
   const slimItems = items.map(stripItemBase64ForLocal);
   const safetyKey = getUidStorageKey('safetyBackup');
   const nowTs = Date.now();
@@ -797,17 +914,27 @@ const flushLocalItemsNow = (forceEmpty = false) => {
   }
 
   // Сначала синхронно обновляем localStorage + timestamp (успевает сохраниться даже при мгновенном закрытии вкладки)
+  // Если полная коллекция вместе с загруженными обложками укладывается в безопасный бюджет (~2.4 МБ), пишем её целиком; иначе мягко откатываемся к slimItems с пометками _posterInIdb
+  const writeLsPayload = payloadStr => {
+    localStorage.setItem(uidKey, payloadStr);
+    if (user && user.isLocal) localStorage.setItem('localItems', payloadStr);
+  };
   try {
-    if (slimItems.length <= 1500) {
-      const json = JSON.stringify(slimItems);
-      localStorage.setItem(uidKey, json);
-      if (user && user.isLocal) localStorage.setItem('localItems', json);
+    if (idbItems.length <= 1500) {
+      const fullJson = JSON.stringify(idbItems);
+      if (fullJson.length <= LOCAL_STORAGE_FULL_POSTERS_MAX_CHARS) {
+        try {
+          writeLsPayload(fullJson);
+        } catch (quotaErr) {
+          writeLsPayload(JSON.stringify(slimItems));
+        }
+      } else {
+        writeLsPayload(JSON.stringify(slimItems));
+      }
     } else {
       // При огромной коллекции (1500–10000+ тайтлов) основная копия живёт в IndexedDB, не переполняя 5 МБ localStorage
       const compactItems = slimItems.map(x => ({ ...x, description: (x.description || '').slice(0, 120) }));
-      const compactJson = JSON.stringify(compactItems);
-      localStorage.setItem(uidKey, compactJson);
-      if (user && user.isLocal) localStorage.setItem('localItems', compactJson);
+      writeLsPayload(JSON.stringify(compactItems));
     }
     localStorage.setItem(uidKey + '_meta', JSON.stringify(metaPayload));
     if (user && user.isLocal) localStorage.setItem('localItems_meta', JSON.stringify(metaPayload));
@@ -815,11 +942,13 @@ const flushLocalItemsNow = (forceEmpty = false) => {
     try {
       localStorage.removeItem('ruCache');
       localStorage.removeItem(safetyKey);
+      writeLsPayload(JSON.stringify(slimItems));
+      localStorage.setItem(uidKey + '_meta', JSON.stringify(metaPayload));
+      if (user && user.isLocal) localStorage.setItem('localItems_meta', JSON.stringify(metaPayload));
     } catch (e2) {}
   }
 
   // IndexedDB — основное хранилище без лимита 5 МБ: сохраняем полные тайтлы ВМЕСТЕ со своими загруженными base64-постерами
-  const idbItems = items.map(it => (it && typeof it === 'object') ? { ...it } : it);
   idbVault.set(uidKey, idbItems).then(() => idbVault.set(uidKey + '_meta', metaPayload));
   if (user && user.isLocal) {
     idbVault.set('localItems', idbItems).then(() => idbVault.set('localItems_meta', metaPayload));
@@ -845,6 +974,7 @@ const flushLocalItemsNow = (forceEmpty = false) => {
 
 const saveLocalItems = (forceEmpty = false) => {
   if (!loaded) return;
+  _localItemsDirty = true;
   if (forceEmpty) {
     flushLocalItemsNow(true);
     return;
@@ -2543,6 +2673,11 @@ async function syncItemsFromCloud(effUid, force = false) {
         }
       });
 
+      // Сохраняем локально загруженные base64-обложки, если облачный документ пришёл без постера и не новее локального
+      if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.preserveLocalUploadedPostersOnCloudMerge === 'function' && items.length > 0) {
+        ownList = KirokuEngine.preserveLocalUploadedPostersOnCloudMerge(ownList, items);
+      }
+
       const explicitEmpty = Boolean(window._explicitEmptyAllowed || isExplicitEmptyDeletePending(effUid));
       const prevCount = items.length;
       if (!explicitEmpty && prevCount === 0 && ownList.length === 0) {
@@ -2782,6 +2917,12 @@ function applyServerProfileDocToLocal(effUid, pd, isFromCache = false) {
     }
     if ((!prof.listMeta || !Object.keys(prof.listMeta).length) && rest.listMeta && typeof rest.listMeta === 'object') {
       prof.listMeta = rest.listMeta;
+    }
+    if (!prof.manualFolderName && rest.manualFolderName) {
+      prof.manualFolderName = rest.manualFolderName;
+    }
+    if (!prof.manualFolderMeta && rest.manualFolderMeta && typeof rest.manualFolderMeta === 'object') {
+      prof.manualFolderMeta = rest.manualFolderMeta;
     }
   } else {
     Object.assign(prof, rest);
@@ -3640,14 +3781,22 @@ function refreshTags() {
 
 function refreshLists(preferredVal = null) {
   const sel = $('listFilter'); if (!sel) return; const old = preferredVal != null ? String(preferredVal) : sel.value, map = new Map();
-  (prof.customLists || []).forEach(t => { if (t && !map.has(t.toLowerCase())) map.set(t.toLowerCase(), t); });
-  getVisibleItems().forEach(i => (i.lists || []).forEach(t => { if (t && !map.has(t.toLowerCase())) map.set(t.toLowerCase(), t); }));
+  const sysName = getManualFolderName();
+  const sysLow = sysName.toLowerCase();
+  const addOpt = t => {
+    const clean = String(t || '').trim();
+    if (!clean) return;
+    const k = clean.toLowerCase();
+    if (k === SYSTEM_MANUAL_LIST_KEY || k === sysLow) return;
+    if (!map.has(k)) map.set(k, clean);
+  };
+  (prof.customLists || []).forEach(addOpt);
+  getVisibleItems().forEach(i => (i.lists || []).forEach(addOpt));
   sel.replaceChildren(new Option('📁 Все подборки', 'Все'));
+  sel.add(new Option('🔒 ' + sysName, SYSTEM_MANUAL_LIST_KEY));
   [...map].sort((a, b) => a[1].localeCompare(b[1], 'ru')).forEach(([k, v]) => sel.add(new Option('📁 ' + v, k)));
-  sel.value = map.has(old) ? old : 'Все'; sel.style.display = '';
-  const canManage = sel.value !== 'Все';
-  if ($('manageListBtn')) $('manageListBtn').style.display = canManage ? '' : 'none';
-  if ($('deleteListBtn')) $('deleteListBtn').style.display = canManage ? '' : 'none';
+  sel.value = (old === SYSTEM_MANUAL_LIST_KEY || map.has(old)) ? old : 'Все'; sel.style.display = '';
+  syncListFilterActionButtons();
   if (typeof renderMyListsFolderBlock === 'function') renderMyListsFolderBlock();
 }
 
@@ -3907,7 +4056,7 @@ function renderEpisodeProgressControl(containerEl, item, onAfterChange = null) {
           return { changed: nxt !== prev, locked: false, value: nxt, reachedTotal: tot > 0 && nxt >= tot && prev < tot };
         })();
     if (res.locked) {
-      toast('В статусе «Просмотрено/Прочитано» прогресс зафиксирован. Смените статус для редактирования.');
+      toast(`В статусе «${getStatusLabelForCategory(target.status, target.category)}» прогресс зафиксирован. Смените статус для редактирования.`);
       return;
     }
     if (res.changed) {
@@ -4045,9 +4194,11 @@ function createCollectionCardNode(i) {
   const fmtStr = displayFormatLabel(i);
   const epsStr = formatCardEpsMeta(i);
   const scoreVal = i.rating ? `★ ${i.rating}` : (i.extRating ? `★ ${i.extRating}` : '');
+  const scoreEl = el('span', 'star', scoreVal);
+  if (scoreVal) scoreEl.title = i.rating ? 'Моя личная оценка' : (i.extSrc ? `Рейтинг: ${i.extSrc}` : 'Сторонний рейтинг');
   row.append(
     el('span', null, [i.year, fmtStr, epsStr].filter(Boolean).join(' • ')),
-    el('span', 'star', scoreVal)
+    scoreEl
   );
   const descSnip = el('div', 'list-desc-snip', i.description || 'Описание отсутствует.');
   const bd = el('div', 'bd2'), st2 = el('div', 'status', stLabel); st2.dataset.s = i.status; bd.append(st2);
@@ -4130,7 +4281,10 @@ function patchCollectionCardNode(card, i) {
     const epsStr = formatCardEpsMeta(i);
     const scoreVal = i.rating ? `★ ${i.rating}` : (i.extRating ? `★ ${i.extRating}` : '');
     if (cm.children[0]) cm.children[0].textContent = [i.year, fmtStr, epsStr].filter(Boolean).join(' • ');
-    if (cm.children[1]) cm.children[1].textContent = scoreVal;
+    if (cm.children[1]) {
+      cm.children[1].textContent = scoreVal;
+      cm.children[1].title = scoreVal ? (i.rating ? 'Моя личная оценка' : (i.extSrc ? `Рейтинг: ${i.extSrc}` : 'Сторонний рейтинг')) : '';
+    }
   }
   const descSnip = card.querySelector('.list-desc-snip');
   if (descSnip) descSnip.textContent = i.description || 'Описание отсутствует.';
@@ -4186,7 +4340,7 @@ function itemMatchesCurrentCollectionFilter(i) {
   return qMatch && matchesSelectedCategory(i) && matchesReleaseFilter(i) && (!xf || xmatch(i)) &&
     stMatch &&
     (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) &&
-    (lf === 'Все' || (i.lists || []).some(t => t.toLowerCase() === lf));
+    itemMatchesCollectionListFilter(i, lf);
 }
 
 function updateSingleItemCardInDOM(itemId) {
@@ -4297,7 +4451,7 @@ function render(appendMore = false) {
     return (!q || names(i).includes(q)) && matchesSelectedCategory(i) && matchesReleaseFilter(i) && (!xf || xmatch(i)) &&
       stMatch &&
       (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) &&
-      (lf === 'Все' || (i.lists || []).some(t => t.toLowerCase() === lf));
+      itemMatchesCollectionListFilter(i, lf);
   }).sort((a, b) => {
     if (so === 'dateAsc') return a.id - b.id;
     if (so === 'titleAsc') return a.title.localeCompare(b.title, 'ru');
@@ -4354,7 +4508,13 @@ if ($('colLoadMoreBtn')) {
 }
 
 $('searchInput').addEventListener('input', () => render(false));
-['statusFilter', 'tagFilter', 'sortSelect', 'listFilter'].forEach(id => $(id).addEventListener('change', () => render(false)));
+['statusFilter', 'tagFilter', 'sortSelect', 'listFilter'].forEach(id => $(id).addEventListener('change', () => {
+  if (id === 'listFilter') {
+    syncListFilterActionButtons();
+    if (typeof renderMyListsFolderBlock === 'function') renderMyListsFolderBlock();
+  }
+  render(false);
+}));
 
 // Переключение табов статусов в коллекции (включая «📥 Разобрать»)
 document.querySelectorAll('#hybStatusTabs .hyb-st-tab').forEach(btn => {
@@ -4658,17 +4818,49 @@ function setPoster(v) {
   $('inputPoster').placeholder = data ? 'Загружен свой файл ✓' : 'Ссылка на постер (URL)';
   _bindPosterPreviewImg();
 }
+function compressPosterImageToDataUrl(img, maxW = 360, maxH = 540, maxChars = 95000) {
+  const natW = Math.max(1, img.naturalWidth || img.width || 1);
+  const natH = Math.max(1, img.naturalHeight || img.height || 1);
+  let scale = Math.min(1, maxW / natW, maxH / natH);
+  const qualities = [0.82, 0.72, 0.62, 0.52];
+  let best = '';
+  for (let pass = 0; pass < 3; pass++) {
+    const w = Math.max(120, Math.round(natW * scale));
+    const h = Math.max(120, Math.round(natH * scale));
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#181a24';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    for (const q of qualities) {
+      best = c.toDataURL('image/jpeg', q);
+      if (best.length <= maxChars) return best;
+    }
+    scale *= 0.8;
+  }
+  return best;
+}
+
 $('inputPoster').oninput = () => { posterValue = $('inputPoster').value.trim(); _bindPosterPreviewImg(); draftSave(); };
 $('clearPoster').onclick = () => { setPoster(''); draftSave(); };
 $('inputPosterFile').onchange = e => {
   const f = e.target.files[0]; if (!f) return;
   const img = new Image(), url = URL.createObjectURL(f);
   img.onload = () => {
-    const w = Math.min(360, img.width), h = Math.round(img.height * w / img.width), c = document.createElement('canvas');
-    c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h);
-    setPoster(c.toDataURL('image/jpeg', .75)); URL.revokeObjectURL(url); draftSave();
+    try {
+      const dataUrl = compressPosterImageToDataUrl(img, 360, 540, 95000);
+      setPoster(dataUrl);
+      draftSave();
+      toast(`Обложка загружена (${Math.max(1, Math.round(dataUrl.length * 0.75 / 1024))} КБ)`);
+    } catch (err) {
+      toast('Не удалось обработать картинку.', true);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
   };
-  img.onerror = () => { URL.revokeObjectURL(url); toast('Не удалось прочитать картинку.'); };
+  img.onerror = () => { URL.revokeObjectURL(url); toast('Не удалось прочитать картинку.', true); };
   img.src = url; e.target.value = '';
 };
 
@@ -5666,8 +5858,16 @@ const LCOL = {красный: '#ef4444', оранжевый: '#f59e0b', жёлт
 // Явное удаление подборки с подтверждением (тайтлы остаются в коллекции, убирается только метка подборки — Этап 3 п.1)
 async function deleteCollectionFolder(name) {
   if (!name || name === 'Все') return;
+  if (isSystemManualFolder(name)) {
+    toast('Системную подборку нельзя удалить — её можно только переименовать.', true);
+    return;
+  }
   const allNames = [...(prof.customLists || []), ...items.flatMap(i => i.lists || [])];
   const canonical = allNames.find(x => x && x.toLowerCase() === name.toLowerCase()) || name;
+  if (isSystemManualFolder(canonical)) {
+    toast('Системную подборку нельзя удалить — её можно только переименовать.', true);
+    return;
+  }
   const hit = items.filter(i => (i.lists || []).some(x => x.toLowerCase() === canonical.toLowerCase()));
   if (!(await uiConfirm(`Удалить подборку «${canonical}»?\nУберётся только сама подборка, а все тайтлы (${hit.length} шт.) останутся в твоей коллекции.`, '🗑 Удалить только подборку', true))) return;
 
@@ -5687,6 +5887,30 @@ async function deleteCollectionFolder(name) {
 
 async function listEdit(name) {
   if (!name) return;
+  if (isSystemManualFolder(name)) {
+    const curSysName = getManualFolderName();
+    const curMeta = prof.manualFolderMeta || (prof.listMeta && prof.listMeta[SYSTEM_MANUAL_LIST_KEY]) || {};
+    const res = await uiListDialog(curSysName, curMeta.desc || '', curMeta.cn || 'голубой', LCOL, { isSystem: true });
+    if (!res) return;
+    const nn = res.name;
+    if (!nn) {
+      toast('Название системной подборки нельзя оставить пустым.', true);
+      return;
+    }
+    const existingUser = getAllUserCollectionNames();
+    if (existingUser.some(x => x.toLowerCase() === nn.toLowerCase())) {
+      toast(`Подборка «${nn}» уже существует. Выбери другое название.`, true);
+      return;
+    }
+    prof.manualFolderName = nn;
+    prof.manualFolderMeta = { desc: res.desc, cn: res.cn };
+    profCloud();
+    const curLf = $('listFilter')?.value || 'Все';
+    refresh({ listFilterValue: curLf });
+    toast('Системная подборка сохранена: ' + nn);
+    return;
+  }
+
   const allNames = [...(prof.customLists || []), ...items.flatMap(i => i.lists || [])];
   const canonical = allNames.find(x => x && x.toLowerCase() === name.toLowerCase()) || name;
   const hit = items.filter(i => (i.lists || []).some(x => x.toLowerCase() === canonical.toLowerCase()));
@@ -5697,6 +5921,10 @@ async function listEdit(name) {
   const nn = res.name;
   if (!nn) {
     return deleteCollectionFolder(canonical);
+  }
+  if (isSystemManualFolder(nn)) {
+    toast(`Название «${nn}» занято системной подборкой. Выбери другое название.`, true);
+    return;
   }
   delete prof.listMeta[canonical];
   prof.customLists = (prof.customLists || []).filter(x => x.toLowerCase() !== canonical.toLowerCase());
@@ -5710,48 +5938,92 @@ async function listEdit(name) {
     await batchSaveItems(hit);
   }
   profCloud();
-  refresh();
+  const prevVal = ($('listFilter')?.value || '').toLowerCase();
+  refresh({ listFilterValue: prevVal === canonical.toLowerCase() ? nn.toLowerCase() : ($('listFilter')?.value || 'Все') });
   toast('Подборка сохранена: ' + nn);
 }
 
-// Отрисовка отдельного блока «📁 Мои подборки» (Этап 3 п.1)
+// Отрисовка отдельного блока «📁 Мои подборки» (Этап 3 п.1 + защищённая системная папка «Добавлено вручную»)
 function renderMyListsFolderBlock() {
   const block = $('myListsBlock'), gridEl = $('myListsFoldersGrid'), metaEl = $('myListsCountMeta'), resetB = $('resetListFilterBtn'), createTopB = $('createListTopBtn');
   if (!block || !gridEl) return;
   const activeProf = prof;
   if (createTopB) createTopB.style.display = '';
 
+  const visItems = getVisibleItems();
+  const sysName = getManualFolderName(activeProf);
+  const sysLow = sysName.toLowerCase();
+  const sysCnt = visItems.filter(isManualItemEditable).length;
+
   const countsMap = new Map();
   const displayMap = new Map();
   (activeProf.customLists || []).forEach(n => {
-    if (n && !displayMap.has(n.toLowerCase())) {
-      displayMap.set(n.toLowerCase(), n);
-      countsMap.set(n.toLowerCase(), 0);
+    const clean = String(n || '').trim();
+    if (!clean) return;
+    const k = clean.toLowerCase();
+    if (k === SYSTEM_MANUAL_LIST_KEY || k === sysLow) return;
+    if (!displayMap.has(k)) {
+      displayMap.set(k, clean);
+      countsMap.set(k, 0);
     }
   });
-  getVisibleItems().forEach(i => {
+  visItems.forEach(i => {
     (i.lists || []).forEach(n => {
-      if (!n) return;
-      const k = n.toLowerCase();
-      if (!displayMap.has(k)) displayMap.set(k, n);
+      const clean = String(n || '').trim();
+      if (!clean) return;
+      const k = clean.toLowerCase();
+      if (k === SYSTEM_MANUAL_LIST_KEY || k === sysLow) return;
+      if (!displayMap.has(k)) displayMap.set(k, clean);
       countsMap.set(k, (countsMap.get(k) || 0) + 1);
     });
   });
 
   const entries = [...displayMap.entries()].sort((a, b) => a[1].localeCompare(b[1], 'ru'));
+  const totalFolders = entries.length + 1;
   const curFilter = ($('listFilter')?.value || 'Все').toLowerCase();
-  if (metaEl) metaEl.textContent = `${entries.length} ${pluralRu(entries.length, 'папка', 'папки', 'папок')}`;
+  if (metaEl) metaEl.textContent = `${totalFolders} ${pluralRu(totalFolders, 'папка', 'папки', 'папок')}`;
   if (resetB) {
     resetB.style.display = curFilter !== 'все' ? '' : 'none';
-    resetB.onclick = () => { $('listFilter').value = 'Все'; render(); renderMyListsFolderBlock(); };
+    resetB.onclick = () => {
+      $('listFilter').value = 'Все';
+      syncListFilterActionButtons();
+      render();
+      renderMyListsFolderBlock();
+    };
   }
 
   gridEl.replaceChildren();
-  if (!entries.length) {
-    gridEl.append(el('span', 'meta', 'Личных папок пока нет — нажми «＋ Подборка», чтобы создать первую.'));
-    return;
-  }
 
+  // 1) Всегда первой — защищённая системная подборка для ручных тайтлов (без кнопки удаления, но с переименованием)
+  const sysPill = el('div', 'folder-pill folder-pill-sys' + (curFilter === SYSTEM_MANUAL_LIST_KEY ? ' active' : ''));
+  sysPill.dataset.folderKey = SYSTEM_MANUAL_LIST_KEY;
+  const sysMeta = activeProf.manualFolderMeta || (activeProf.listMeta || {})[SYSTEM_MANUAL_LIST_KEY] || {};
+  const sysDot = el('span');
+  const sysHex = (sysMeta.cn && LCOL[sysMeta.cn]) ? LCOL[sysMeta.cn] : '#38bdf8';
+  sysDot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${sysHex};display:inline-block`;
+  const sysLbl = el('span', null, `🔒 ${sysName} (${sysCnt})`);
+  sysPill.title = sysMeta.desc || 'Системная подборка: сюда автоматически попадают тайтлы, добавленные вручную (нельзя удалить, можно переименовать)';
+  sysPill.append(sysDot, sysLbl);
+  sysPill.onclick = () => {
+    if (document.body.dataset.pview !== 'collection' && typeof applyMainTabView === 'function') {
+      applyMainTabView('collection');
+    }
+    if ($('reviewItemsBox')) $('reviewItemsBox').style.display = 'none';
+    $('profColWrap').style.display = '';
+    $('listFilter').value = ($('listFilter').value === SYSTEM_MANUAL_LIST_KEY) ? 'Все' : SYSTEM_MANUAL_LIST_KEY;
+    syncListFilterActionButtons();
+    render();
+    renderMyListsFolderBlock();
+  };
+  const sysEdB = el('button', 'fp-act', '✏');
+  sysEdB.type = 'button';
+  sysEdB.title = 'Переименовать / цвет системной подборки';
+  sysEdB.setAttribute('aria-label', `Переименовать системную подборку ${sysName}`);
+  sysEdB.onclick = e => { e.stopPropagation(); listEdit(SYSTEM_MANUAL_LIST_KEY); };
+  sysPill.append(sysEdB);
+  gridEl.append(sysPill);
+
+  // 2) Пользовательские подборки (с редактированием и удалением)
   entries.forEach(([lowKey, dispName]) => {
     const cnt = countsMap.get(lowKey) || 0;
     const pill = el('div', 'folder-pill' + (curFilter === lowKey ? ' active' : ''));
@@ -5770,15 +6042,18 @@ function renderMyListsFolderBlock() {
       if ($('reviewItemsBox')) $('reviewItemsBox').style.display = 'none';
       $('profColWrap').style.display = '';
       $('listFilter').value = ($('listFilter').value.toLowerCase() === lowKey) ? 'Все' : lowKey;
+      syncListFilterActionButtons();
       render();
       renderMyListsFolderBlock();
     };
 
     const edB = el('button', 'fp-act', '✏');
     edB.type = 'button'; edB.title = 'Переименовать / цвет подборки';
+    edB.setAttribute('aria-label', `Переименовать подборку ${dispName}`);
     edB.onclick = e => { e.stopPropagation(); listEdit(dispName); };
     const delB = el('button', 'fp-act del', '🗑');
     delB.type = 'button'; delB.title = 'Удалить подборку (тайтлы останутся)';
+    delB.setAttribute('aria-label', `Удалить подборку ${dispName}`);
     delB.onclick = e => { e.stopPropagation(); deleteCollectionFolder(dispName); };
     pill.append(edB, delB);
     gridEl.append(pill);
@@ -5786,8 +6061,53 @@ function renderMyListsFolderBlock() {
 }
 
 // ---- Подписи полей формы (без поля inputRecBy и inputMyNote)
-const LBL = {inputCategory: 'Категория', inputStatus: 'Статус просмотра', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputRomaji: 'Романдзи (латиница)', inputTitleOrig: 'Оригинальное название', inputAlt: 'Синонимы (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputCompletedAt: 'Дата просмотра / завершения', inputRewatchCount: 'Счётчик пересмотров (раз)', inputExtRating: 'Внешняя оценка', inputExtSrc: 'Сайт внешней оценки', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (через запятую)', inputEps: 'Серий или глав', inputWatchedEps: 'Просмотрено серий / прочитано глав', inputVols: 'Томов (для манги и ранобэ)', inputDur: 'Минут на серию или фильм', inputDescription: 'Синопсис / описание'};
+const LBL = {inputCategory: 'Категория', inputStatus: 'Статус просмотра', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputRomaji: 'Романдзи (латиница)', inputTitleOrig: 'Оригинальное название', inputAlt: 'Синонимы (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя личная оценка (1–10, необязательно)', inputCompletedAt: 'Дата просмотра / завершения', inputRewatchCount: 'Счётчик пересмотров (раз)', inputExtRating: 'Сторонний рейтинг (0–10)', inputExtSrcSelect: 'Источник рейтинга', inputExtSrc: 'Своя площадка (вручную)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (через запятую)', inputEps: 'Серий или глав', inputWatchedEps: 'Просмотрено серий / прочитано глав', inputVols: 'Томов (для манги и ранобэ)', inputDur: 'Минут на серию или фильм', inputDescription: 'Синопсис / описание'};
 Object.entries(LBL).forEach(([id, t]) => { const e = $(id); if (!e) return; const w = el('div', 'fld'); e.replaceWith(w); w.append(el('label', null, t), e); });
+
+function syncExtSrcSelectFromValue(rawVal) {
+  const sel = $('inputExtSrcSelect');
+  const inp = $('inputExtSrc');
+  if (!sel || !inp) return;
+  const customWrap = inp.closest('.fld') || inp;
+  const clean = String(rawVal != null ? rawVal : inp.value || '').trim();
+  if (!clean) {
+    sel.value = '';
+    inp.value = '';
+    customWrap.style.display = 'none';
+    return;
+  }
+  const presetOpt = [...sel.options].find(o => o.value && o.value !== '__custom__' && o.value.toLowerCase() === clean.toLowerCase());
+  if (presetOpt) {
+    sel.value = presetOpt.value;
+    inp.value = presetOpt.value;
+    customWrap.style.display = 'none';
+  } else {
+    sel.value = '__custom__';
+    inp.value = clean;
+    customWrap.style.display = '';
+  }
+}
+
+if ($('inputExtSrcSelect') && $('inputExtSrc')) {
+  const extSel = $('inputExtSrcSelect');
+  const extInp = $('inputExtSrc');
+  const customWrap = extInp.closest('.fld') || extInp;
+  customWrap.style.display = 'none';
+  extSel.addEventListener('change', () => {
+    const v = extSel.value;
+    if (v === '__custom__') {
+      const isPresetNow = [...extSel.options].some(o => o.value && o.value !== '__custom__' && o.value.toLowerCase() === extInp.value.trim().toLowerCase());
+      if (isPresetNow) extInp.value = '';
+      customWrap.style.display = '';
+      setTimeout(() => extInp.focus(), 20);
+    } else {
+      extInp.value = v;
+      customWrap.style.display = 'none';
+    }
+    pvDraw();
+    draftSave();
+  });
+}
 
 if ($('toggleOtherTitlesBtn')) {
   $('toggleOtherTitlesBtn').onclick = () => {
@@ -5979,10 +6299,16 @@ $('inputStatus')?.addEventListener('change', syncWatchedEpsFieldInAddModal);
 $('inputEps')?.addEventListener('input', syncWatchedEpsFieldInAddModal);
 
 function pvDraw() {
-  const b = $('pvCard'); b.replaceChildren(); const pc = el('div', 'pvp'), im = el('img'), st = el('div', 'status', $('inputStatus').value), info = el('div');
-  im.alt = ''; im.src = $('posterPreview').src || FALL; st.dataset.s = $('inputStatus').value; pc.append(im, st);
-  const extVal = $('inputExtRating')?.value ? ('★ ' + $('inputExtRating').value + ($('inputExtSrc')?.value.trim() ? ' (' + $('inputExtSrc').value.trim() + ')' : '')) : '';
-  info.append(el('div', 'title', $('inputTitle').value || 'Название тайтла'), el('div', 'meta', [$('inputYear').value, $('inputCategory').value, extVal].filter(Boolean).join(' • ')), el('div', 'tg', $('inputTags').value));
+  const b = $('pvCard'); b.replaceChildren();
+  const stRaw = $('inputStatus').value, catVal = $('inputCategory').value;
+  const pc = el('div', 'pvp'), im = el('img'), st = el('div', 'status', getStatusLabelForCategory(stRaw, catVal)), info = el('div');
+  im.alt = ''; im.src = $('posterPreview').src || FALL; st.dataset.s = stRaw; pc.append(im, st);
+  const myVal = ($('inputRating')?.value || '').trim();
+  if (myVal) pc.append(el('div', 'mine', '★ ' + myVal));
+  const extRaw = ($('inputExtRating')?.value || '').trim();
+  const extSrcVal = ($('inputExtSrc')?.value || '').trim();
+  const extVal = extRaw ? ('★ ' + extRaw + (extSrcVal ? ' (' + extSrcVal + ')' : '')) : '';
+  info.append(el('div', 'title', $('inputTitle').value || 'Название тайтла'), el('div', 'meta', [$('inputYear').value, catVal, extVal].filter(Boolean).join(' • ')), el('div', 'tg', $('inputTags').value));
   b.append(pc, info);
 }
 $('addModal').addEventListener('input', pvDraw); $('addModal').addEventListener('change', pvDraw); $('posterPreview').addEventListener('load', pvDraw);
@@ -6005,13 +6331,14 @@ function openAdd(item) {
   $('inputRewatchCount').value = num(i.rewatchCount) || '';
   $('inputExtRating').value = i.extRating || '';
   $('inputExtSrc').value = i.extSrc || '';
+  syncExtSrcSelectFromValue(i.extSrc || '');
   $('inputDescription').value = i.description || '';
   $('inputTitleEn').value = i.titleEn || '';
   if ($('inputRomaji')) $('inputRomaji').value = i.romaji || '';
   $('inputTitleOrig').value = i.titleOrig || '';
   $('inputAlt').value = i.alt || '';
   $('inputTags').value = (i.tags || []).join(', ');
-  $('inputLists').value = (i.lists || []).join(', ');
+  $('inputLists').value = getUserListsForItem(i).join(', ');
   if ($('addSysTagsPicker')) $('addSysTagsPicker').style.display = 'none';
   if ($('addSysTagsBtn')) { $('addSysTagsBtn').classList.remove('on'); $('addSysTagsBtn').textContent = '🏷 Выбрать'; }
   window._editingRecBy = i.recBy || '';
@@ -6067,7 +6394,8 @@ function draftRestore() {
   let d = null;
   try { d = JSON.parse(localStorage.getItem('draft') || 'null'); } catch (e) {}
   if (!d || !d.inputTitle) return;
-  DF.forEach(k => { if (d[k] != null && $(k)) $(k).value = d[k]; });
+  DF.forEach(k => { if (k !== 'inputExtSrcSelect' && d[k] != null && $(k)) $(k).value = d[k]; });
+  syncExtSrcSelectFromValue($('inputExtSrc')?.value || '');
   if (d._posterValue) setPoster(d._posterValue);
   starPaint(); catFields(); pvDraw();
   toast('Восстановил несохранённый черновик (включая постер)', false, {label: 'Очистить', fn: () => { draftClear(); openAdd(null); }});
@@ -6087,9 +6415,14 @@ function setAddFormManualMode() {
   const f = e.dataTransfer && e.dataTransfer.files[0];
   if (!f || !f.type.startsWith('image/')) return toast('Перетащи сюда картинку (jpg, png, webp)', true);
   try {
-    const d = await imgData(f, 400, 600, 0.82);
+    const d = await new Promise((ok, no) => {
+      const im = new Image(), url = URL.createObjectURL(f);
+      im.onload = () => { try { ok(compressPosterImageToDataUrl(im, 360, 540, 95000)); } catch (err) { no(err); } finally { URL.revokeObjectURL(url); } };
+      im.onerror = err => { URL.revokeObjectURL(url); no(err); };
+      im.src = url;
+    });
     setPoster(d); draftSave();
-    toast(`Постер загружен: ${Math.round(d.length * 0.75 / 1024)} КБ`);
+    toast(`Обложка загружена (${Math.max(1, Math.round(d.length * 0.75 / 1024))} КБ)`);
   } catch (e2) { toast('Не удалось прочитать картинку', true); }
 }));
 
@@ -6103,6 +6436,10 @@ $('saveItemBtn').onclick = async () => {
     const title = $('inputTitle').value.trim(), year = $('inputYear').value, editId = $('editId').value;
     if (!title) return toast('Название обязательно!');
     if (year && (year < 1900 || year > 2100)) return toast('Год должен быть между 1900 и 2100');
+    const extNorm = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.normalizeExternalRatingInput === 'function')
+      ? KirokuEngine.normalizeExternalRatingInput($('inputExtRating').value, $('inputExtSrc').value)
+      : { valid: true, rating: String($('inputExtRating').value || '').trim(), source: String($('inputExtSrc').value || '').trim() };
+    if (!extNorm.valid) return toast('Сторонний рейтинг должен быть числом от 0 до 10', true);
     const category = $('inputCategory').value;
     const picked = window._afPickedMeta || {};
     const candidateCheck = {
@@ -6129,6 +6466,8 @@ $('saveItemBtn').onclick = async () => {
     if (!isDoneSt && !dateInputVal) completedAtTs = 0;
 
     const oldRec = editId ? items.find(x => x.id === Number(editId)) : null;
+    let finalPoster = posterValue || ($('inputPoster')?.value || '').trim();
+    if (finalPoster.startsWith('//')) finalPoster = 'https:' + finalPoster;
     const it = {
       id: editId ? Number(editId) : newId(),
       addedAt: oldRec?.addedAt || (editId ? born(oldRec || {}) : Date.now()) || Date.now(),
@@ -6138,13 +6477,13 @@ $('saveItemBtn').onclick = async () => {
       status: statusVal,
       needsReview: false,
       fav: $('inputFavHeart').checked,
-      poster: posterValue,
+      poster: finalPoster,
       year,
       rating: $('inputRating').value,
       completedAt: completedAtTs,
       rewatchCount: +$('inputRewatchCount').value || 0,
-      extRating: $('inputExtRating').value,
-      extSrc: ($('inputExtSrc').value || '').trim(),
+      extRating: extNorm.rating,
+      extSrc: extNorm.source,
       description: $('inputDescription').value.trim(),
       titleEn: $('inputTitleEn').value.trim(),
       romaji: $('inputRomaji') ? $('inputRomaji').value.trim() : '',
@@ -6155,7 +6494,7 @@ $('saveItemBtn').onclick = async () => {
       source: $('inputSource').value,
       ongoing: $('inputOngoing').checked,
       tags: parseTags($('inputTags').value),
-      lists: parseTags($('inputLists').value),
+      lists: stripSystemManualFromLists(parseTags($('inputLists').value)),
       recBy: window._editingRecBy || picked.recBy || '',
       eps: +$('inputEps').value || 0,
       watchedEps: Math.max(0, Math.floor(+$('inputWatchedEps')?.value || 0)),
@@ -6165,7 +6504,8 @@ $('saveItemBtn').onclick = async () => {
       mal: picked.mal || 0,
       tmdb: picked.tmdb || '',
       format: picked.format || '',
-      isAdult: Boolean(picked.isAdult)
+      isAdult: Boolean(picked.isAdult),
+      isManual: !picked.aniId && !picked.mal && !picked.shikiId && !picked.mdId && !(picked.tmdb && String(picked.tmdb).includes('/')) && !picked.imdbId && (!oldRec || isManualItemEditable(oldRec))
     };
     syncItemProgressOnStatusChange(it, statusVal);
 
@@ -6186,6 +6526,9 @@ $('saveItemBtn').onclick = async () => {
       ['pin', 'seasons', 'seasonsMeta', 'format', 'aniId', 'mal', 'shikiId', 'mdId', 'tmdb', 'imdbId', 'vols', 'trailerId', 'badgeCharImg', 'badgeCharName', '_docId', 'importBatchId', 'importSource', 'isAdult', 'isTmdbAnime', 'origLang', 'originCountry', 'tmdbGenreIds'].forEach(k => {
         if (old[k] && !it[k]) it[k] = old[k];
       });
+      if (it.aniId || it.mal || it.shikiId || it.mdId || (it.tmdb && String(it.tmdb).includes('/')) || it.imdbId) {
+        it.isManual = false;
+      }
     } else if (user && user.uid) {
       it._docId = user.uid + '_' + it.id;
     }
@@ -6206,7 +6549,7 @@ $('saveItemBtn').onclick = async () => {
       refresh();
       closeAll(again ? true : false);
     }
-    cloudSave(it); profCloud(true); draftClear();
+    cloudSave(it); flushLocalItemsNow(false); profCloud(true); draftClear();
     if (again && !editId) { toast('Добавлено: ' + it.title); openAdd(null); }
   } finally { saving = false; again = false; }
 };
@@ -6291,7 +6634,22 @@ function openDetail(id) {
     const v = (k === 'source' ? [i.source] : (i[k] || '').split(',').map(x => x.trim())).filter(Boolean);
     if (!v.length) return;
     const row = el('div', 'cr'); row.append(el('span', 'meta', lab + ':'));
-    v.forEach(x => { const c = el('button', 'chip', x); c.onclick = () => { closeAll(); xf = {k, v: x}; render(); toList(); }; row.append(c); });
+    v.forEach(x => {
+      const c = el('button', 'chip', x);
+      c.type = 'button';
+      c.onclick = () => {
+        if (typeof openCollectionMetadataFilter === 'function') {
+          openCollectionMetadataFilter({ xf: { k, v: x } }, { fromModal: true });
+        } else {
+          closeAll();
+          if ($('searchInput')) $('searchInput').value = '';
+          xf = { k, v: x };
+          render();
+          toList();
+        }
+      };
+      row.append(c);
+    });
     cr.append(row);
   });
   if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.collectExternalIdBadges === 'function') {
@@ -6315,7 +6673,7 @@ function openDetail(id) {
     }
   }
 
-  let ratingTxt = `★ Оценка: ${i.rating ? i.rating + '/10' : '-/10'}${i.extRating ? ' | Внешняя оценка: ' + i.extRating + (i.extSrc ? ' (' + i.extSrc + ')' : '') : ''}`;
+  let ratingTxt = `★ Моя оценка: ${i.rating ? i.rating + '/10' : 'не указана'}${i.extRating ? ' | Рейтинг сообщества: ' + i.extRating + (i.extSrc ? ' (' + i.extSrc + ')' : '') : ''}`;
   if (i.criteria) {
     const c = i.criteria;
     ratingTxt += ` · [Сюжет: ${c.story} | Рисовка: ${c.art} | Герои: ${c.chars} | Музыка: ${c.music}]`;
@@ -6323,17 +6681,60 @@ function openDetail(id) {
   $('detailRating').textContent = ratingTxt;
 
   const tg = $('detailTags'); tg.replaceChildren();
-  (i.tags || []).forEach(t => { const c = el('button', 'chip', t); c.onclick = () => { closeAll(); $('tagFilter').value = t.toLowerCase(); render(); toList(); }; tg.append(c); });
-  (i.lists || []).forEach(listName => {
-    const wrap = el('span', 'chip'); wrap.style.display = 'inline-flex'; wrap.style.gap = '6px';
-    const lbl = el('span', null, '📁 ' + listName); lbl.onclick = () => { closeAll(); $('listFilter').value = listName.toLowerCase(); render(); toList(); };
-    wrap.append(lbl);
-    {
-      const delX = el('b', null, '✕'); delX.title = 'Убрать из подборки';
-      delX.onclick = e => { e.stopPropagation(); i.lists = (i.lists || []).filter(x => x.toLowerCase() !== listName.toLowerCase()); cloudSave(i); refresh(); openDetail(id); toast(`Убрано из «${listName}»`); };
-      wrap.append(delX);
-    }
-    tg.append(wrap);
+  (i.tags || []).forEach(t => {
+    const c = el('button', 'chip', t);
+    c.type = 'button';
+    c.onclick = () => {
+      if (typeof openCollectionMetadataFilter === 'function') {
+        openCollectionMetadataFilter({ tag: t.toLowerCase() }, { fromModal: true });
+      } else {
+        closeAll();
+        if ($('searchInput')) $('searchInput').value = '';
+        $('tagFilter').value = t.toLowerCase();
+        render();
+        toList();
+      }
+    };
+    tg.append(c);
+  });
+  if (isManualItemEditable(i)) {
+    const sysName = getManualFolderName();
+    const sysChip = el('button', 'chip chip-sys-list', '🔒 ' + sysName);
+    sysChip.type = 'button';
+    sysChip.title = 'Системная подборка для ручных тайтлов (нажми, чтобы открыть)';
+    sysChip.onclick = () => {
+      if (typeof openCollectionMetadataFilter === 'function') {
+        openCollectionMetadataFilter({ list: SYSTEM_MANUAL_LIST_KEY }, { fromModal: true });
+      } else {
+        closeAll();
+        if ($('searchInput')) $('searchInput').value = '';
+        $('listFilter').value = SYSTEM_MANUAL_LIST_KEY;
+        syncListFilterActionButtons();
+        render();
+        renderMyListsFolderBlock();
+        toList();
+      }
+    };
+    tg.append(sysChip);
+  }
+  getUserListsForItem(i).forEach(listName => {
+    const chip = el('button', 'chip chip-user-list', '📁 ' + listName);
+    chip.type = 'button';
+    chip.title = 'Открыть подборку (убрать можно через кнопку «В подборку»)';
+    chip.onclick = () => {
+      if (typeof openCollectionMetadataFilter === 'function') {
+        openCollectionMetadataFilter({ list: listName.toLowerCase() }, { fromModal: true });
+      } else {
+        closeAll();
+        if ($('searchInput')) $('searchInput').value = '';
+        $('listFilter').value = listName.toLowerCase();
+        syncListFilterActionButtons();
+        render();
+        renderMyListsFolderBlock();
+        toList();
+      }
+    };
+    tg.append(chip);
   });
 
   const dKeyDetail = 'd_' + getRuCacheKey(i);
@@ -6431,8 +6832,9 @@ function openDetail(id) {
       : null;
     const ongNote = ongSummary && ongSummary.shortBadge ? ` • ${ongSummary.shortBadge}` : '';
     $('detailMeta').textContent = `${catLabel(i)} • ${i.year || 'Год не указан'}${detRelText}${compStr}${i.seasons > 1 ? ' • ' + i.seasons + ' ' + pluralRu(i.seasons, 'сезон', 'сезона', 'сезонов') : ''}${i.eps ? ' • ' + i.eps + (i.category === 'Манга' || i.category === 'Ранобэ' ? ' гл.' : ' эп.') : ''}${i.vols ? ' • ' + i.vols + ' ' + pluralRu(i.vols, 'том', 'тома', 'томов') : ''}${i.dur ? ' • ' + i.dur + ' мин' : ''}${ongNote}`;
+    const isReadItem = isReadCategory(i.category);
     if (favB) favB.textContent = i.fav ? '❤ В любимом' : '🤍 В любимое';
-    if (rewB) rewB.textContent = `🔁 Пересмотрено: ${num(i.rewatchCount)} раз (+1)`;
+    if (rewB) rewB.textContent = `🔁 ${isReadItem ? 'Перечитано' : 'Пересмотрено'}: ${num(i.rewatchCount)} раз (+1)`;
     if (rewMinB) rewMinB.style.display = num(i.rewatchCount) > 0 ? '' : 'none';
     renderEpisodeProgressControl($('detailProgressWrap'), i);
   };
@@ -6453,10 +6855,11 @@ function openDetail(id) {
     };
   }
 
-  // Счётчик повторных просмотров (+1, -1, откат и возврат прежнего статуса и прогресса)
+  // Счётчик повторных просмотров/прочтений (+1, -1, откат и возврат прежнего статуса и прогресса)
   if (rewB) {
+    const isReadItem = isReadCategory(i.category);
     rewB.style.display = '';
-    rewB.textContent = `🔁 Пересмотрено: ${num(i.rewatchCount)} раз (+1)`;
+    rewB.textContent = `🔁 ${isReadItem ? 'Перечитано' : 'Пересмотрено'}: ${num(i.rewatchCount)} раз (+1)`;
     rewB.onclick = () => {
       const prevCount = num(i.rewatchCount);
       const prevSt = i.status;
@@ -6470,7 +6873,7 @@ function openDetail(id) {
         syncItemProgressOnStatusChange(i, i.status);
       }
       cloudSave(i); profCloud(true); refresh({ itemId: i.id }); syncDetailQuickState();
-      toast(`Пересмотров: ${i.rewatchCount}`, false, {
+      toast(`${isReadItem ? 'Перечитано раз' : 'Пересмотров'}: ${i.rewatchCount}`, false, {
         label: '↩ Отменить',
         fn: () => {
           i.rewatchCount = prevCount;

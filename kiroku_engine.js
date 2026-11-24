@@ -28,13 +28,15 @@
       'userId',
       '_docId',
       'kind',
-      'archived'
+      'archived',
+      '_posterInIdb',
+      '_badgeInIdb'
     ]);
     for (const [k, v] of Object.entries(raw)) {
       if (skipKeys.has(k) || v === undefined) continue;
       if (v === '' || v === null) continue;
       if (Array.isArray(v) && v.length === 0) continue;
-      if (v === false && (k === 'fav' || k === 'pin' || k === 'ongoing' || k === 'needsReview' || k === 'isAdult')) continue;
+      if (v === false && (k === 'fav' || k === 'pin' || k === 'ongoing' || k === 'needsReview' || k === 'isAdult' || k === 'isManual')) continue;
       if (v === 0 && (k === 'rewatchCount' || k === 'watchedEps' || k === 'completedAt' || k === 'aniId' || k === 'mal' || k === 'eps' || k === 'vols' || k === 'dur')) continue;
       out[k] = v;
     }
@@ -294,8 +296,14 @@
     return { key: 'md', cols: 2, shortLabel: '⊞ 2', fullLabel: 'Средние (2 в ряд)' };
   }
 
+  const SYSTEM_MANUAL_LIST_KEY = '__sys_manual__';
+  const DEFAULT_MANUAL_LIST_NAME = 'Добавлено вручную';
+
   const EXTERNAL_CATALOG_SOURCES = new Set([
     'anilist', 'shikimori', 'jikan', 'mangadex', 'tmdb', 'google books', 'комиксы'
+  ]);
+  const CATALOG_ONLY_EXT_SOURCES = new Set([
+    'google books', 'комиксы'
   ]);
 
   function isManualTitleItem(item) {
@@ -306,13 +314,50 @@
     if (item.mdId && String(item.mdId).trim()) return false;
     if (item.tmdb && String(item.tmdb).includes('/')) return false;
     if (item.imdbId && String(item.imdbId).trim()) return false;
-    const srcLower = String(item.src || item.extSrc || '').trim().toLowerCase();
-    if (srcLower && EXTERNAL_CATALOG_SOURCES.has(srcLower)) return false;
+    if (item.isManual === true) return true;
+    const rawSrcLower = String(item.src || '').trim().toLowerCase();
+    if (rawSrcLower && EXTERNAL_CATALOG_SOURCES.has(rawSrcLower)) return false;
+    const extSrcLower = String(item.extSrc || '').trim().toLowerCase();
+    if (extSrcLower && CATALOG_ONLY_EXT_SOURCES.has(extSrcLower)) return false;
     const urlStr = String(item.url || '').trim().toLowerCase();
     if (urlStr && /(anilist\.co|shikimori\.(io|one)|myanimelist\.net|themoviedb\.org|mangadex\.org)/.test(urlStr)) {
       return false;
     }
     return true;
+  }
+
+  function resolveManualListName(profObj) {
+    const raw = profObj && typeof profObj === 'object' ? profObj.manualFolderName : '';
+    const clean = String(raw || '').trim();
+    return clean || DEFAULT_MANUAL_LIST_NAME;
+  }
+
+  function isSystemManualListRef(val, profObj) {
+    const clean = String(val || '').trim();
+    if (!clean) return false;
+    const low = clean.toLowerCase();
+    if (low === SYSTEM_MANUAL_LIST_KEY) return true;
+    return low === resolveManualListName(profObj).toLowerCase();
+  }
+
+  function stripSystemManualListFromUserLists(lists, profObj) {
+    if (!Array.isArray(lists)) return [];
+    const sysLow = resolveManualListName(profObj).toLowerCase();
+    return lists.filter(v => {
+      const low = String(v || '').trim().toLowerCase();
+      return Boolean(low && low !== SYSTEM_MANUAL_LIST_KEY && low !== sysLow);
+    });
+  }
+
+  function itemMatchesListFilter(item, filterVal, profObj) {
+    const lf = String(filterVal || 'Все').trim();
+    if (!lf || lf === 'Все' || lf.toLowerCase() === 'все') return true;
+    const low = lf.toLowerCase();
+    if (low === SYSTEM_MANUAL_LIST_KEY) {
+      return isManualTitleItem(item);
+    }
+    return Array.isArray(item && item.lists)
+      && item.lists.some(t => String(t || '').trim().toLowerCase() === low);
   }
 
   function resolveBestTitleDescription(activeItem, fallbackItem, cachedRuDesc) {
@@ -332,12 +377,19 @@
     return ruHit || cleaned[0];
   }
 
-  function filterAndListCollections(allFolders, itemLists, query, countsMap) {
+  function filterAndListCollections(allFolders, itemLists, query, countsMap, opts) {
+    const cfg = opts && typeof opts === 'object' ? opts : null;
+    const sysName = cfg && cfg.systemManualName ? String(cfg.systemManualName).trim() : '';
+    const sysLow = sysName ? sysName.toLowerCase() : '';
+    const sysCount = cfg ? Math.max(0, Number(cfg.systemManualCount) || 0) : 0;
+    const isManualItem = Boolean(cfg && cfg.isManualItem);
+
     const seen = new Map();
     const addFolder = raw => {
       const name = String(raw || '').trim();
       if (!name) return;
       const key = name.toLowerCase();
+      if (key === SYSTEM_MANUAL_LIST_KEY || (sysLow && key === sysLow)) return;
       if (!seen.has(key)) seen.set(key, name);
     };
     (Array.isArray(allFolders) ? allFolders : []).forEach(addFolder);
@@ -346,30 +398,45 @@
     const itemSet = new Set(
       (Array.isArray(itemLists) ? itemLists : [])
         .map(v => String(v || '').trim().toLowerCase())
-        .filter(Boolean)
+        .filter(k => k && k !== SYSTEM_MANUAL_LIST_KEY && (!sysLow || k !== sysLow))
     );
 
     const sorted = [...seen.values()].sort((a, b) => a.localeCompare(b, 'ru'));
     const qRaw = String(query || '').trim();
     const qLower = qRaw.toLowerCase();
 
-    const filtered = sorted
+    const filtered = [];
+    if (sysName && (!qLower || sysLow.includes(qLower))) {
+      filtered.push({
+        name: sysName,
+        key: SYSTEM_MANUAL_LIST_KEY,
+        inList: isManualItem,
+        count: sysCount,
+        isSystem: true,
+        locked: true
+      });
+    }
+
+    sorted
       .filter(name => !qLower || name.toLowerCase().includes(qLower))
-      .map(name => {
+      .forEach(name => {
         const key = name.toLowerCase();
         const count = countsMap && typeof countsMap === 'object'
           ? (Number(countsMap[key]) || 0)
           : 0;
-        return {
+        filtered.push({
           name,
+          key,
           inList: itemSet.has(key),
-          count
-        };
+          count,
+          isSystem: false,
+          locked: false
+        });
       });
 
-    const exactExists = Boolean(qLower && seen.has(qLower));
+    const exactExists = Boolean(qLower && (seen.has(qLower) || (sysLow && qLower === sysLow) || qLower === SYSTEM_MANUAL_LIST_KEY));
     return {
-      totalCount: sorted.length,
+      totalCount: sorted.length + (sysName ? 1 : 0),
       items: filtered,
       query: qRaw,
       canCreateNew: Boolean(qRaw && !exactExists)
@@ -444,6 +511,75 @@
     return out;
   }
 
+  // Восстановление вырезанных ради экономии localStorage base64-постеров и мини-значков из IndexedDB
+  function hydrateStrippedBase64FromIdb(primaryItems, idbItems) {
+    const src = Array.isArray(primaryItems) ? primaryItems : [];
+    const idbById = new Map();
+    if (Array.isArray(idbItems)) {
+      for (const it of idbItems) {
+        if (it && it.id !== undefined && it.id !== null) {
+          idbById.set(String(it.id), it);
+        }
+      }
+    }
+    return src.map(item => {
+      if (!item || typeof item !== 'object') return item;
+      const needsCleanFlag = Object.prototype.hasOwnProperty.call(item, '_posterInIdb')
+        || Object.prototype.hasOwnProperty.call(item, '_badgeInIdb');
+      const idbMatch = (item.id !== undefined && item.id !== null) ? idbById.get(String(item.id)) : null;
+      const itemTs = Number(item.updatedAt || 0);
+      const idbTs = idbMatch ? Number(idbMatch.updatedAt || 0) : 0;
+
+      const canRestorePoster = !item.poster
+        && idbMatch
+        && typeof idbMatch.poster === 'string'
+        && idbMatch.poster.startsWith('data:')
+        && (Boolean(item._posterInIdb) || itemTs <= idbTs);
+
+      const canRestoreBadge = !item.badgeCharImg
+        && idbMatch
+        && typeof idbMatch.badgeCharImg === 'string'
+        && idbMatch.badgeCharImg.startsWith('data:')
+        && (Boolean(item._badgeInIdb) || itemTs <= idbTs);
+
+      if (!needsCleanFlag && !canRestorePoster && !canRestoreBadge) return item;
+      const copy = { ...item };
+      delete copy._posterInIdb;
+      delete copy._badgeInIdb;
+      if (canRestorePoster) copy.poster = idbMatch.poster;
+      if (canRestoreBadge) copy.badgeCharImg = idbMatch.badgeCharImg;
+      return copy;
+    });
+  }
+
+  // Защита загруженных с устройства base64-постеров при слиянии с облаком (не затирает свежий локальный постер пустым значением)
+  function preserveLocalUploadedPostersOnCloudMerge(cloudItems, localItems) {
+    const cloud = Array.isArray(cloudItems) ? cloudItems : [];
+    if (!Array.isArray(localItems) || !localItems.length) return cloud;
+    const localById = new Map();
+    for (const it of localItems) {
+      if (it && it.id !== undefined && it.id !== null) {
+        localById.set(String(it.id), it);
+      }
+    }
+    return cloud.map(cItem => {
+      if (!cItem || typeof cItem !== 'object' || cItem.id === undefined || cItem.id === null) return cItem;
+      const lItem = localById.get(String(cItem.id));
+      if (!lItem) return cItem;
+      const localTs = Number(lItem.updatedAt || 0);
+      const cloudTs = Number(cItem.updatedAt || 0);
+      if (localTs < cloudTs) return cItem;
+
+      const restorePoster = !cItem.poster && typeof lItem.poster === 'string' && lItem.poster.startsWith('data:image/');
+      const restoreBadge = !cItem.badgeCharImg && typeof lItem.badgeCharImg === 'string' && lItem.badgeCharImg.startsWith('data:image/');
+      if (!restorePoster && !restoreBadge) return cItem;
+      const merged = { ...cItem };
+      if (restorePoster) merged.poster = lItem.poster;
+      if (restoreBadge) merged.badgeCharImg = lItem.badgeCharImg;
+      return merged;
+    });
+  }
+
   // Выбор самой свежей локальной копии (IndexedDB vs localStorage) по timestamp обновления, а не по длине массива
   function pickFresherLocalItems(opts) {
     const {
@@ -459,7 +595,7 @@
 
     if (!hasIdb && !hasLs) return { items: [], source: 'empty', updatedAt: 0 };
     if (hasIdb && !hasLs) return { items: idbItems, source: 'idb', updatedAt: Number(idbUpdatedAt) || 0 };
-    if (!hasIdb && hasLs) return { items: lsItems, source: 'ls', updatedAt: Number(lsUpdatedAt) || 0 };
+    if (!hasIdb && hasLs) return { items: hydrateStrippedBase64FromIdb(lsItems, []), source: 'ls', updatedAt: Number(lsUpdatedAt) || 0 };
 
     const idbTs = Math.max(0, Number(idbUpdatedAt) || 0);
     const lsTs = Math.max(0, Number(lsUpdatedAt) || 0);
@@ -476,7 +612,7 @@
       if (idbTs === 0 && idbItems.length > 1500 && idbItems.length === lsItems.length) {
         return { items: idbItems, source: 'idb', updatedAt: lsTs };
       }
-      return { items: lsItems, source: 'ls', updatedAt: lsTs };
+      return { items: hydrateStrippedBase64FromIdb(lsItems, idbItems), source: 'ls', updatedAt: lsTs };
     }
 
     if (idbTs > lsTs) {
@@ -490,7 +626,7 @@
     if (idbItems.length >= lsItems.length) {
       return { items: idbItems, source: 'idb', updatedAt: 0 };
     }
-    return { items: lsItems, source: 'ls', updatedAt: 0 };
+    return { items: hydrateStrippedBase64FromIdb(lsItems, idbItems), source: 'ls', updatedAt: 0 };
   }
 
   // Фильтрация распакованных из облачных чанков тайтлов по pendingDeletes и recentlyDeletedIds
@@ -1118,10 +1254,10 @@
     return pool.slice(0, limit).map(x => x.item);
   }
 
-  const MANGA_SUBKIND_SET = new Set(['Манга', 'Манхва', 'Маньхуа', 'Комикс']);
+  const MANGA_SUBKIND_SET = new Set(['Манга', 'Манхва', 'Маньхуа', 'Комикс', 'Додзинси']);
 
   // Корректная подпись формата/типа для карточек каталога, коллекции и страницы тайтла:
-  // Манхва, Маньхуа и Комикс имеют приоритет над общим FORMAT_RU['MANGA'] («Манга»).
+  // Манхва, Маньхуа, Комикс и Додзинси имеют приоритет над общим FORMAT_RU['MANGA'] («Манга»).
   function resolveDisplayFormatLabel(item, formatRuMap = null) {
     if (!item || typeof item !== 'object') return '';
     const sub = (item.subKind && MANGA_SUBKIND_SET.has(item.subKind))
@@ -1131,6 +1267,7 @@
       return sub;
     }
     const fmt = String(item.format || '').trim();
+    if (fmt === 'DOUJIN') return 'Додзинси';
     if (fmt && formatRuMap && formatRuMap[fmt]) {
       return formatRuMap[fmt];
     }
@@ -1730,6 +1867,203 @@
     return out;
   }
 
+  const READ_CATEGORIES_SET = new Set(['манга', 'ранобэ', 'манхва', 'маньхуа', 'комикс', 'комиксы', 'додзинси', 'doujinshi', 'doujin', 'новелла', 'ваншот']);
+
+  function isReadCategory(category) {
+    const key = String(category || '').trim().toLowerCase();
+    return Boolean(key && READ_CATEGORIES_SET.has(key));
+  }
+
+  function getStatusLabelForCategory(status, category) {
+    if (!status) return '';
+    if (status === 'Смотрю/Читаю') {
+      if (isReadCategory(category)) return 'Читаю';
+      if (!category || category === 'Всё') return 'Смотрю / Читаю';
+      return 'Смотрю';
+    }
+    if (status === 'Просмотрено/Прочитано') {
+      if (isReadCategory(category)) return 'Прочитано';
+      if (!category || category === 'Всё') return 'Просмотрено / Прочитано';
+      return 'Просмотрено';
+    }
+    if (status === 'Пересматриваю') {
+      return isReadCategory(category) ? 'Перечитываю' : 'Пересматриваю';
+    }
+    return status;
+  }
+
+  function normalizeExternalRatingInput(rawRating, rawSource) {
+    const srcRaw = String(rawSource || '').trim();
+    const cleanSrc = srcRaw === '__custom__' ? '' : srcRaw;
+    const str = String(rawRating == null ? '' : rawRating).trim().replace(',', '.');
+    if (!str) {
+      return { valid: true, rating: '', source: cleanSrc };
+    }
+    const n = Number(str);
+    if (!Number.isFinite(n) || n < 0 || n > 10) {
+      return { valid: false, rating: '', source: cleanSrc };
+    }
+    const rounded = Math.round(n * 100) / 100;
+    const formatted = rounded === 0 ? '' : String(rounded);
+    return { valid: true, rating: formatted, source: cleanSrc };
+  }
+
+  function mapItemCategoryToCatalogSection(category) {
+    const raw = String(category || '').trim();
+    const low = raw.toLowerCase();
+    if (low === 'аниме') return 'Аниме';
+    if (low === 'ранобэ' || low === 'новелла') return 'Ранобэ';
+    if (low === 'манга' || low === 'манхва' || low === 'маньхуа' || low === 'додзинси' || low === 'комикс') return 'Манга';
+    if (low === 'фильм' || low === 'сериал' || low === 'кино и сериалы' || low === 'фильмы и сериалы') return 'Кино и сериалы';
+    return 'Аниме';
+  }
+
+  function normalizeTagLookupStr(raw) {
+    return String(raw || '')
+      .replace(/\([^)]*\)/g, ' ')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  function resolveCatalogTagKey(rawLabel, isVideo, aniTagPairs, videoGenresMap) {
+    const clean = String(rawLabel || '').trim();
+    if (!clean) return '';
+    const normTarget = normalizeTagLookupStr(clean);
+    const lowRaw = clean.toLowerCase();
+    if (!normTarget) return '';
+
+    if (isVideo) {
+      const entries = videoGenresMap && typeof videoGenresMap === 'object'
+        ? Object.entries(videoGenresMap)
+        : [];
+      for (const [id, label] of entries) {
+        if (String(id) === clean) return String(id);
+        const lLow = String(label || '').trim().toLowerCase();
+        if (lLow === lowRaw || normalizeTagLookupStr(label) === normTarget) return String(id);
+      }
+      // Распространённые синонимы жанров кино/сериалов
+      const videoAlias = {
+        'экшен': '28',
+        'экшн': '28',
+        'action': '28',
+        'приключение': '12',
+        'adventure': '12',
+        'анимация': '16',
+        'комедия': '35',
+        'comedy': '35',
+        'криминал': '80',
+        'crime': '80',
+        'драма': '18',
+        'drama': '18',
+        'фэнтези': '14',
+        'fantasy': '14',
+        'ужасы': '27',
+        'хоррор': '27',
+        'horror': '27',
+        'детектив': '9648',
+        'мистика': '9648',
+        'mystery': '9648',
+        'романтика': '10749',
+        'мелодрама': '10749',
+        'romance': '10749',
+        'фантастика': '878',
+        'научная фантастика': '878',
+        'sci fi': '878',
+        'триллер': '53',
+        'thriller': '53'
+      };
+      if (videoAlias[normTarget]) return videoAlias[normTarget];
+      return '';
+    }
+
+    const pairs = Array.isArray(aniTagPairs) ? aniTagPairs : [];
+    // 1) Точное совпадение ключа (g:Fantasy / t:Dark Fantasy) или подписи
+    for (const pair of pairs) {
+      if (!Array.isArray(pair) || pair.length < 2) continue;
+      const [key, label] = pair;
+      const keyStr = String(key || '').trim();
+      const labelStr = String(label || '').trim();
+      const bareEng = keyStr.replace(/^[gt]:/i, '').trim().toLowerCase();
+      if (keyStr.toLowerCase() === lowRaw || bareEng === lowRaw || labelStr.toLowerCase() === lowRaw) {
+        return keyStr;
+      }
+      if (normalizeTagLookupStr(labelStr) === normTarget || normalizeTagLookupStr(bareEng) === normTarget) {
+        return keyStr;
+      }
+    }
+    // 2) Частичное совпадение для составных подписей (например "Сёнэн" vs "Сёнэн (для юношей)")
+    for (const pair of pairs) {
+      if (!Array.isArray(pair) || pair.length < 2) continue;
+      const [key, label] = pair;
+      const parts = String(label || '').split(/[/,·]/).map(normalizeTagLookupStr).filter(Boolean);
+      if (parts.includes(normTarget)) return String(key);
+    }
+    return '';
+  }
+
+  function buildCatalogHistorySnapshot(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const tags = Array.isArray(src.tags)
+      ? src.tags
+          .filter(p => Array.isArray(p) && p.length >= 2 && String(p[0] || '').trim() && Number(p[1]) !== 0)
+          .map(p => [String(p[0]).trim(), Number(p[1]) > 0 ? 1 : -1])
+      : [];
+    const creator = src.creator && typeof src.creator === 'object' && String(src.creator.nameStr || '').trim()
+      ? {
+          kindType: String(src.creator.kindType || 'author'),
+          nameStr: String(src.creator.nameStr).trim(),
+          itemCat: String(src.creator.itemCat || '')
+        }
+      : null;
+    return {
+      g: String(src.g || 'Аниме'),
+      q: String(src.q || '').trim(),
+      tags,
+      creator,
+      mode: String(src.mode || 'actual'),
+      kind: String(src.kind || ''),
+      animeKind: String(src.animeKind || ''),
+      videoKind: String(src.videoKind || 'all'),
+      year: String(src.year || ''),
+      year2: String(src.year2 || ''),
+      len: String(src.len || ''),
+      country: String(src.country || ''),
+      age: String(src.age || ''),
+      min: Number(src.min) || 0,
+      ongOnly: Boolean(src.ongOnly),
+      finOnly: Boolean(src.finOnly),
+      hide: Boolean(src.hide)
+    };
+  }
+
+  function buildCollectionHistorySnapshot(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const xf = src.xf && typeof src.xf === 'object' && String(src.xf.k || '').trim() && String(src.xf.v || '').trim()
+      ? { k: String(src.xf.k).trim(), v: String(src.xf.v).trim() }
+      : null;
+    return {
+      q: String(src.q || '').trim(),
+      xf,
+      tag: String(src.tag || 'Все'),
+      list: String(src.list || 'Все'),
+      status: String(src.status || 'Все'),
+      cat: String(src.cat || 'Всё'),
+      kind: String(src.kind || 'Все'),
+      ongOnly: Boolean(src.ongOnly),
+      finOnly: Boolean(src.finOnly)
+    };
+  }
+
+  function clearSearchForMetadataTransition(snapshot, patch) {
+    const base = snapshot && typeof snapshot === 'object' ? { ...snapshot } : {};
+    return {
+      ...base,
+      ...(patch && typeof patch === 'object' ? patch : {}),
+      q: ''
+    };
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -1744,7 +2078,13 @@
     getGridSizeKey,
     getNextMobileGridSize,
     getGridSizeMobileMeta,
+    SYSTEM_MANUAL_LIST_KEY,
+    DEFAULT_MANUAL_LIST_NAME,
     isManualTitleItem,
+    resolveManualListName,
+    isSystemManualListRef,
+    stripSystemManualListFromUserLists,
+    itemMatchesListFilter,
     resolveBestTitleDescription,
     filterAndListCollections,
     canWriteCollectionChunksToCloud,
@@ -1799,7 +2139,17 @@
     shouldFallbackAfterCloudReadError,
     canCombineChunksAndProfileInSingleBatch,
     decodeFirestoreRestValue,
-    decodeFirestoreRestDocument
+    decodeFirestoreRestDocument,
+    isReadCategory,
+    getStatusLabelForCategory,
+    normalizeExternalRatingInput,
+    hydrateStrippedBase64FromIdb,
+    preserveLocalUploadedPostersOnCloudMerge,
+    mapItemCategoryToCatalogSection,
+    resolveCatalogTagKey,
+    buildCatalogHistorySnapshot,
+    buildCollectionHistorySnapshot,
+    clearSearchForMetadataTransition
   };
 
   if (typeof module !== 'undefined' && module.exports) {

@@ -239,10 +239,11 @@ function buildShikiGraphQLVars(search, type, o = {}) {
   } else if (isNovel) {
     vars.kind = 'light_novel,novel';
   } else {
-    if (o.country === 'KR') vars.kind = 'manhwa';
+    if (o.doujin) vars.kind = 'doujin';
+    else if (o.country === 'KR') vars.kind = 'manhwa';
     else if (o.country === 'CN') vars.kind = 'manhua';
     else if (o.country === 'JP') vars.kind = 'manga,one_shot';
-    else if (o.fn === 'NOVEL') vars.kind = 'manga,manhwa,manhua,one_shot';
+    else if (o.fn === 'NOVEL') vars.kind = 'manga,manhwa,manhua,one_shot,doujin';
   }
 
   const yrFrom = Number(o.yrFrom) || (o.sg ? Math.floor((Number(o.sg) + 100) / 10000) : 0);
@@ -344,8 +345,10 @@ const MANGADEX_TAG_IDS = {
   Music: 'f42fbf9e-188a-447b-9fdc-f19dc1e4d685',
   Samurai: '81183756-1453-4c81-aa9e-f6e1b63be016',
   Tragedy: 'f8f62932-27da-4fe4-8ee1-6779a8059ba3',
-  Villainess: 'd14322ac-4d6f-4e9b-afd9-629d5f4d8a41'
+  Villainess: 'd14322ac-4d6f-4e9b-afd9-629d5f4d8a41',
+  Doujinshi: 'b13b2a48-c720-44a9-9c77-39c9979373fb'
 };
+const DOUJIN_MANGADEX_TAG_ID = 'b13b2a48-c720-44a9-9c77-39c9979373fb';
 
 const _shikiRestGenresCache = new Map();
 
@@ -357,8 +360,8 @@ function mapShikimoriGraphQLNode(d, type, isNovelHint = false, queryHint = null)
   const malNum = Number(d.malId || d.id) || 0;
   const shikiNum = Number(d.id) || 0;
   const catName = isAnime ? 'Аниме' : ((isNovelHint || d.kind === 'light_novel' || d.kind === 'novel') ? 'Ранобэ' : 'Манга');
-  const subK = catName === 'Манга' ? (d.kind === 'manhwa' ? 'Манхва' : d.kind === 'manhua' ? 'Маньхуа' : 'Манга') : '';
-  const fmt = d.kind === 'movie' ? 'MOVIE' : d.kind === 'tv' ? 'TV' : d.kind === 'ova' ? 'OVA' : d.kind === 'ona' ? 'ONA' : d.kind === 'special' ? 'SPECIAL' : (catName === 'Ранобэ' ? 'NOVEL' : d.kind === 'one_shot' ? 'ONE_SHOT' : 'MANGA');
+  const subK = catName === 'Манга' ? (d.kind === 'doujin' ? 'Додзинси' : d.kind === 'manhwa' ? 'Манхва' : d.kind === 'manhua' ? 'Маньхуа' : 'Манга') : '';
+  const fmt = d.kind === 'movie' ? 'MOVIE' : d.kind === 'tv' ? 'TV' : d.kind === 'ova' ? 'OVA' : d.kind === 'ona' ? 'ONA' : d.kind === 'special' ? 'SPECIAL' : (catName === 'Ранобэ' ? 'NOVEL' : d.kind === 'doujin' ? 'DOUJIN' : d.kind === 'one_shot' ? 'ONE_SHOT' : 'MANGA');
   const ep = SHK[catName] || (isAnime ? 'animes' : 'mangas');
   if (malNum && d.russian) RUC[ep + malNum] = d.russian;
   const posterUrl = pickShikiGraphQLPoster(d.poster);
@@ -472,11 +475,13 @@ function mapJikanNode(x, isAnime = true, isNovelHint = false) {
   ].filter(isValidPosterUrl);
   const posterU = posterCandidates[0] || '';
   const typeStr = String(x.type || '');
+  const typeLow = typeStr.toLowerCase();
+  const isDoujinType = typeLow === 'doujinshi' || typeLow === 'doujin';
   const catN = isAnime ? 'Аниме' : ((typeStr === 'Light Novel' || typeStr === 'Novel' || isNovelHint) ? 'Ранобэ' : 'Манга');
-  const subK = catN === 'Манга' ? (typeStr === 'Manhwa' ? 'Манхва' : typeStr === 'Manhua' ? 'Маньхуа' : 'Манга') : '';
+  const subK = catN === 'Манга' ? (isDoujinType ? 'Додзинси' : typeStr === 'Manhwa' ? 'Манхва' : typeStr === 'Manhua' ? 'Маньхуа' : 'Манга') : '';
   const fmt = isAnime
     ? (typeStr === 'Movie' ? 'MOVIE' : typeStr === 'OVA' ? 'OVA' : typeStr === 'ONA' ? 'ONA' : typeStr === 'Special' ? 'SPECIAL' : 'TV')
-    : (catN === 'Ранобэ' ? 'NOVEL' : typeStr === 'One-shot' ? 'ONE_SHOT' : 'MANGA');
+    : (catN === 'Ранобэ' ? 'NOVEL' : isDoujinType ? 'DOUJIN' : typeStr === 'One-shot' ? 'ONE_SHOT' : 'MANGA');
   const rawG = [...(x.genres || []), ...(x.explicit_genres || [])].map(g => g.name).filter(Boolean);
   const rawT = [...(x.themes || []), ...(x.demographics || [])].map(g => g.name).filter(Boolean);
   const isAdult = (x.rating || '').includes('Rx') || rawG.includes('Hentai');
@@ -539,6 +544,8 @@ async function _jikanCatalogRaw(search, type, o = {}) {
     else if (o.fn === 'MOVIE') p.set('type', 'tv');
   } else if (isNovel) {
     p.set('type', 'lightnovel');
+  } else if (o.doujin) {
+    p.set('type', 'doujin');
   } else if (o.country === 'KR') {
     p.set('type', 'manhwa');
   } else if (o.country === 'CN') {
@@ -616,8 +623,11 @@ function mapMangaDexNode(d, isNovelHint = false) {
     const demoCap = attr.publicationDemographic.charAt(0).toUpperCase() + attr.publicationDemographic.slice(1);
     mdTags.push(demoCap);
   }
+  const isDoujinMd = (attr.tags || []).some(t => t?.id === DOUJIN_MANGADEX_TAG_ID || /^doujinshi$/i.test(t?.attributes?.name?.en || ''));
   const origLang = String(attr.originalLanguage || '').toLowerCase();
-  const subK = origLang === 'ko' ? 'Манхва' : (origLang === 'zh' || origLang === 'zh-hk') ? 'Маньхуа' : origLang === 'ja' ? 'Манга' : 'Комикс';
+  const subK = (!isNovelHint && isDoujinMd)
+    ? 'Додзинси'
+    : (origLang === 'ko' ? 'Манхва' : (origLang === 'zh' || origLang === 'zh-hk') ? 'Маньхуа' : origLang === 'ja' ? 'Манга' : 'Комикс');
   const catN = isNovelHint ? 'Ранобэ' : 'Манга';
   const malId = Number(attr.links?.mal) || 0;
   const aniId = Number(attr.links?.al) || 0;
@@ -627,7 +637,7 @@ function mapMangaDexNode(d, isNovelHint = false) {
     mal: malId,
     mdId: d.id || '',
     isAdult,
-    format: isNovelHint ? 'NOVEL' : (attr.tags || []).some(t => t.attributes?.name?.en === 'Oneshot') ? 'ONE_SHOT' : 'MANGA',
+    format: isNovelHint ? 'NOVEL' : isDoujinMd ? 'DOUJIN' : (attr.tags || []).some(t => t.attributes?.name?.en === 'Oneshot') ? 'ONE_SHOT' : 'MANGA',
     banner: '',
     upcoming: false,
     trailerId: '',
@@ -672,13 +682,15 @@ async function _mangadexCatalogRaw(search, o = {}) {
   p.append('includes[]', 'cover_art');
   p.append('includes[]', 'author');
   p.append('includes[]', 'artist');
-  p.append('hasAvailableChapters', 'true');
+  if (!search && !o.doujin) p.append('hasAvailableChapters', 'true');
   if (search) p.set('title', String(search));
 
   const ratings = o.ad === true ? ['erotica', 'pornographic'] : o.ad === undefined ? ['safe', 'suggestive', 'erotica', 'pornographic'] : ['safe', 'suggestive'];
   ratings.forEach(r => p.append('contentRating[]', r));
 
-  if (o.country === 'JP') p.append('originalLanguage[]', 'ja');
+  if (o.doujin) {
+    p.append('includedTags[]', DOUJIN_MANGADEX_TAG_ID);
+  } else if (o.country === 'JP') p.append('originalLanguage[]', 'ja');
   else if (o.country === 'KR') p.append('originalLanguage[]', 'ko');
   else if (o.country === 'CN') { p.append('originalLanguage[]', 'zh'); p.append('originalLanguage[]', 'zh-hk'); }
 
@@ -1054,10 +1066,11 @@ function fillForm(r) {
   $('inputTitleOrig').value = r.orig || '';
   $('inputAlt').value = r.alt || '';
   $('inputCategory').value = r.category;
-  $('inputKind').value = r.kind || 'Манга';
+  $('inputKind').value = r.subKind || r.kind || 'Манга';
   $('inputYear').value = r.year;
   $('inputExtRating').value = r.ext;
   $('inputExtSrc').value = r.src || '';
+  if (typeof syncExtSrcSelectFromValue === 'function') syncExtSrcSelectFromValue(r.src || '');
   $('inputDescription').value = r.desc;
   $('inputTags').value = parseTags($('inputTags').value + ',' + r.tags.join(',')).join(', ');
   setPoster(r.poster); afHint();
@@ -1574,7 +1587,7 @@ function renderChips() {
   if (ongOnly) add('Онгоинг', () => { ongOnly = false; $('ongBtn')?.classList.remove('on'); render(); });
   if (finOnly) add('Завершено', () => { finOnly = false; $('finBtn')?.classList.remove('on'); render(); });
   if ($('tagFilter').value !== 'Все') add('Жанр: ' + $('tagFilter').selectedOptions[0].textContent, () => { $('tagFilter').value = 'Все'; render(); });
-  if ($('listFilter').value !== 'Все') add($('listFilter').selectedOptions[0].textContent, () => { $('listFilter').value = 'Все'; render(); });
+  if ($('listFilter').value !== 'Все') add($('listFilter').selectedOptions[0].textContent, () => { $('listFilter').value = 'Все'; if (typeof syncListFilterActionButtons === 'function') syncListFilterActionButtons(); render(); if (typeof renderMyListsFolderBlock === 'function') renderMyListsFolderBlock(); });
 }
 
 window._recentlyDeletedIds = window._recentlyDeletedIds || new Set();
@@ -1701,7 +1714,9 @@ $('selSt').onchange = async () => {
 
 $('selList').onclick = async () => {
   if (!selSet.size) return toast('Сначала выбери тайтлы');
-  const existingFolders = [...new Set([...(prof.customLists || []), ...items.flatMap(i => i.lists || [])])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ru'));
+  const existingFolders = typeof getAllUserCollectionNames === 'function'
+    ? getAllUserCollectionNames()
+    : [...new Set([...(prof.customLists || []), ...items.flatMap(i => i.lists || [])])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ru'));
   let pickedName = '', newInput = null;
   const ok = await dlgOpen(() => {
     $('dlgTitle').textContent = `📁 Добавить в подборку (${selSet.size} шт.)`;
@@ -1729,11 +1744,14 @@ $('selList').onclick = async () => {
 
   const nm = (ok || '').trim();
   if (!nm) return;
+  if (typeof isSystemManualFolder === 'function' && isSystemManualFolder(nm)) {
+    return toast('Системная подборка для ручных тайтлов наполняется автоматически — вручную добавлять в неё нельзя.', true);
+  }
   const hit = items.filter(i => selHas(i.id));
   prof.customLists = prof.customLists || [];
   if (!prof.customLists.some(x => x.toLowerCase() === nm.toLowerCase())) prof.customLists.push(nm);
   hit.forEach(i => {
-    i.lists = i.lists || [];
+    i.lists = typeof getUserListsForItem === 'function' ? getUserListsForItem(i) : (i.lists || []);
     if (!i.lists.some(x => x.toLowerCase() === nm.toLowerCase())) i.lists.push(nm);
   });
   profCloud();
@@ -1746,8 +1764,9 @@ if ($('selUnlist')) {
   $('selUnlist').onclick = async () => {
     if (!selSet.size) return toast('Сначала выбери тайтлы');
     const hit = items.filter(i => selHas(i.id));
-    const foldersInSel = [...new Set(hit.flatMap(i => i.lists || []))].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ru'));
-    if (!foldersInSel.length) return toast('У выбранных тайтлов нет подборок');
+    const rawFoldersInSel = [...new Set(hit.flatMap(i => (typeof getUserListsForItem === 'function' ? getUserListsForItem(i) : (i.lists || []))))];
+    const foldersInSel = rawFoldersInSel.filter(Boolean).sort((a, b) => a.localeCompare(b, 'ru'));
+    if (!foldersInSel.length) return toast('У выбранных тайтлов нет пользовательских подборок');
     let pickedFolder = null;
     const ok = await dlgOpen(() => {
       $('dlgTitle').textContent = `📁− Убрать из подборки (${hit.length} шт.)`;
@@ -1761,7 +1780,7 @@ if ($('selUnlist')) {
         b.onclick = () => { pickedFolder = fn.toLowerCase(); $('dlgOk').click(); };
         chipsWrap.append(b);
       });
-      const allB = el('button', 'btn btn-d', '🗑 Убрать из всех подборок');
+      const allB = el('button', 'btn btn-d', '🗑 Убрать из всех пользовательских подборок');
       allB.type = 'button';
       allB.style.cssText = 'padding:7px 12px;font-size:13px';
       allB.onclick = () => { pickedFolder = '__ALL__'; $('dlgOk').click(); };
@@ -1771,11 +1790,11 @@ if ($('selUnlist')) {
     if (!ok) return;
     hit.forEach(i => {
       if (ok === '__ALL__') i.lists = [];
-      else i.lists = (i.lists || []).filter(x => x.toLowerCase() !== ok);
+      else i.lists = (typeof getUserListsForItem === 'function' ? getUserListsForItem(i) : (i.lists || [])).filter(x => x.toLowerCase() !== ok);
     });
     await batchSaveItems(hit);
     refresh();
-    toast(ok === '__ALL__' ? `Убрано из всех подборок (${hit.length} шт.)` : `Убрано из подборки (${hit.length} шт.)`);
+    toast(ok === '__ALL__' ? `Убрано из всех пользовательских подборок (${hit.length} шт.)` : `Убрано из подборки (${hit.length} шт.)`);
   };
 }
 
@@ -1829,6 +1848,9 @@ document.querySelectorAll('#botnav button').forEach(b => b.onclick = () => {
 const handleCreateNewListPrompt = async () => {
   const name = ((await uiPrompt('Создать новую подборку (папку)', '', 'Например: Любимое фэнтези, Шедевры...')) || '').trim();
   if (!name) return;
+  if (typeof isSystemManualFolder === 'function' && isSystemManualFolder(name)) {
+    return toast(`Название «${name}» уже занято системной подборкой. Выбери другое.`, true);
+  }
   prof.customLists = prof.customLists || [];
   if (!prof.customLists.some(x => x.toLowerCase() === name.toLowerCase())) prof.customLists.push(name);
   profCloud(); refreshLists(name.toLowerCase()); render();
@@ -1839,30 +1861,18 @@ if ($('createListTopBtn')) $('createListTopBtn').onclick = handleCreateNewListPr
 if ($('deleteListBtn')) {
   $('deleteListBtn').onclick = () => {
     const curVal = $('listFilter').value;
-    if (curVal && curVal !== 'Все') deleteCollectionFolder(curVal);
+    if (!curVal || curVal === 'Все') return;
+    if (typeof isSystemManualFolder === 'function' && isSystemManualFolder(curVal)) {
+      toast('Системную подборку нельзя удалить — её можно только переименовать.', true);
+      return;
+    }
+    deleteCollectionFolder(curVal);
   };
 }
 $('manageListBtn').onclick = async () => {
-  const curVal = $('listFilter').value; if (curVal === 'Все') return;
-  const allNames = [...(prof.customLists || []), ...items.flatMap(i => i.lists || [])];
-  const canonical = allNames.find(x => x && x.toLowerCase() === curVal) || curVal;
-  prof.listMeta = prof.listMeta || {}; const lm = prof.listMeta[canonical] || {};
-  const res = await uiListDialog(canonical, lm.desc || '', lm.cn || '', LCOL); if (!res) return;
-  const nn = res.name; delete prof.listMeta[canonical];
-  prof.customLists = (prof.customLists || []).filter(x => x.toLowerCase() !== canonical.toLowerCase());
-  if (nn) { prof.customLists.push(nn); prof.listMeta[nn] = {desc: res.desc, cn: res.cn}; }
-  const changed = [];
-  items.forEach(i => {
-    if ((i.lists || []).some(x => x.toLowerCase() === canonical.toLowerCase())) {
-      i.lists = i.lists.filter(x => x.toLowerCase() !== canonical.toLowerCase());
-      if (nn && !i.lists.includes(nn)) i.lists.push(nn);
-      changed.push(i);
-    }
-  });
-  profCloud();
-  if (changed.length) await batchSaveItems(changed);
-  refresh({ listFilterValue: nn ? nn.toLowerCase() : 'Все' });
-  toast(nn ? `Подборка «${nn}» сохранена` : `Подборка «${canonical}» удалена`);
+  const curVal = $('listFilter').value;
+  if (!curVal || curVal === 'Все') return;
+  await listEdit(curVal);
 };
 
 // ---------- Каталог (AniList и TMDB) с кликабельной панелью жанров/тегов, полосой подкатегорий и живой подборкой ----------
@@ -2156,6 +2166,7 @@ function renderCatalogSubKindBar() {
         ['JP', 'Японская манга'],
         ['KR', 'Корейская манхва'],
         ['CN', 'Китайская маньхуа'],
+        ['DOUJIN', 'Додзинси'],
         ['COMIC', 'Западные комиксы']
       ]
     };
@@ -2220,6 +2231,16 @@ function renderCatalogActiveChipsBar() {
     b.onclick = onClear;
     chips.push(b);
   };
+  if (window._cgInCreatorView && window._cgCurrentCreator && window._cgCurrentCreator.nameStr) {
+    const cr = window._cgCurrentCreator;
+    const crLbl = cr.kindType === 'studio' ? `🎬 Студия: ${cr.nameStr}` : `👤 Автор: ${cr.nameStr}`;
+    addChip(crLbl, () => {
+      window._cgInCreatorView = false;
+      window._cgCurrentCreator = null;
+      if ($('cgHeroWrap')) $('cgHeroWrap').style.display = '';
+      cgLoad(true);
+    });
+  }
   if (cg.q) addChip(`🔍 «${cg.q}»`, () => { $('cgSearch').value = ''; cg.q = ''; $('cgClear').style.display = 'none'; cgLoad(true); });
   if (cg.g === 'Аниме' && $('cgAnimeKind')?.value) addChip(`Формат: ${$('cgAnimeKind').selectedOptions[0]?.textContent}`, () => { $('cgAnimeKind').value = ''; cgLoad(true); });
   if (cg.g === 'Кино и сериалы' && $('cgVideoKind')?.value && $('cgVideoKind').value !== 'all') addChip(`Тип: ${$('cgVideoKind').selectedOptions[0]?.textContent}`, () => { $('cgVideoKind').value = 'all'; cgLoad(true); });
@@ -2560,6 +2581,7 @@ function verifyCatalogItemMatchesFilters(r) {
     } else if (cg.g === 'Манга') {
       const mk = $('cgKind')?.value || '';
       if (mk === 'COMIC' && (r.subKind || r.kind) !== 'Комикс') return false;
+      if (mk === 'DOUJIN' && (r.subKind || r.kind) !== 'Додзинси') return false;
       if (mk === 'JP' && (r.subKind || r.kind || 'Манга') !== 'Манга') return false;
       if (mk === 'KR' && (r.subKind || r.kind) !== 'Манхва') return false;
       if (mk === 'CN' && (r.subKind || r.kind) !== 'Маньхуа') return false;
@@ -2702,6 +2724,11 @@ function enrichCatalogCardInPlace(target, src) {
   if (!target.banner && src.banner) target.banner = src.banner;
   if (src.isAdult) target.isAdult = true;
   if (src.ongoing && !target.ongoing) target.ongoing = true;
+  if (target.category === 'Манга' && (src.subKind === 'Додзинси' || src.kind === 'Додзинси' || src.format === 'DOUJIN')) {
+    target.subKind = 'Додзинси';
+    target.kind = 'Додзинси';
+    if (!target.format || target.format === 'MANGA') target.format = 'DOUJIN';
+  }
 
   // Взаимообогащение жанров и тегов из всех баз без потери специфичных тегов (Yuri, Yaoi, Isekai и т.п.)
   const mergeStrList = (a = [], b = []) => {
@@ -3304,7 +3331,8 @@ async function cgFetch(page, per, q, mode, optsOverride = null, signal = null) {
     if (mk === 'COMIC') {
       return saveCache(await fetchCatalogComics(effPage, q, mode));
     }
-    if (mk === 'JP' || mk === 'KR' || mk === 'CN') baseOpts.country = mk;
+    if (mk === 'DOUJIN') baseOpts.doujin = true;
+    else if (mk === 'JP' || mk === 'KR' || mk === 'CN') baseOpts.country = mk;
   }
 
   const mType = g === 'Аниме' ? 'ANIME' : 'MANGA';
@@ -3328,8 +3356,24 @@ async function cgFetch(page, per, q, mode, optsOverride = null, signal = null) {
   if (cg.finOnly) o.status = 'FINISHED';
   else if (cg.ongOnly) o.status = 'RELEASING';
 
-  // При явном текстовом поиске (q) на 1-й странице всегда опрашиваем AniList + Shikimori параллельно,
-  // чтобы находились тайтлы, которые есть только в AniList или только в Shikimori (без смешивания категорий).
+  // Выделенный режим «Додзинси»: AniList почти не индексирует додзинси, поэтому напрямую опрашиваем Shikimori + MangaDex + Jikan/MAL
+  if (o.doujin && !optsOverride) {
+    const doujinTasks = [];
+    if (typeof isShikiGraphQLBlockedNow !== 'function' || !isShikiGraphQLBlockedNow()) {
+      doujinTasks.push(_shikiDirectOnly(q || '', 'MANGA', o, signal).catch(() => []));
+    }
+    doujinTasks.push(_mangadexCatalogRaw(q || '', { ...o, per: Math.min(20, o.per || 20) }).catch(() => []));
+    const baseDoujin = await Promise.all(doujinTasks);
+    let mergedDoujin = interleaveAndDedupCatalogLists([cachedHits, ...baseDoujin]).filter(verifyCatalogItemMatchesFilters);
+    if (mergedDoujin.length < 10 && !(signal && signal.aborted)) {
+      const jikanDoujin = await _jikanCatalogRaw(q || '', 'MANGA', { ...o, per: Math.min(20, o.per || 20) }).catch(() => []);
+      mergedDoujin = interleaveAndDedupCatalogLists([mergedDoujin, jikanDoujin]).filter(verifyCatalogItemMatchesFilters);
+    }
+    return saveCache(mergedDoujin);
+  }
+
+  // При явном текстовом поиске (q) на 1-й странице всегда опрашиваем AniList + Shikimori (+ MangaDex для манги) параллельно,
+  // чтобы находились тайтлы и додзинси из всех баз без смешивания категорий.
   if (q && page === 1 && !optsOverride) {
     const searchTasks = [];
     if (!isAniListBlockedNow()) {
@@ -3338,14 +3382,14 @@ async function cgFetch(page, per, q, mode, optsOverride = null, signal = null) {
     if (typeof isShikiGraphQLBlockedNow !== 'function' || !isShikiGraphQLBlockedNow()) {
       searchTasks.push(_shikiDirectOnly(q, mType, o, signal).catch(() => []));
     }
+    if (mType === 'MANGA') {
+      searchTasks.push(_mangadexCatalogRaw(q, { ...o, per: Math.min(18, o.per || 18) }).catch(() => []));
+    }
     const baseLists = await Promise.all(searchTasks);
     let mergedSearch = interleaveAndDedupCatalogLists([cachedHits, ...baseLists]).filter(verifyCatalogItemMatchesFilters);
     if (mergedSearch.length < 8 && !(signal && signal.aborted)) {
-      const extraTasks = [];
-      if (mType === 'MANGA') extraTasks.push(_mangadexCatalogRaw(q, { ...o, per: Math.min(20, o.per || 20) }).catch(() => []));
-      extraTasks.push(_jikanCatalogRaw(q, mType, { ...o, per: Math.min(16, o.per || 16) }).catch(() => []));
-      const extraLists = await Promise.all(extraTasks);
-      mergedSearch = interleaveAndDedupCatalogLists([mergedSearch, ...extraLists]).filter(verifyCatalogItemMatchesFilters);
+      const jikanList = await _jikanCatalogRaw(q, mType, { ...o, per: Math.min(16, o.per || 16) }).catch(() => []);
+      mergedSearch = interleaveAndDedupCatalogLists([mergedSearch, jikanList]).filter(verifyCatalogItemMatchesFilters);
     }
     return saveCache(mergedSearch);
   }
@@ -3353,7 +3397,7 @@ async function cgFetch(page, per, q, mode, optsOverride = null, signal = null) {
   // Primary-First водопад: сначала один быстрый живой источник (AniList или Shikimori),
   // а дополнительные интеграции подключаются ТОЛЬКО если первый источник недоступен или вернул < 12 подходящих тайтлов.
   const sources = [];
-  if (!isAniListBlockedNow()) {
+  if (!isAniListBlockedNow() && !o.doujin) {
     sources.push({
       name: 'AniList',
       timeoutMs: 3600,
@@ -3682,7 +3726,13 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
   });
 
   // Компактный пункт «📁 В подборку…» (раскрывает прокручиваемый список всех подборок без перегрузки постера)
-  const curListsCount = existing && Array.isArray(existing.lists) ? existing.lists.length : 0;
+  const calcListsBadgeCount = target => {
+    if (!target) return 0;
+    const uCnt = typeof getUserListsForItem === 'function' ? getUserListsForItem(target).length : (Array.isArray(target.lists) ? target.lists.length : 0);
+    const sysCnt = (typeof isManualItemEditable === 'function' && isManualItemEditable(target)) ? 1 : 0;
+    return uCnt + sysCnt;
+  };
+  const curListsCount = calcListsBadgeCount(existing);
   const folderToggleBtn = el('button');
   folderToggleBtn.type = 'button';
   folderToggleBtn.style.borderTop = '1px solid var(--bd)';
@@ -3696,16 +3746,33 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
 
   const rebuildFolderSub = () => {
     folderSub.replaceChildren();
+    // 1) Заблокированная системная папка «Добавлено вручную»
+    const sysName = typeof getManualFolderName === 'function' ? getManualFolderName() : 'Добавлено вручную';
+    const isTargetManual = typeof isManualItemEditable === 'function' && isManualItemEditable(existing || r);
+    const sysBtn = el('button', 'qa-folder-item qa-folder-locked' + (isTargetManual ? ' on' : ''));
+    sysBtn.type = 'button';
+    sysBtn.disabled = true;
+    sysBtn.setAttribute('aria-disabled', 'true');
+    sysBtn.title = isTargetManual
+      ? 'Системная подборка: ручной тайтл находится здесь автоматически (убрать можно только удалив тайтл)'
+      : 'Системная подборка: сюда автоматически попадают только тайтлы, добавленные вручную';
+    sysBtn.append(
+      el('span', null, `${isTargetManual ? '✓ 🔒 ' : '🔒 '}${sysName}`),
+      el('span', 'meta', isTargetManual ? 'авто' : 'только ручные')
+    );
+    folderSub.append(sysBtn);
+
     const allFolders = typeof getAllUserCollectionNames === 'function'
       ? getAllUserCollectionNames()
       : [...new Set([...(prof.customLists || []), ...items.flatMap(i => i.lists || [])])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ru'));
     if (!allFolders.length) {
-      const emptyHint = el('div', 'meta', 'Подборок пока нет');
+      const emptyHint = el('div', 'meta', 'Личных подборок пока нет');
       emptyHint.style.padding = '4px 8px';
       folderSub.append(emptyHint);
     } else {
+      const curUserLists = existing ? (typeof getUserListsForItem === 'function' ? getUserListsForItem(existing) : (existing.lists || [])) : [];
       allFolders.forEach(folderName => {
-        const hasF = Boolean(existing && (existing.lists || []).some(x => x.toLowerCase() === folderName.toLowerCase()));
+        const hasF = curUserLists.some(x => x.toLowerCase() === folderName.toLowerCase());
         const fb = el('button', 'qa-folder-item' + (hasF ? ' on' : ''));
         fb.type = 'button';
         fb.append(
@@ -3714,11 +3781,12 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
         );
         fb.onclick = async ev => {
           ev.stopPropagation();
+          if (typeof isSystemManualFolder === 'function' && isSystemManualFolder(folderName)) return;
           if (!existing) {
             existing = await quickAdd(r, 'В планах');
           }
           if (!existing) return;
-          existing.lists = existing.lists || [];
+          existing.lists = typeof getUserListsForItem === 'function' ? getUserListsForItem(existing) : (existing.lists || []);
           const existsNow = existing.lists.some(x => x.toLowerCase() === folderName.toLowerCase());
           if (existsNow) {
             existing.lists = existing.lists.filter(x => x.toLowerCase() !== folderName.toLowerCase());
@@ -3731,7 +3799,7 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
           refreshLists();
           if (typeof renderMyListsFolderBlock === 'function') renderMyListsFolderBlock();
           refresh({ itemId: existing.id });
-          const cnt = existing.lists.length;
+          const cnt = calcListsBadgeCount(existing);
           folderToggleBtn.firstChild.textContent = `📁 В подборку${cnt ? ` (${cnt})` : ''}`;
           rebuildFolderSub();
           if (onAfterPick) onAfterPick(existing);
@@ -3959,6 +4027,7 @@ let _cgBusy = false;
 
 async function cgLoad(reset) {
   window._cgInCreatorView = false;
+  window._cgCurrentCreator = null;
   clearTimeout(_cgTagDebounceTimer);
   _cgTagDebounceTimer = null;
   updateActiveFiltersCounterUI();
@@ -4171,9 +4240,159 @@ document.addEventListener('keydown', e => {
 });
 syncCgModeMobBtn();
 
+function clearCatalogSearchBoxOnly() {
+  clearTimeout(cgT);
+  if ($('cgSearch')) $('cgSearch').value = '';
+  if ($('cgClear')) $('cgClear').style.display = 'none';
+  if (typeof cg !== 'undefined') {
+    cg.q = '';
+    cg.feedSeedPage = 1;
+  }
+  renderCatalogCreatorMatches([]);
+}
+
+function captureCatalogHistorySnapshot() {
+  const raw = {
+    g: typeof cg !== 'undefined' ? cg.g : 'Аниме',
+    q: ($('cgSearch')?.value != null ? $('cgSearch').value : (typeof cg !== 'undefined' ? cg.q : '')),
+    tags: [...cgTagState.entries()],
+    creator: (window._cgInCreatorView && window._cgCurrentCreator) ? { ...window._cgCurrentCreator } : null,
+    mode: $('cgMode')?.value || 'actual',
+    kind: $('cgKind')?.value || '',
+    animeKind: $('cgAnimeKind')?.value || '',
+    videoKind: $('cgVideoKind')?.value || 'all',
+    year: $('cgYear')?.value || '',
+    year2: $('cgYear2')?.value || '',
+    len: $('cgLen')?.value || '',
+    country: $('cgCountry')?.value || '',
+    age: $('cgAge')?.value || '',
+    min: typeof cg !== 'undefined' ? (Number(cg.min) || 0) : 0,
+    ongOnly: Boolean(typeof cg !== 'undefined' && cg.ongOnly),
+    finOnly: Boolean(typeof cg !== 'undefined' && cg.finOnly),
+    hide: Boolean(typeof cg !== 'undefined' && cg.hide)
+  };
+  return (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.buildCatalogHistorySnapshot === 'function')
+    ? KirokuEngine.buildCatalogHistorySnapshot(raw)
+    : raw;
+}
+
+function restoreCatalogHistorySnapshot(snap) {
+  if (!snap || typeof snap !== 'object') return false;
+  const s = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.buildCatalogHistorySnapshot === 'function')
+    ? KirokuEngine.buildCatalogHistorySnapshot(snap)
+    : snap;
+  clearTimeout(cgT);
+  if (_cgTagDebounceTimer) {
+    clearTimeout(_cgTagDebounceTimer);
+    _cgTagDebounceTimer = null;
+  }
+  cg.g = s.g || 'Аниме';
+  cg.feedSeedPage = 1;
+  document.querySelectorAll('#cgCats .tb').forEach(x => x.classList.toggle('on', x.dataset.g === cg.g));
+
+  const qVal = String(s.q || '').trim();
+  if ($('cgSearch')) $('cgSearch').value = qVal;
+  if ($('cgClear')) $('cgClear').style.display = qVal ? 'grid' : 'none';
+  cg.q = qVal;
+
+  cgTagState.clear();
+  (Array.isArray(s.tags) ? s.tags : []).forEach(([k, v]) => {
+    if (k && v) cgTagState.set(k, v > 0 ? 1 : -1);
+  });
+
+  if ($('cgMode')) $('cgMode').value = s.mode || 'actual';
+  if ($('cgKind')) $('cgKind').value = s.kind || '';
+  if ($('cgAnimeKind')) $('cgAnimeKind').value = s.animeKind || '';
+  if ($('cgVideoKind')) $('cgVideoKind').value = s.videoKind || 'all';
+  if ($('cgYear')) $('cgYear').value = s.year || '';
+  if ($('cgYear2')) $('cgYear2').value = s.year2 || '';
+  if ($('cgLen')) $('cgLen').value = s.len || '';
+  if ($('cgCountry')) $('cgCountry').value = s.country || '';
+  if ($('cgAge')) $('cgAge').value = s.age || '';
+  cg.min = Number(s.min) || 0;
+  if ($('cgMin')) $('cgMin').value = String(cg.min);
+  cg.ongOnly = Boolean(s.ongOnly);
+  cg.finOnly = Boolean(s.finOnly);
+  cg.hide = Boolean(s.hide);
+  $('cgOngBtn')?.classList.toggle('on', cg.ongOnly);
+  $('cgFinBtn')?.classList.toggle('on', cg.finOnly);
+  $('cgHide')?.classList.toggle('on', cg.hide);
+
+  syncCgModeMobBtn();
+  updateActiveFiltersCounterUI();
+  cgGenres();
+
+  if (s.creator && s.creator.nameStr && typeof openCatalogByCreator === 'function') {
+    openCatalogByCreator(s.creator.kindType, s.creator.nameStr, s.creator.itemCat, true);
+    return true;
+  }
+
+  window._cgInCreatorView = false;
+  window._cgCurrentCreator = null;
+  if ($('cgHeroWrap')) $('cgHeroWrap').style.display = qVal ? 'none' : '';
+  cgLoad(true);
+  return true;
+}
+
+function openCatalogByTag(rawTagLabel, itemCat, fromHistory = false) {
+  const cleanLabel = String(rawTagLabel || '').trim();
+  if (!cleanLabel) return false;
+  const targetSec = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.mapItemCategoryToCatalogSection === 'function')
+    ? KirokuEngine.mapItemCategoryToCatalogSection(itemCat)
+    : (itemCat === 'Фильм' || itemCat === 'Сериал' ? 'Кино и сериалы' : (['Аниме', 'Манга', 'Ранобэ'].includes(itemCat) ? itemCat : 'Аниме'));
+  const isVideo = targetSec === 'Кино и сериалы';
+  const allAniPairs = [...CLASSIC_GENRES, ...ROMANCE_REL_TAGS, ...THEME_PLOT_TAGS, ...EXTRA_SENSITIVE_TAGS];
+  const resolvedKey = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.resolveCatalogTagKey === 'function')
+    ? KirokuEngine.resolveCatalogTagKey(cleanLabel, isVideo, allAniPairs, TG)
+    : '';
+
+  if (!resolvedKey) {
+    if (typeof openCollectionMetadataFilter === 'function') {
+      openCollectionMetadataFilter({ tag: cleanLabel.toLowerCase() });
+      return true;
+    }
+    return false;
+  }
+
+  if (!fromHistory && typeof syncCurrentHistoryStateSnapshot === 'function') {
+    syncCurrentHistoryStateSnapshot();
+  }
+  if (typeof applyMainTabView === 'function') {
+    applyMainTabView('catalog', true);
+  }
+  clearCatalogSearchBoxOnly();
+  window._cgInCreatorView = false;
+  window._cgCurrentCreator = null;
+
+  cg.g = targetSec;
+  cg.feedSeedPage = 1;
+  document.querySelectorAll('#cgCats .tb').forEach(x => x.classList.toggle('on', x.dataset.g === targetSec));
+  cgTagState.clear();
+  cgTagState.set(resolvedKey, 1);
+  if (resolvedKey === 'g:Hentai' && $('cgAge')?.value === 'no') {
+    $('cgAge').value = '';
+  }
+  if ($('cgHeroWrap')) $('cgHeroWrap').style.display = 'none';
+  updateActiveFiltersCounterUI();
+  cgGenres();
+  cgLoad(true);
+
+  if (!fromHistory && typeof pushAppHistoryState === 'function') {
+    pushAppHistoryState({
+      tab: 'catalog',
+      fullPage: false,
+      catalogSnap: captureCatalogHistorySnapshot()
+    }, false);
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  return true;
+}
+
 $('cgReset').onclick = () => {
   cgTagState.clear();
   _cgTagSearchQuery = '';
+  window._cgInCreatorView = false;
+  window._cgCurrentCreator = null;
   ['cgYear2', 'cgLen', 'cgCountry', 'cgAge'].forEach(i => { if ($(i)) $(i).value = ''; });
   $('cgSearch').value = ''; cg.q = ''; $('cgYear').value = ''; $('cgKind').value = ''; $('cgMode').value = 'actual';
   syncCgModeMobBtn();
@@ -4184,6 +4403,7 @@ $('cgReset').onclick = () => {
   $('cgHide').classList.remove('on');
   $('cgOngBtn')?.classList.remove('on');
   $('cgFinBtn')?.classList.remove('on');
+  if ($('cgHeroWrap')) $('cgHeroWrap').style.display = '';
   cgGenres(); cgLoad(true);
 };
 $('cgMore').onclick = () => cgLoad(false);
@@ -4433,7 +4653,8 @@ function syncRndAddBtnUI(r) {
   const m = items.find(i => same(i, r));
   a.disabled = false;
   a.classList.add('qa-trigger');
-  a.textContent = m ? `${SHORT_ST_ICON[m.status] || '●'} ${SHORT_ST_BTN[m.status] || m.status}${m.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾';
+  const stLbl = m ? getStatusLabelForCategory(m.status, m.category || r.category) : '';
+  a.textContent = m ? `${SHORT_ST_ICON[m.status] || '●'} ${stLbl || m.status}${m.fav ? ' ❤' : ''} ▾` : '＋ Выбрать статус ▾';
 }
 
 function showPreview(r, rnd) {

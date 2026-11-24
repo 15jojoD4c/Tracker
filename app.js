@@ -3226,21 +3226,48 @@ class CharacterSeiyuuManager {
 // FORMAT_RU и REL_RU объявлены в начале модуля
 
 const _fullPageHistoryItems = new Map();
+const OPEN_TITLE_SESSION_KEY = 'kiroku_open_title_v1';
 
-async function openFullTitlePage(itemObj, fromHistory = false) {
+function saveOpenTitlePageSession(itemObj) {
+  try {
+    const raw = (typeof KirokuEngine !== 'undefined' && KirokuEngine.serializeTitlePageSnapshot)
+      ? KirokuEngine.serializeTitlePageSnapshot(itemObj)
+      : '';
+    if (raw) sessionStorage.setItem(OPEN_TITLE_SESSION_KEY, raw);
+  } catch (e) {}
+}
+
+function readOpenTitlePageSession() {
+  try {
+    const raw = sessionStorage.getItem(OPEN_TITLE_SESSION_KEY);
+    if (!raw) return null;
+    return (typeof KirokuEngine !== 'undefined' && KirokuEngine.parseTitlePageSnapshot)
+      ? KirokuEngine.parseTitlePageSnapshot(raw)
+      : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearOpenTitlePageSession() {
+  try { sessionStorage.removeItem(OPEN_TITLE_SESSION_KEY); } catch (e) {}
+}
+
+async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
   if (!itemObj) return;
   closeAll(true);
   const page = $('titlePageView'); if (!page) return;
   $('catalogView').style.display = 'none';
   $('profileView').style.display = 'none';
   page.style.display = 'block';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({ top: 0, behavior: opts && opts.instantScroll ? 'auto' : 'smooth' });
 
-  const inCol = items.find(i => i.id === itemObj.id || same(i, itemObj));
+  const inCol = items.find(i => (itemObj.id != null && String(i.id) === String(itemObj.id)) || same(i, itemObj));
   const activeItem = inCol || itemObj;
   const stateKey = String(activeItem.id || activeItem.aniId || activeItem.mal || activeItem.tmdb || activeItem.title);
   _fullPageHistoryItems.set(stateKey, activeItem);
   if (_fullPageHistoryItems.size > 80) _fullPageHistoryItems.delete(_fullPageHistoryItems.keys().next().value);
+  saveOpenTitlePageSession(activeItem);
 
   const curTab = document.querySelector('#mainTabs .tab.on')?.dataset.v || 'catalog';
   if (!fromHistory) {
@@ -3251,6 +3278,7 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   const backWrap = el('div'); backWrap.style.marginBottom = '14px';
   const backBtn = el('button', 'btn btn-s', '← Назад'); backBtn.type = 'button';
   backBtn.onclick = () => {
+    clearOpenTitlePageSession();
     if (history.state && history.state.fullPage) {
       history.back();
     } else {
@@ -5116,6 +5144,7 @@ function applyMainTabView(v, fromHistory = false, opts = {}) {
   document.querySelectorAll('#mainTabs .tab').forEach(x => x.classList.toggle('on', x.dataset.v === mode));
   document.querySelectorAll('#botnav button').forEach(x => x.classList.toggle('on', x.dataset.go === mode));
   try { localStorage.setItem('lastTab', mode); } catch (e) {}
+  if (!(opts && opts.preserveTitleSession)) clearOpenTitlePageSession();
   if ($('titlePageView')) $('titlePageView').style.display = 'none';
   $('catalogView').style.display = mode === 'catalog' ? '' : 'none';
   $('profileView').style.display = (mode === 'profile' || mode === 'collection') ? '' : 'none';
@@ -5187,12 +5216,17 @@ document.querySelectorAll('#mainTabs .tab').forEach(b => {
 let tabDone = false;
 function homeTab() {
   if (tabDone) return; tabDone = true;
+  const savedTitleSnap = readOpenTitlePageSession();
   let t = ''; try { t = localStorage.getItem('lastTab'); } catch (e) {}
   if (!['catalog', 'collection', 'profile'].includes(t)) t = 'catalog';
-  applyMainTabView(t, true);
+  applyMainTabView(t, true, { preserveTitleSession: Boolean(savedTitleSnap) });
   try {
     history.replaceState({ tab: t, fullPage: false }, '');
   } catch (e) {}
+  if (savedTitleSnap) {
+    const liveMatch = items.find(i => (savedTitleSnap.id != null && String(i.id) === String(savedTitleSnap.id)) || same(i, savedTitleSnap));
+    openFullTitlePage(liveMatch || savedTitleSnap, false, { instantScroll: true });
+  }
 }
 
 function refresh(opts = {}) {

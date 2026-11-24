@@ -1306,6 +1306,42 @@ test('extractMissingSequels keeps only unowned sequels, filters out prequels/mus
   assert.equal(missing[2].statusBucket, 'announced');
 });
 
+test('serializeTitlePageSnapshot and parseTitlePageSnapshot preserve core fields and reject invalid payloads', () => {
+  const raw = KirokuEngine.serializeTitlePageSnapshot({
+    id: 'local_42',
+    aniId: 21,
+    mal: 21,
+    title: 'Ван-Пис',
+    titleEn: 'One Piece',
+    category: 'Аниме',
+    format: 'TV',
+    year: '1999',
+    eps: 1122,
+    ongoing: true,
+    poster: 'https://example.com/op.jpg',
+    banner: 'data:image/png;base64,HUGE_BASE64_SHOULD_BE_SKIPPED',
+    tags: ['Приключения', 'Экшен'],
+    desc: 'История о пиратах'
+  });
+  assert.ok(raw.length > 0 && raw.length < 2000);
+  const parsed = KirokuEngine.parseTitlePageSnapshot(raw);
+  assert.ok(parsed);
+  assert.equal(parsed.id, 'local_42');
+  assert.equal(parsed.aniId, 21);
+  assert.equal(parsed.title, 'Ван-Пис');
+  assert.equal(parsed.ongoing, true);
+  assert.equal(parsed.poster, 'https://example.com/op.jpg');
+  assert.equal(parsed.banner, undefined);
+  assert.deepEqual(parsed.tags, ['Приключения', 'Экшен']);
+
+  assert.equal(KirokuEngine.serializeTitlePageSnapshot(null), '');
+  assert.equal(KirokuEngine.serializeTitlePageSnapshot({ title: '   ' }), '');
+  assert.equal(KirokuEngine.parseTitlePageSnapshot(''), null);
+  assert.equal(KirokuEngine.parseTitlePageSnapshot('{broken'), null);
+  assert.equal(KirokuEngine.parseTitlePageSnapshot(JSON.stringify({ category: 'Аниме' })), null);
+  assert.equal(KirokuEngine.parseTitlePageSnapshot('x'.repeat(20000)), null);
+});
+
 
 
 

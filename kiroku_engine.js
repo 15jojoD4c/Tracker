@@ -1433,6 +1433,91 @@
     });
   }
 
+  // Компактная сериализация открытой полной страницы тайтла для восстановления после обновления страницы (F5) через sessionStorage
+  function serializeTitlePageSnapshot(item) {
+    if (!item || typeof item !== 'object') return '';
+    const title = String(item.title || '').trim();
+    if (!title) return '';
+    const pickStr = (v, maxLen = 400) => {
+      const s = typeof v === 'string' ? v.trim() : (typeof v === 'number' && Number.isFinite(v) ? String(v) : '');
+      return s ? (s.length > maxLen ? s.slice(0, maxLen) : s) : '';
+    };
+    const pickNum = v => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+    const snap = {
+      v: 1,
+      title: pickStr(title, 260),
+      category: pickStr(item.category, 40)
+    };
+    if (item.id != null && String(item.id).trim()) snap.id = String(item.id).trim().slice(0, 80);
+    if (pickNum(item.aniId)) snap.aniId = pickNum(item.aniId);
+    if (pickNum(item.mal)) snap.mal = pickNum(item.mal);
+    if (pickNum(item.shikiId)) snap.shikiId = pickNum(item.shikiId);
+    if (pickNum(item.tmdb)) snap.tmdb = pickNum(item.tmdb);
+    if (pickStr(item.mdId, 80)) snap.mdId = pickStr(item.mdId, 80);
+    const en = pickStr(item.titleEn || item.en, 260);
+    if (en) { snap.titleEn = en; snap.en = en; }
+    const romaji = pickStr(item.romaji, 260);
+    if (romaji) snap.romaji = romaji;
+    const orig = pickStr(item.titleOrig || item.orig, 260);
+    if (orig) { snap.titleOrig = orig; snap.orig = orig; }
+    const fmt = pickStr(item.format, 40);
+    if (fmt) snap.format = fmt;
+    const subKind = pickStr(item.subKind || item.kind, 40);
+    if (subKind) snap.subKind = subKind;
+    const yr = pickStr(item.year, 20);
+    if (yr) snap.year = yr;
+    if (pickNum(item.eps)) snap.eps = pickNum(item.eps);
+    if (pickNum(item.airedEps)) snap.airedEps = pickNum(item.airedEps);
+    if (pickNum(item.vols)) snap.vols = pickNum(item.vols);
+    if (pickNum(item.dur)) snap.dur = pickNum(item.dur);
+    if (pickNum(item.seasons)) snap.seasons = pickNum(item.seasons);
+    const poster = pickStr(item.poster, 600);
+    if (poster && !poster.startsWith('data:')) snap.poster = poster;
+    const banner = pickStr(item.banner, 600);
+    if (banner && !banner.startsWith('data:')) snap.banner = banner;
+    const ext = pickStr(item.extRating || item.ext, 20);
+    if (ext) { snap.extRating = ext; snap.ext = ext; }
+    if (item.ongoing) snap.ongoing = true;
+    if (item.upcoming) snap.upcoming = true;
+    const relSt = pickStr(item.releaseStatus, 40);
+    if (relSt) snap.releaseStatus = relSt;
+    const url = pickStr(item.url, 400);
+    if (url) snap.url = url;
+    const src = pickStr(item.src || item.extSrc, 40);
+    if (src) snap.src = src;
+    if (Array.isArray(item.tags) && item.tags.length) {
+      snap.tags = item.tags.map(t => pickStr(t, 40)).filter(Boolean).slice(0, 12);
+    }
+    const desc = pickStr(item.description || item.desc, 1200);
+    if (desc) { snap.description = desc; snap.desc = desc; }
+    const author = pickStr(item.author, 160);
+    if (author) snap.author = author;
+    const studio = pickStr(item.studio, 160);
+    if (studio) snap.studio = studio;
+    if (item.isAdult) snap.isAdult = true;
+    try {
+      return JSON.stringify(snap);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function parseTitlePageSnapshot(raw) {
+    if (!raw || typeof raw !== 'string' || raw.length > 16000) return null;
+    try {
+      const obj = JSON.parse(raw);
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+      const title = typeof obj.title === 'string' ? obj.title.trim() : '';
+      if (!title) return null;
+      return obj;
+    } catch (e) {
+      return null;
+    }
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -1490,7 +1575,9 @@
     matchesAdultFilter,
     formatDurationMinsRu,
     formatOngoingDurationSummary,
-    extractMissingSequels
+    extractMissingSequels,
+    serializeTitlePageSnapshot,
+    parseTitlePageSnapshot
   };
 
   if (typeof module !== 'undefined' && module.exports) {

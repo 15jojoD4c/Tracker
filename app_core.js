@@ -3048,6 +3048,7 @@ $('logoutBtn').onclick = async () => {
     localStorage.removeItem('lastCloudUid');
     localStorage.removeItem('lastCloudEmail');
     localStorage.removeItem('lastCloudName');
+    sessionStorage.removeItem('kiroku_open_title_v1');
   } catch (e) {}
   _cloudSessionToken++;
   if (unsub) { unsub(); unsub = null; }

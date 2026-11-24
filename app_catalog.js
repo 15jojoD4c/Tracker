@@ -3319,7 +3319,7 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
   _qaLockCard = hostCard || null;
   if (_qaLockCard) _qaLockCard.classList.add('qa-hover-lock');
 
-  const idxLookup = buildCollectionLookupIndex(items);
+  const idxLookup = getCatalogLookupIndex();
   let existing = (r.id && items.find(i => String(i.id) === String(r.id))) || findInCollectionWithIndex(r, idxLookup);
   const itemCat = (existing && existing.category) || r.category || '';
   menu.replaceChildren();
@@ -3346,7 +3346,7 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
       await quickAdd(r, stKey);
       anchorBtn.disabled = false;
       cgMarks();
-      if (onAfterPick) onAfterPick(findInCollectionWithIndex(r, buildCollectionLookupIndex(items)));
+      if (onAfterPick) onAfterPick(findInCollectionWithIndex(r, getCatalogLookupIndex()));
     };
     menu.append(b);
   });
@@ -3431,6 +3431,13 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
     if (isHidden) rebuildFolderSub();
     folderSub.style.display = isHidden ? 'flex' : 'none';
     folderToggleBtn.lastChild.textContent = isHidden ? '▾' : '▸';
+    if (isHidden && window.innerWidth > 600) {
+      const mRect = menu.getBoundingClientRect();
+      if (mRect.bottom > window.innerHeight - 10) {
+        const clampedTop = Math.max(10, window.innerHeight - mRect.height - 10);
+        menu.style.top = clampedTop + 'px';
+      }
+    }
   };
   menu.append(folderToggleBtn, folderSub);
 
@@ -3481,7 +3488,9 @@ function openQuickAddStatusMenu(anchorBtn, r, onAfterPick = null, fromHover = fa
       closeQuickAddStatusMenu();
     });
   }
-  window.addEventListener('scroll', () => closeQuickAddStatusMenu(), { passive: true });
+  window.addEventListener('scroll', () => {
+    if (_qaLockCard || $('qaFloatMenu')?.classList.contains('open')) closeQuickAddStatusMenu();
+  }, { passive: true });
 }
 
 function removeItem(id, undo) {

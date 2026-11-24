@@ -4300,7 +4300,7 @@ $('sizeSel').onchange = e => setSize(e.target.value, false);
 let cropDone = null;
 
 // Приоритет модальных окон от самого верхнего к нижнему (по z-index)
-const MODAL_STACK_ORDER = ['cropModal', 'dlgModal', 'charPopupModal', 'aboutSiteModal', 'themeModal', 'dataModal', 'profModal', 'statsModal', 'addModal', 'detailModal', 'rndModal'];
+const MODAL_STACK_ORDER = ['cropModal', 'dlgModal', 'charPopupModal', 'aboutSiteModal', 'themeModal', 'dataModal', 'profModal', 'sequelsModal', 'statsModal', 'addModal', 'detailModal', 'rndModal'];
 
 function getOpenModalsInStackOrder() {
   return MODAL_STACK_ORDER.map(id => $(id)).filter(m => m && m.style.display && m.style.display !== 'none');
@@ -4357,7 +4357,7 @@ const closeAll = (fromPopState = false) => {
   }
 };
 
-['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'closeStatsTopBtn', 'rndClose', 'closeAboutSiteBtn', 'doneAboutSiteBtn'].forEach(id => {
+['closeAddBtn', 'closeDetailBtn', 'closeStatsBtn', 'closeStatsTopBtn', 'closeSequelsBtn', 'closeSequelsTopBtn', 'rndClose', 'closeAboutSiteBtn', 'doneAboutSiteBtn'].forEach(id => {
   if ($(id)) $(id).onclick = () => closeTopModal(false);
 });
 
@@ -4488,7 +4488,6 @@ const ruClean = t => (t || '').replace(/\[(character|person|anime|manga|ranobe|u
 const ruJson = async (u, ms = 7000) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); try { const r = await fetch(u, {signal: c.signal}); if (!r.ok) { const err = new Error('HTTP ' + r.status); err.status = r.status; throw err; } return await r.json(); } finally { clearTimeout(t); } };
 
 // Троттлинг-очередь для Shikimori (макс. 2 одновременных запроса, интервал >= 260 мс, 1 авто-повтор при 429)
-const shikiOk = () => true;
 const _shikiQueue = [];
 let _shikiActive = 0;
 let _shikiLastRunAt = 0;
@@ -4829,15 +4828,6 @@ async function ruToEn(q) {
   const c = (s.search || []).find(x => /аниме|манг|ранобэ|новелл/i.test(x.description || '')) || (s.search || [])[0]; if (!c) return '';
   const e = await ruJson('https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&props=labels&languages=en&ids=' + c.id, 6000);
   return e.entities?.[c.id]?.labels?.en?.value || '';
-}
-async function ruWikiFind(q, names, cat, year) {
-  const w = {'Аниме': 'аниме', 'Манга': 'манга', 'Ранобэ': 'ранобэ'}[cat] || '';
-  const s = await ruJson('https://ru.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=3&srsearch=' + encodeURIComponent(q + ' ' + w), 6000);
-  for (const [k, h] of (s.query?.search || []).entries()) {
-    const x = await ruJson('https://ru.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(h.title), 6000), ex = ruN(x.extract || '');
-    if (names.some(n => n.length > 3 && ex.includes(n)) || (k === 0 && year && (x.extract || '').includes(String(year)))) return {title: (x.title || h.title).replace(/\s*\(.*?\)\s*$/, ''), desc: x.extract || ''};
-  }
-  return null;
 }
 async function ruTitles(kind, mals) {
   const out = {};
@@ -5913,7 +5903,6 @@ $('saveItemBtn').onclick = async () => {
 
 // ИСПРАВЛЕНИЕ ОШИБКИ №2: Итоги года и Капсула времени используют дату просмотра completedAt, если она есть, иначе дату добавления
 const born = i => { const v = Number(i.id); return v > 1e14 ? v / 1000 : v > 1e11 && v < 1e13 ? v : 0; };
-const itemActionDate = i => Number(i.completedAt) || born(i) || Date.now();
 const toList = () => {
   if (document.body.dataset.pview !== 'collection' && typeof applyMainTabView === 'function') {
     applyMainTabView('collection');
@@ -5976,7 +5965,13 @@ function openDetail(id) {
   const compDateStr = (addDateStr ? ` • Добавлено в «${detStLabel}»: ${addDateStr}` : '') + (i.completedAt ? ' • Завершено ' + new Date(i.completedAt).toLocaleDateString('ru-RU') : '');
   const detRelState = getItemReleaseState(i);
   const detRelText = detRelState === 'ongoing' ? ' • ● Онгоинг' : detRelState === 'upcoming' ? ' • Анонс' : ' • Завершён';
-  const buildDetailMetaText = () => `${catLabel(i)} • ${i.year || 'Год не указан'}${detRelText}${compDateStr}${i.seasons > 1 ? ' • ' + i.seasons + ' ' + pluralRu(i.seasons, 'сезон', 'сезона', 'сезонов') : ''}${i.eps ? ' • ' + i.eps + (i.category === 'Манга' || i.category === 'Ранобэ' ? ' гл.' : ' эп.') : ''}${i.vols ? ' • ' + i.vols + ' ' + pluralRu(i.vols, 'том', 'тома', 'томов') : ''}${i.dur ? ' • ' + i.dur + ' мин' : ''}`;
+  const buildDetailMetaText = () => {
+    const ongSummary = (detRelState === 'ongoing' && typeof KirokuEngine !== 'undefined' && KirokuEngine.formatOngoingDurationSummary)
+      ? KirokuEngine.formatOngoingDurationSummary(i)
+      : null;
+    const ongNote = ongSummary && ongSummary.shortBadge ? ` • ${ongSummary.shortBadge}` : '';
+    return `${catLabel(i)} • ${i.year || 'Год не указан'}${detRelText}${compDateStr}${i.seasons > 1 ? ' • ' + i.seasons + ' ' + pluralRu(i.seasons, 'сезон', 'сезона', 'сезонов') : ''}${i.eps ? ' • ' + i.eps + (i.category === 'Манга' || i.category === 'Ранобэ' ? ' гл.' : ' эп.') : ''}${i.vols ? ' • ' + i.vols + ' ' + pluralRu(i.vols, 'том', 'тома', 'томов') : ''}${i.dur ? ' • ' + i.dur + ' мин' : ''}${ongNote}`;
+  };
   $('detailMeta').textContent = buildDetailMetaText();
   $('detailNames').textContent = [i.titleEn, i.titleOrig, i.alt].filter(Boolean).join(' / ');
 

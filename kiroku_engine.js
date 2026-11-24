@@ -1162,6 +1162,277 @@
     return true;
   }
 
+  // --- Расчёт времени просмотра/чтения (включая онгоинги: на момент последней вышедшей серии/главы + запланированный итог) ---
+  function formatDurationMinsRu(totalMins) {
+    const mins = Math.max(0, Math.round(Number(totalMins) || 0));
+    if (mins <= 0) return '0 мин';
+    if (mins < 60) return `${mins} мин`;
+    const totalHours = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (totalHours < 48) {
+      return remMins > 0 ? `${totalHours} ч ${remMins} мин` : `${totalHours} ч`;
+    }
+    const days = Math.floor(totalHours / 24);
+    const remHours = totalHours % 24;
+    return remHours > 0 ? `${days} дн ${remHours} ч` : `${days} дн`;
+  }
+
+  function formatOngoingDurationSummary(item, mediaMeta = null) {
+    const it = item || {};
+    const meta = mediaMeta || {};
+    const cat = String(it.category || '');
+    const fmt = String(it.format || meta.format || '').toUpperCase();
+    const isRead = cat === 'Манга' || cat === 'Ранобэ' || fmt === 'MANGA' || fmt === 'NOVEL' || fmt === 'ONE_SHOT';
+    const relStr = String(meta.status || it.releaseStatus || '').toLowerCase();
+    const isOngoing = Boolean(
+      it.ongoing ||
+      relStr === 'releasing' ||
+      relStr === 'ongoing' ||
+      relStr === 'returning series' ||
+      relStr === 'in production'
+    );
+    const watched = Math.max(0, Math.floor(Number(it.watchedEps) || 0));
+    const showWatchedProgress = watched > 0 && it.status && it.status !== 'Просмотрено/Прочитано' && cat !== 'Фильм' && fmt !== 'MOVIE';
+
+    if (isRead) {
+      const airedCh = Math.max(0, Math.floor(Number(meta.releasedChapters || meta.chaptersAired || it.airedEps) || 0));
+      const rawTotalCh = Math.max(0, Math.floor(Number(meta.chapters || it.eps) || 0));
+      const vols = Math.max(0, Math.floor(Number(meta.volumes || it.vols) || 0));
+      const plannedCh = rawTotalCh > 0 ? rawTotalCh : 0;
+
+      let airedCount = airedCh;
+      let knownPlanned = 0;
+      if (isOngoing) {
+        if (airedCh > 0 && plannedCh > airedCh) {
+          knownPlanned = plannedCh;
+        } else if (airedCh === 0 && plannedCh > 0) {
+          airedCount = plannedCh;
+        }
+      } else {
+        airedCount = plannedCh || airedCh;
+        knownPlanned = plannedCh;
+      }
+
+      const episodesLabel = isOngoing && airedCh > 0 && knownPlanned > airedCh
+        ? `вышло ${airedCh} из ${knownPlanned} гл. · ${vols || '?'} т.`
+        : `${airedCount || plannedCh || '?'} гл. · ${vols || '?'} т.`;
+
+      return {
+        isOngoing,
+        isRead: true,
+        airedCount,
+        plannedCount: knownPlanned,
+        airedMinutes: 0,
+        plannedMinutes: 0,
+        perUnitMin: 0,
+        episodesLabel,
+        durationLabel: '',
+        shortBadge: ''
+      };
+    }
+
+    // Фильмы / Сериалы / Аниме
+    const rawDur = Math.max(0, Math.round(Number(meta.duration || it.dur) || 0));
+    const perUnitMin = rawDur || (cat === 'Аниме' ? 24 : cat === 'Сериал' ? 45 : cat === 'Фильм' ? 110 : 0);
+    const nextEpNum = Number(meta.nextAiringEpisode?.episode) || 0;
+    const airedFromMeta = Math.max(0, Math.floor(Number(meta.episodesAired) || (nextEpNum > 1 ? nextEpNum - 1 : 0)));
+    const airedCount = airedFromMeta || Math.max(0, Math.floor(Number(it.airedEps) || 0));
+    const metaTotalEps = Math.max(0, Math.floor(Number(meta.episodes) || 0));
+    const itemTotalEps = Math.max(0, Math.floor(Number(it.eps) || 0));
+    const seasons = Math.max(0, Math.floor(Number(meta.seasons || it.seasons) || 0));
+
+    // Если Shikimori/TMDB прислал только вышедшие серии без общего плана (meta.episodes === 0), не принимаем airedCount за финал
+    let plannedCount = metaTotalEps > 0
+      ? metaTotalEps
+      : (airedCount > 0 && itemTotalEps === airedCount && isOngoing ? 0 : itemTotalEps);
+    if (plannedCount > 0 && airedCount > plannedCount) {
+      plannedCount = 0;
+    }
+
+    if (!isOngoing) {
+      const totalEps = plannedCount || airedCount;
+      const totalMins = cat === 'Фильм' || fmt === 'MOVIE'
+        ? perUnitMin
+        : (totalEps > 0 ? totalEps * perUnitMin : perUnitMin);
+      const base = rawDur > 0 && cat !== 'Фильм' && fmt !== 'MOVIE' && totalEps > 1
+        ? `${rawDur} мин. (${formatDurationMinsRu(totalMins)} всего)`
+        : (totalMins > 0 ? formatDurationMinsRu(totalMins) : 'Не указано');
+      const durationLabel = (showWatchedProgress && perUnitMin > 0)
+        ? `${base} · просмотрено ${formatDurationMinsRu(watched * perUnitMin)}`
+        : base;
+      let episodesLabel = 'Не указано';
+      if (cat === 'Фильм' || fmt === 'MOVIE') episodesLabel = 'Полнометражный фильм';
+      else if (totalEps > 0 && seasons > 1) episodesLabel = `${totalEps} эп. (${seasons} сез.)`;
+      else if (totalEps > 0) episodesLabel = `${totalEps} эп.`;
+      else if (seasons > 1) episodesLabel = `${seasons} сез.`;
+      return {
+        isOngoing: false,
+        isRead: false,
+        airedCount: totalEps,
+        plannedCount: totalEps,
+        airedMinutes: totalMins,
+        plannedMinutes: totalMins,
+        perUnitMin,
+        episodesLabel,
+        durationLabel,
+        shortBadge: ''
+      };
+    }
+
+    // Онгоинг (Аниме / Сериал)
+    const effectiveAired = airedCount > 0 ? airedCount : (cat === 'Сериал' && plannedCount > 0 ? plannedCount : 0);
+    const hasDistinctPlanned = plannedCount > 0 && (effectiveAired === 0 || plannedCount > effectiveAired);
+    const airedMinutes = effectiveAired > 0 && perUnitMin > 0 ? effectiveAired * perUnitMin : 0;
+    const plannedMinutes = plannedCount > 0 && perUnitMin > 0 ? plannedCount * perUnitMin : 0;
+
+    let episodesLabel = 'Онгоинг';
+    if (effectiveAired > 0 && hasDistinctPlanned) {
+      episodesLabel = `вышло ${effectiveAired} из ${plannedCount} эп.${seasons > 1 ? ` (${seasons} сез.)` : ''}`;
+    } else if (effectiveAired > 0) {
+      episodesLabel = `вышло ${effectiveAired} эп.${seasons > 1 ? ` (${seasons} сез.)` : ''} (онгоинг)`;
+    } else if (plannedCount > 0) {
+      episodesLabel = `запланировано ${plannedCount} эп.${seasons > 1 ? ` (${seasons} сез.)` : ''} (онгоинг)`;
+    } else if (seasons > 1) {
+      episodesLabel = `${seasons} сез. (онгоинг)`;
+    }
+
+    const parts = [];
+    if (rawDur > 0) parts.push(`${rawDur} мин./эп.`);
+    let shortBadge = '';
+    if (effectiveAired > 0 && hasDistinctPlanned) {
+      parts.push(`вышло ${effectiveAired} эп. (${formatDurationMinsRu(airedMinutes)})`);
+      parts.push(`всего запланировано ${plannedCount} эп. (${formatDurationMinsRu(plannedMinutes)})`);
+      shortBadge = `вышло ${effectiveAired}/${plannedCount} эп. (${formatDurationMinsRu(airedMinutes)} из ${formatDurationMinsRu(plannedMinutes)})`;
+    } else if (effectiveAired > 0) {
+      parts.push(`вышло ${effectiveAired} эп. (${formatDurationMinsRu(airedMinutes)})`);
+      shortBadge = `вышло ${effectiveAired} эп. (${formatDurationMinsRu(airedMinutes)})`;
+    } else if (plannedCount > 0) {
+      parts.push(`всего запланировано ${plannedCount} эп. (${formatDurationMinsRu(plannedMinutes)})`);
+      shortBadge = `план ${plannedCount} эп. (${formatDurationMinsRu(plannedMinutes)})`;
+    } else {
+      parts.push('онгоинг (серии уточняются)');
+    }
+
+    if (showWatchedProgress && perUnitMin > 0) {
+      parts.push(`просмотрено ${formatDurationMinsRu(watched * perUnitMin)}`);
+    }
+
+    return {
+      isOngoing: true,
+      isRead: false,
+      airedCount: effectiveAired,
+      plannedCount: hasDistinctPlanned ? plannedCount : 0,
+      airedMinutes,
+      plannedMinutes,
+      perUnitMin,
+      episodesLabel,
+      durationLabel: parts.join(' · '),
+      shortBadge
+    };
+  }
+
+  // --- Отбор недостающих сиквелов/продолжений по дереву франшизы ---
+  function extractMissingSequels(parentItems, relationRecords, isInCollectionFn = null, currentYear = new Date().getFullYear()) {
+    const parents = Array.isArray(parentItems) ? parentItems : [];
+    const records = Array.isArray(relationRecords) ? relationRecords : [];
+    const checkOwned = typeof isInCollectionFn === 'function' ? isInCollectionFn : (() => false);
+
+    const normSimple = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-z0-9а-я]+/g, '');
+    const parentAniIds = new Set();
+    const parentMalIds = new Set();
+    const parentTmdbIds = new Set();
+    const parentTitles = new Set();
+    for (const p of parents) {
+      if (!p) continue;
+      if (Number(p.aniId) > 0) parentAniIds.add(Number(p.aniId));
+      if (Number(p.mal) > 0) parentMalIds.add(Number(p.mal));
+      if (Number(p.shikiId) > 0) parentMalIds.add(Number(p.shikiId));
+      if (p.tmdb) parentTmdbIds.add(String(p.tmdb));
+      [p.title, p.titleEn, p.en, p.titleOrig, p.orig].forEach(t => {
+        const nt = normSimple(t);
+        if (nt.length >= 3) parentTitles.add(nt);
+      });
+    }
+
+    const EXCLUDED_FORMATS = new Set(['MUSIC', 'PV', 'CM']);
+    const isSequelType = rel => {
+      const r = String(rel || '').trim().toLowerCase();
+      return r === 'sequel' || r === 'продолжение' || r === 'tmdb_collection_sequel';
+    };
+
+    const byKey = new Map();
+    for (const rec of records) {
+      if (!rec || !rec.node) continue;
+      if (!isSequelType(rec.relationType)) continue;
+      const n = rec.node;
+      const fmt = String(n.format || '').toUpperCase();
+      if (EXCLUDED_FORMATS.has(fmt)) continue;
+
+      const aniId = Number(n.aniId) || 0;
+      const mal = Number(n.mal || n.shikiId) || 0;
+      const tmdb = n.tmdb ? String(n.tmdb) : '';
+      const cat = String(n.category || 'Аниме');
+      const titleMain = String(n.title || n.titleEn || n.en || n.titleOrig || '').trim();
+      const nt = normSimple(titleMain);
+      if (!titleMain) continue;
+
+      // Пропускаем, если совпадает с исходным тайтлом или уже есть в коллекции
+      if (aniId > 0 && parentAniIds.has(aniId)) continue;
+      if (mal > 0 && parentMalIds.has(mal)) continue;
+      if (tmdb && parentTmdbIds.has(tmdb)) continue;
+      if (checkOwned(n)) continue;
+
+      const dedupKey = aniId > 0
+        ? `ani:${aniId}`
+        : mal > 0
+          ? `mal:${cat}:${mal}`
+          : tmdb
+            ? `tmdb:${cat}:${tmdb}`
+            : `t:${cat}:${nt}`;
+
+      const rawSt = String(n.status || n.releaseStatus || '').toUpperCase();
+      const yr = Number(n.year) || 0;
+      let statusBucket = 'released';
+      if (rawSt === 'RELEASING' || rawSt === 'ONGOING' || rawSt === 'RETURNING SERIES') {
+        statusBucket = 'ongoing';
+      } else if (rawSt === 'NOT_YET_RELEASED' || rawSt === 'ANONS' || rawSt === 'PLANNED' || rawSt === 'IN PRODUCTION' || (!rawSt && yr > currentYear)) {
+        statusBucket = 'announced';
+      }
+
+      const parentTitle = String(rec.parentItem?.title || '').trim();
+      const existing = byKey.get(dedupKey);
+      if (existing) {
+        if (parentTitle && !existing.parentTitles.includes(parentTitle)) {
+          existing.parentTitles.push(parentTitle);
+        }
+        if (!existing.poster && n.poster) existing.poster = n.poster;
+        if (!existing.extRating && (n.extRating || n.ext)) existing.extRating = String(n.extRating || n.ext);
+        continue;
+      }
+
+      byKey.set(dedupKey, {
+        ...n,
+        aniId,
+        mal,
+        tmdb,
+        category: cat,
+        title: titleMain,
+        year: yr ? String(yr) : '',
+        statusBucket,
+        parentTitles: parentTitle ? [parentTitle] : []
+      });
+    }
+
+    const bucketOrder = { released: 0, ongoing: 1, announced: 2 };
+    return [...byKey.values()].sort((a, b) => {
+      const bo = (bucketOrder[a.statusBucket] ?? 3) - (bucketOrder[b.statusBucket] ?? 3);
+      if (bo !== 0) return bo;
+      const yrDiff = (Number(b.year) || 0) - (Number(a.year) || 0);
+      if (yrDiff !== 0) return yrDiff;
+      return (Number(b.extRating || b.ext) || 0) - (Number(a.extRating || a.ext) || 0);
+    });
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -1216,7 +1487,10 @@
     filterAndDedupCreatorWorks,
     resolveDisplayFormatLabel,
     resolveAdultFilterFlag,
-    matchesAdultFilter
+    matchesAdultFilter,
+    formatDurationMinsRu,
+    formatOngoingDurationSummary,
+    extractMissingSequels
   };
 
   if (typeof module !== 'undefined' && module.exports) {

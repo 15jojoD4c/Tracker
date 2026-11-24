@@ -231,9 +231,9 @@ window.exportData = () => {
       cardStyle: prof.cardStyle, customColor: prof.customColor,
       showMyNotes: !!prof.showMyNotes,
       customLists: prof.customLists || [], listMeta: prof.listMeta || {},
-      favChars: prof.favChars || [], equippedMedals: prof.equippedMedals || []
+      favChars: prof.favChars || []
     },
-    items: myOwnItems.map(({userId, _docId, _knownStatusFromImport, lastLinkAttempt, ...r}) => r)
+    items: myOwnItems.map(({userId, _docId, _knownStatusFromImport, lastLinkAttempt, badgeCharImg, badgeCharName, ...r}) => r)
   };
   const a = document.createElement('a'), u = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'}));
   a.href = u; a.download = `Kirokucho_FullBackup_${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(u);
@@ -2195,16 +2195,6 @@ async function startCatalogLinkingForList(targetList, manualTrigger = false) {
   }
 }
 
-function resumeBackgroundCatalogLinkingIfNeeded() {
-  if (catalogLinkingActive || !items.length) return;
-  restoreUncertainMatchesFromStorage();
-  const pendingFlag = localStorage.getItem(getUidStorageKey('catalogLinkPending'));
-  const unlinked = items.filter(i => !hasExternalCatalogId(i) && (Date.now() - getItemLastLinkAttempt(i)) > 86400000);
-  if (pendingFlag && unlinked.length) {
-    startCatalogLinkingForList(unlinked, false);
-  }
-}
-
 if ($('cleanupAndEnrichBtn')) {
   $('cleanupAndEnrichBtn').onclick = async () => {
     await findAndMergeDuplicatesModal();
@@ -2864,6 +2854,9 @@ class CharacterSeiyuuManager {
         }
         media.author = aniAuthor;
         media.studio = aniStudio;
+        media.episodesAired = (media.nextAiringEpisode && Number(media.nextAiringEpisode.episode) > 1)
+          ? (Number(media.nextAiringEpisode.episode) - 1)
+          : 0;
         const res = {
           mediaMeta: media,
           author: aniAuthor,
@@ -3004,6 +2997,11 @@ class CharacterSeiyuuManager {
         idMal: Number(shMedia.malId || malId),
         description: ruClean(shMedia.description || ''),
         status: shMedia.status === 'ongoing' ? 'RELEASING' : shMedia.status === 'anons' ? 'NOT_YET_RELEASED' : 'FINISHED',
+        duration: Number(shMedia.duration) || 0,
+        episodes: Number(shMedia.episodes) || 0,
+        episodesAired: Number(shMedia.episodesAired) || 0,
+        chapters: Number(shMedia.chapters) || 0,
+        volumes: Number(shMedia.volumes) || 0,
         startDate: shMedia.airedOn || null,
         endDate: shMedia.releasedOn || null,
         nextAiringEpisode: shMedia.nextEpisodeAt ? {
@@ -3377,7 +3375,11 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   const authorSpecBox = addClickableSpec('Автор / Режиссёр', activeItem.author, 'author', 'author');
   const studioSpecBox = addClickableSpec('Студия / Издатель', activeItem.studio, 'studio', 'studio');
   if (activeItem.cast) addSpec('В главных ролях', activeItem.cast, 'cast');
-  const formatFullPageDuration = target => {
+  let latestMediaMeta = null;
+  const formatFullPageDuration = (target, meta = latestMediaMeta) => {
+    if (typeof KirokuEngine !== 'undefined' && KirokuEngine.formatOngoingDurationSummary) {
+      return KirokuEngine.formatOngoingDurationSummary(target, meta).durationLabel;
+    }
     const base = num(target.dur)
       ? `${target.dur} мин. (${formatWatchTimeRu(getItemMinutes(target))} всего)`
       : formatWatchTimeRu(getItemMinutes(target));
@@ -3387,7 +3389,10 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
     }
     return base;
   };
-  const formatFullPageEpisodes = target => {
+  const formatFullPageEpisodes = (target, meta = latestMediaMeta) => {
+    if (typeof KirokuEngine !== 'undefined' && KirokuEngine.formatOngoingDurationSummary) {
+      return KirokuEngine.formatOngoingDurationSummary(target, meta).episodesLabel;
+    }
     if (target.category === 'Фильм') return 'Полнометражный фильм';
     const e = num(target.eps);
     const s = num(target.seasons);
@@ -3400,15 +3405,15 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
   let episodesSpecBox = null;
   let durationSpecBox = null;
   if (activeItem.category === 'Манга' || activeItem.category === 'Ранобэ') {
-    volumeSpecBox = addSpec('Объём (Главы и Тома)', `${num(activeItem.eps) || '?'} гл. · ${num(activeItem.vols) || '?'} т.`, 'volume');
+    volumeSpecBox = addSpec('Объём (Главы и Тома)', formatFullPageEpisodes(activeItem, null), 'volume');
   } else {
-    episodesSpecBox = addSpec('Количество серий', formatFullPageEpisodes(activeItem), 'episodes');
-    durationSpecBox = addSpec('Длительность', formatFullPageDuration(activeItem), 'duration');
+    episodesSpecBox = addSpec('Количество серий', formatFullPageEpisodes(activeItem, null), 'episodes');
+    durationSpecBox = addSpec('Длительность', formatFullPageDuration(activeItem, null), 'duration');
   }
   const syncFullPageDuration = target => {
     if (!durationSpecBox || !target) return;
     const valEl = durationSpecBox.querySelector('b');
-    if (valEl) valEl.textContent = formatFullPageDuration(target);
+    if (valEl) valEl.textContent = formatFullPageDuration(target, latestMediaMeta);
   };
   addSpec('Внешний рейтинг', (activeItem.extRating || activeItem.ext) ? `★ ${activeItem.extRating || activeItem.ext}` : '—', 'extRating');
   addSpec('Моя оценка', activeItem.rating ? `★ ${activeItem.rating} / 10` : 'Не оценено', 'myRating');
@@ -3688,15 +3693,21 @@ async function openFullTitlePage(itemObj, fromHistory = false) {
         metaPatchedLocal = true;
       }
     }
+    latestMediaMeta = mediaMeta || null;
+    const foundAired = num(mediaMeta?.episodesAired) || (num(mediaMeta?.nextAiringEpisode?.episode) > 1 ? num(mediaMeta.nextAiringEpisode.episode) - 1 : 0);
+    if (foundAired > 0) {
+      activeItem.airedEps = foundAired;
+    }
     if (episodesSpecBox) {
       const bEl = episodesSpecBox.querySelector('b');
-      if (bEl) bEl.textContent = formatFullPageEpisodes(curMatch || activeItem);
+      if (bEl) bEl.textContent = formatFullPageEpisodes(curMatch || activeItem, latestMediaMeta);
     }
     if (volumeSpecBox) {
       const bEl = volumeSpecBox.querySelector('b');
       const tgt = curMatch || activeItem;
-      if (bEl) bEl.textContent = `${num(tgt.eps) || '?'} гл. · ${num(tgt.vols) || '?'} т.`;
+      if (bEl) bEl.textContent = formatFullPageEpisodes(tgt, latestMediaMeta);
     }
+    syncFullPageDuration(curMatch || activeItem);
     if (sourceSpecBox) {
       const foundSrc = mediaMeta?.source && typeof SRC !== 'undefined' ? (SRC[mediaMeta.source] || '') : '';
       const foundCountries = String(mediaMeta?.countries || '').trim();

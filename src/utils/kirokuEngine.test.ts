@@ -1182,5 +1182,130 @@ test('resolveAdultFilterFlag and matchesAdultFilter include 18+ by default, hide
   assert.equal(KirokuEngine.matchesAdultFilter(normalManga, 'only'), false);
 });
 
+test('formatOngoingDurationSummary formats aired and planned watch/read times for ongoing anime, series, manga, and ranobe', () => {
+  assert.equal(KirokuEngine.formatDurationMinsRu(45), '45 мин');
+  assert.equal(KirokuEngine.formatDurationMinsRu(120), '2 ч');
+  assert.equal(KirokuEngine.formatDurationMinsRu(288), '4 ч 48 мин');
+  assert.equal(KirokuEngine.formatDurationMinsRu(24 * 60 * 3 + 5 * 60), '3 дн 5 ч');
+
+  // 1. Ongoing anime with BOTH aired episodes and known planned total (5 of 12 eps, 24 min/ep)
+  const seasonalOngoing = KirokuEngine.formatOngoingDurationSummary(
+    { category: 'Аниме', ongoing: true, dur: 24, eps: 12, status: 'Смотрю/Читаю', watchedEps: 3 },
+    { status: 'RELEASING', episodes: 12, duration: 24, nextAiringEpisode: { episode: 6 } }
+  );
+  assert.equal(seasonalOngoing.isOngoing, true);
+  assert.equal(seasonalOngoing.airedCount, 5);
+  assert.equal(seasonalOngoing.plannedCount, 12);
+  assert.equal(seasonalOngoing.airedMinutes, 120);
+  assert.equal(seasonalOngoing.plannedMinutes, 288);
+  assert.match(seasonalOngoing.episodesLabel, /вышло 5 из 12 эп\./);
+  assert.match(seasonalOngoing.durationLabel, /вышло 5 эп\. \(2 ч\)/);
+  assert.match(seasonalOngoing.durationLabel, /всего запланировано 12 эп\. \(4 ч 48 мин\)/);
+  assert.match(seasonalOngoing.durationLabel, /просмотрено 1 ч 12 мин/);
+
+  // 2. Long ongoing anime with unknown total (e.g. One Piece: 1120 aired, planned=0)
+  const longOngoing = KirokuEngine.formatOngoingDurationSummary(
+    { category: 'Аниме', ongoing: true, dur: 24, eps: 1120, airedEps: 1120 },
+    { status: 'RELEASING', episodes: 0, episodesAired: 1120, duration: 24 }
+  );
+  assert.equal(longOngoing.airedCount, 1120);
+  assert.equal(longOngoing.plannedCount, 0);
+  assert.match(longOngoing.episodesLabel, /вышло 1120 эп\./);
+  assert.match(longOngoing.durationLabel, /вышло 1120 эп\./);
+  assert.doesNotMatch(longOngoing.durationLabel, /запланировано/);
+
+  // 3. Ongoing anime where only planned total is known (0 aired yet, 13 planned)
+  const plannedOnly = KirokuEngine.formatOngoingDurationSummary(
+    { category: 'Аниме', ongoing: true, dur: 24, eps: 13 },
+    { status: 'RELEASING', episodes: 13, duration: 24 }
+  );
+  assert.equal(plannedOnly.airedCount, 0);
+  assert.equal(plannedOnly.plannedCount, 13);
+  assert.match(plannedOnly.durationLabel, /всего запланировано 13 эп\. \(5 ч 12 мин\)/);
+
+  // 4. Manga & Ranobe do NOT estimate reading time (keeps chapter/volume counts only)
+  const ongoingManga = KirokuEngine.formatOngoingDurationSummary(
+    { category: 'Манга', ongoing: true, eps: 85, vols: 9, status: 'Смотрю/Читаю', watchedEps: 20 }
+  );
+  assert.equal(ongoingManga.isRead, true);
+  assert.equal(ongoingManga.airedCount, 85);
+  assert.equal(ongoingManga.airedMinutes, 0);
+  assert.equal(ongoingManga.durationLabel, '');
+  assert.equal(ongoingManga.shortBadge, '');
+  assert.equal(ongoingManga.episodesLabel, '85 гл. · 9 т.');
+
+  const ongoingRanobeWithPlan = KirokuEngine.formatOngoingDurationSummary(
+    { category: 'Ранобэ', ongoing: true, airedEps: 18, eps: 30, vols: 3 }
+  );
+  assert.equal(ongoingRanobeWithPlan.airedMinutes, 0);
+  assert.equal(ongoingRanobeWithPlan.plannedMinutes, 0);
+  assert.equal(ongoingRanobeWithPlan.durationLabel, '');
+  assert.equal(ongoingRanobeWithPlan.episodesLabel, 'вышло 18 из 30 гл. · 3 т.');
+});
+
+test('extractMissingSequels keeps only unowned sequels, filters out prequels/music/owned, deduplicates, and sorts released before announced', () => {
+  const parents = [
+    { id: 1, aniId: 20, mal: 20, title: 'Наруто', category: 'Аниме', status: 'Просмотрено/Прочитано' },
+    { id: 2, aniId: 16498, mal: 16498, title: 'Атака титанов', category: 'Аниме', status: 'Просмотрено/Прочитано' }
+  ];
+  const ownedMals = new Set([20, 16498, 25777]); // AoT S2 (25777) already in collection
+
+  const records = [
+    // Owned sequel -> must be filtered out
+    {
+      parentItem: parents[1],
+      relationType: 'SEQUEL',
+      node: { aniId: 20958, mal: 25777, title: 'Атака титанов 2', category: 'Аниме', format: 'TV', status: 'FINISHED', year: 2017, extRating: '8.4' }
+    },
+    // Non-sequel (SIDE_STORY) -> must be filtered out
+    {
+      parentItem: parents[0],
+      relationType: 'SIDE_STORY',
+      node: { aniId: 9991, mal: 9991, title: 'Naruto OVA', category: 'Аниме', format: 'OVA', status: 'FINISHED', year: 2005 }
+    },
+    // Music format sequel -> must be filtered out
+    {
+      parentItem: parents[0],
+      relationType: 'SEQUEL',
+      node: { aniId: 9992, mal: 9992, title: 'Naruto MV', category: 'Аниме', format: 'MUSIC', status: 'FINISHED', year: 2020 }
+    },
+    // Announced sequel -> should sort AFTER released/ongoing
+    {
+      parentItem: parents[0],
+      relationType: 'SEQUEL',
+      node: { aniId: 173500, mal: 55555, title: 'Боруто: Два синих вихря', category: 'Аниме', format: 'TV', status: 'NOT_YET_RELEASED', year: 2027, extRating: '' }
+    },
+    // Ongoing sequel -> middle priority
+    {
+      parentItem: parents[0],
+      relationType: 'SEQUEL',
+      node: { aniId: 173501, mal: 55556, title: 'Наруто: Новый сезон', category: 'Аниме', format: 'TV', status: 'RELEASING', year: 2026, extRating: '8.1' }
+    },
+    // Released sequel (duplicate entry from two records) -> first priority, merged once
+    {
+      parentItem: parents[0],
+      relationType: 'SEQUEL',
+      node: { aniId: 1735, mal: 1735, title: 'Наруто: Ураганные хроники', category: 'Аниме', format: 'TV', status: 'FINISHED', year: 2007, extRating: '8.3' }
+    },
+    {
+      parentItem: { id: 3, title: 'Наруто (пересмотр)' },
+      relationType: 'sequel',
+      node: { aniId: 1735, mal: 1735, title: 'Наруто: Ураганные хроники', category: 'Аниме', format: 'TV', status: 'FINISHED', year: 2007, poster: 'https://example.com/shippuden.jpg' }
+    }
+  ];
+
+  const missing = KirokuEngine.extractMissingSequels(parents, records, (n: any) => ownedMals.has(Number(n.mal)), 2026);
+  assert.equal(missing.length, 3);
+  assert.equal(missing[0].aniId, 1735);
+  assert.equal(missing[0].statusBucket, 'released');
+  assert.deepEqual(missing[0].parentTitles, ['Наруто', 'Наруто (пересмотр)']);
+  assert.equal(missing[0].poster, 'https://example.com/shippuden.jpg');
+  assert.equal(missing[1].aniId, 173501);
+  assert.equal(missing[1].statusBucket, 'ongoing');
+  assert.equal(missing[2].aniId, 173500);
+  assert.equal(missing[2].statusBucket, 'announced');
+});
+
+
 
 

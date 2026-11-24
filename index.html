@@ -17,13 +17,13 @@
 <meta property="og:type" content="website">
 <link rel="icon" href="./favicon.ico" sizes="any">
 <!-- ВАЖНО: при обновлении версии кэша (?v=...) синхронно меняй и const APP_VER внизу index.html -->
-<link rel="preload" href="./kiroku_engine.js?v=20261203" as="script">
-<link rel="preload" href="./app_core.js?v=20261203" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261203" as="script">
-<link rel="preload" href="./app.js?v=20261203" as="script">
-<link rel="stylesheet" href="./style.css?v=20261203">
-<link rel="stylesheet" href="./mobile.css?v=20261203" media="(max-width: 768px)">
-<style>body.auth-checking #authScreen,body.auth-checking #appScreen{display:none!important}</style>
+<link rel="preload" href="./kiroku_engine.js?v=20261204" as="script">
+<link rel="preload" href="./app_core.js?v=20261204" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261204" as="script">
+<link rel="preload" href="./app.js?v=20261204" as="script">
+<link rel="stylesheet" href="./style.css?v=20261204">
+<link rel="stylesheet" href="./mobile.css?v=20261204" media="(max-width: 768px)">
+<style>html,body{background:#0a0b12;color:#f1f3f9;margin:0}html[data-theme=white],html[data-theme=white] body{background:#f4f6fb;color:#14161f}body.auth-checking > *{display:none!important}.modal,#posterLightboxModal,#qaFloatMenu,#qaMenuBackdrop,#modalX,#scrollTopBtn,#toast{display:none}</style>
 </head>
 <body class="auth-checking">
 
@@ -233,6 +233,7 @@
                   <div class="hyb-more-pop" id="hybMorePop">
                     <button id="downloadPngCardBtn" type="button">🪪 Скачать PNG-визитку</button>
                     <button id="statsBtn" type="button">Полная статистика</button>
+                    <button id="profCheckSequelsBtn" type="button">🔔 Проверить сиквелы</button>
                   </div>
                 </div>
               </div>
@@ -348,6 +349,7 @@
                 <button class="btn btn-s" id="manageListBtn" type="button" style="display:none;font-size:12.5px;padding:8px 10px">✏ Изменить</button>
                 <button class="btn btn-d" id="deleteListBtn" type="button" style="display:none;font-size:12.5px;padding:8px 10px">🗑 Удалить подборку</button>
               </div>
+              <button class="btn btn-s" id="checkSequelsBtn" type="button" style="width:100%;font-size:12.5px;padding:8px 10px">🔔 Проверить сиквелы</button>
               <button class="btn btn-s" id="rndBtn" type="button" style="width:100%;font-size:12.5px;padding:8px 10px">🎲 Случайный тайтл из списка</button>
             </div>
           </div>
@@ -526,6 +528,32 @@
   <div class="row" style="justify-content:space-between"><h3 style="margin:0">📊 Полная статистика</h3><button class="btn btn-s" id="closeStatsTopBtn" type="button">✕</button></div>
   <div id="statsBody"></div>
   <div class="mb" style="justify-content:flex-end"><button class="btn btn-s" id="closeStatsBtn" type="button">Закрыть</button></div>
+</div></div>
+
+<!-- Модальное окно: Проверка вышедших и анонсированных сиквелов -->
+<div class="modal" id="sequelsModal"><div class="mc" style="max-width:680px">
+  <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:10px">
+    <h3 style="margin:0;line-height:1.25">🔔 Проверка сиквелов и продолжений</h3>
+    <button class="btn btn-s" id="closeSequelsTopBtn" type="button" aria-label="Закрыть" style="flex-shrink:0">✕</button>
+  </div>
+  <div class="meta" id="sequelsSummary" style="margin:0;line-height:1.45">Проверяем продолжения для твоих просмотренных и любимых тайтлов, которых ещё нет в коллекции.</div>
+  <div id="sequelsProgressWrap" class="seq-prog-wrap" style="display:none">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
+      <span id="sequelsProgressTxt" style="font-size:12.5px;color:var(--tx)">Подготовка списка…</span>
+      <button class="btn btn-s" id="sequelsStopBtn" type="button" style="padding:4px 10px;font-size:12px">⏹ Остановить</button>
+    </div>
+    <div class="seq-prog-track"><div id="sequelsProgressBar" class="seq-prog-fill"></div></div>
+  </div>
+  <div id="sequelsTabs" class="seq-tabs" style="display:none">
+    <button class="fb on" data-sf="all" type="button">Все (0)</button>
+    <button class="fb" data-sf="out" type="button">Вышли / Онгоинг (0)</button>
+    <button class="fb" data-sf="anons" type="button">Анонсы (0)</button>
+  </div>
+  <div id="sequelsList" class="seq-list"></div>
+  <div class="mb" style="justify-content:space-between">
+    <button class="btn btn-s" id="sequelsRescanBtn" type="button">↻ Проверить снова</button>
+    <button class="btn btn-s" id="closeSequelsBtn" type="button">Закрыть</button>
+  </div>
 </div></div>
 
 <!-- Модальное окно: Настройки профиля и приватности -->
@@ -715,13 +743,31 @@
 </div>
 
 <script type="module">
-const importWithTimeout = (url, ms = 25000) => Promise.race([
-  import(url),
-  new Promise((_, rej) => setTimeout(() => rej(new Error("Firebase load timeout")), ms))
-]);
+const importWithTimeout = (url, ms = 25000) => new Promise((resolve, reject) => {
+  let settled = false;
+  const timer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    reject(new Error("Firebase load timeout"));
+  }, ms);
+  import(/* @vite-ignore */ url).then(
+    mod => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(mod);
+    },
+    err => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    }
+  );
+});
 
 // ВАЖНО: должна совпадать с параметром ?v=... в <head> выше
-const APP_VER = "20261203";
+const APP_VER = "20261204";
 window.__FIREBASE_CONFIG__ = {
   apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
   authDomain: "mymediatracker-6e179.firebaseapp.com",

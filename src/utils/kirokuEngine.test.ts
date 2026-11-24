@@ -1342,6 +1342,112 @@ test('serializeTitlePageSnapshot and parseTitlePageSnapshot preserve core fields
   assert.equal(KirokuEngine.parseTitlePageSnapshot('x'.repeat(20000)), null);
 });
 
+test('parseCatalogYearInput and buildFuzzyDateBounds ignore partial digits and produce valid YYYYMMDD bounds', () => {
+  assert.equal(KirokuEngine.parseCatalogYearInput(''), 0);
+  assert.equal(KirokuEngine.parseCatalogYearInput('2'), 0);
+  assert.equal(KirokuEngine.parseCatalogYearInput('200'), 0);
+  assert.equal(KirokuEngine.parseCatalogYearInput('1899'), 0);
+  assert.equal(KirokuEngine.parseCatalogYearInput('2004'), 2004);
+
+  const openEnd = KirokuEngine.buildFuzzyDateBounds('2004', '');
+  assert.deepEqual(openEnd, { yrFrom: 2004, yrTo: 0, sg: 20031231, sl: undefined });
+
+  const openStart = KirokuEngine.buildFuzzyDateBounds('', '2004');
+  assert.deepEqual(openStart, { yrFrom: 0, yrTo: 2004, sg: undefined, sl: 20050101 });
+
+  const reversed = KirokuEngine.buildFuzzyDateBounds('2020', '2004');
+  assert.deepEqual(reversed, { yrFrom: 2004, yrTo: 2020, sg: 20031231, sl: 20210101 });
+});
+
+test('parseDirectIdQuery, collectExternalIdBadges, and itemMatchesIdQuery handle numeric and prefixed IDs cleanly', () => {
+  assert.deepEqual(KirokuEngine.parseDirectIdQuery('154587'), { source: 'any', numericId: 154587, raw: '154587' });
+  assert.deepEqual(KirokuEngine.parseDirectIdQuery('al:21'), { source: 'anilist', numericId: 21, raw: 'al:21' });
+  assert.deepEqual(KirokuEngine.parseDirectIdQuery('mal:21'), { source: 'mal', numericId: 21, raw: 'mal:21' });
+  assert.deepEqual(KirokuEngine.parseDirectIdQuery('tmdb:tv/1396'), { source: 'tmdb', tmdbType: 'tv', tmdbPath: 'tv/1396', numericId: 1396, raw: 'tmdb:tv/1396' });
+  assert.deepEqual(KirokuEngine.parseDirectIdQuery('tt0903747'), { source: 'imdb', imdbId: 'tt0903747', numericId: 0, raw: 'tt0903747' });
+  assert.deepEqual(
+    KirokuEngine.parseDirectIdQuery('a96676e5-8ae2-425e-b549-7f15dd34a6d8'),
+    { source: 'mangadex', mdId: 'a96676e5-8ae2-425e-b549-7f15dd34a6d8', numericId: 0, raw: 'a96676e5-8ae2-425e-b549-7f15dd34a6d8' }
+  );
+  assert.equal(KirokuEngine.parseDirectIdQuery('One Piece'), null);
+  assert.equal(KirokuEngine.parseDirectIdQuery('100 дней юри'), null);
+
+  const badges = KirokuEngine.collectExternalIdBadges({ aniId: 21, mal: 21, shikiId: 21, tmdb: 'tv/37854' });
+  assert.equal(badges.length, 3);
+  assert.equal(badges[0].label, 'AniList');
+  assert.equal(badges[1].label, 'MAL / Shiki');
+  assert.equal(badges[2].label, 'TMDB');
+
+  const sampleItem = { id: 999, aniId: 154587, mal: 52991, tmdb: 'tv/1396', imdbId: 'tt0903747' };
+  assert.equal(KirokuEngine.itemMatchesIdQuery(sampleItem, '154587'), true);
+  assert.equal(KirokuEngine.itemMatchesIdQuery(sampleItem, 'mal:52991'), true);
+  assert.equal(KirokuEngine.itemMatchesIdQuery(sampleItem, 'tmdb:1396'), true);
+  assert.equal(KirokuEngine.itemMatchesIdQuery(sampleItem, 'tt0903747'), true);
+  assert.equal(KirokuEngine.itemMatchesIdQuery(sampleItem, 'al:999999'), false);
+});
+
+test('toggleTagInCommaList adds and removes tags case-insensitively without duplicates', () => {
+  const r1 = KirokuEngine.toggleTagInCommaList('Экшен, Драма', 'Фэнтези');
+  assert.deepEqual(r1, { value: 'Экшен, Драма, Фэнтези', active: true });
+  const r2 = KirokuEngine.toggleTagInCommaList(r1.value, 'драма');
+  assert.deepEqual(r2, { value: 'Экшен, Фэнтези', active: false });
+  const r3 = KirokuEngine.toggleTagInCommaList('', 'Юри');
+  assert.deepEqual(r3, { value: 'Юри', active: true });
+});
+
+test('shouldFallbackAfterCloudReadError stops cascading timeout/quota queries while allowing schema fallbacks', () => {
+  assert.equal(KirokuEngine.shouldFallbackAfterCloudReadError({ code: 'deadline-exceeded' }), false);
+  assert.equal(KirokuEngine.shouldFallbackAfterCloudReadError({ code: 'resource-exhausted' }), false);
+  assert.equal(KirokuEngine.shouldFallbackAfterCloudReadError({ code: 'unavailable' }), false);
+  assert.equal(KirokuEngine.shouldFallbackAfterCloudReadError(new Error('Превышено время ожидания ответа Firestore')), false);
+  assert.equal(KirokuEngine.shouldFallbackAfterCloudReadError({ code: 'permission-denied' }), true);
+  assert.equal(KirokuEngine.shouldFallbackAfterCloudReadError({ code: 'failed-precondition' }), true);
+  assert.equal(KirokuEngine.shouldFallbackAfterCloudReadError({ code: 'not-found' }), true);
+});
+
+test('canCombineChunksAndProfileInSingleBatch combines normal saves into 1 atomic batch and respects Firestore limits', () => {
+  const smallChunk = { chunkIdx: 0, chunkTotal: 1, count: 120, payloadJson: JSON.stringify([{ id: 1, title: 'A' }]) };
+  assert.equal(KirokuEngine.canCombineChunksAndProfileInSingleBatch([[smallChunk]], 0, 4096), true);
+  assert.equal(KirokuEngine.canCombineChunksAndProfileInSingleBatch([], 2, 4096), true);
+  assert.equal(KirokuEngine.canCombineChunksAndProfileInSingleBatch([[smallChunk], [smallChunk]], 0, 4096), false);
+  assert.equal(KirokuEngine.canCombineChunksAndProfileInSingleBatch([[smallChunk]], 301, 4096), false);
+  assert.equal(KirokuEngine.canCombineChunksAndProfileInSingleBatch([[smallChunk]], 0, 7000000), false);
+});
+
+test('decodeFirestoreRestDocument decodes nested Firestore REST fields cleanly', () => {
+  const decoded = KirokuEngine.decodeFirestoreRestDocument({
+    name: 'projects/test/databases/(default)/documents/items/prof_u1',
+    fields: {
+      name: { stringValue: 'Aki' },
+      colStorageV2: { booleanValue: true },
+      colChunkCount: { integerValue: '2' },
+      rating: { doubleValue: 9.5 },
+      emptyVal: { nullValue: null },
+      customLists: { arrayValue: { values: [{ stringValue: 'Топ' }, { stringValue: 'Осень' }] } },
+      emptyArr: { arrayValue: {} },
+      listMeta: {
+        mapValue: {
+          fields: {
+            Топ: { mapValue: { fields: { color: { stringValue: 'green' }, pin: { booleanValue: true } } } }
+          }
+        }
+      },
+      emptyMap: { mapValue: {} }
+    }
+  });
+  assert.deepEqual(decoded, {
+    name: 'Aki',
+    colStorageV2: true,
+    colChunkCount: 2,
+    rating: 9.5,
+    emptyVal: null,
+    customLists: ['Топ', 'Осень'],
+    emptyArr: [],
+    listMeta: { Топ: { color: 'green', pin: true } },
+    emptyMap: {}
+  });
+});
+
 
 
 

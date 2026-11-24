@@ -3463,12 +3463,42 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
     const valEl = durationSpecBox.querySelector('b');
     if (valEl) valEl.textContent = formatFullPageDuration(target, latestMediaMeta);
   };
-  addSpec('Внешний рейтинг', (activeItem.extRating || activeItem.ext) ? `★ ${activeItem.extRating || activeItem.ext}` : '—', 'extRating');
+  addSpec('Внешний рейтинг', (activeItem.extRating || activeItem.ext) ? `★ ${activeItem.extRating || activeItem.ext}${activeItem.extSrc || activeItem.src ? ` (${activeItem.extSrc || activeItem.src})` : ''}` : '—', 'extRating');
   addSpec('Моя оценка', activeItem.rating ? `★ ${activeItem.rating} / 10` : 'Не оценено', 'myRating');
   if (inCol) {
     const addDt = formatAddedDateRu(inCol);
     if (addDt) addSpec(`Добавлено в «${getStatusLabelForCategory(inCol.status, inCol.category)}»`, addDt, 'added');
   }
+  const idsSpecBox = el('div', 'tp-spec-box');
+  idsSpecBox.dataset.spec = 'ids';
+  const fillFullPageIdsSpecBox = targetObj => {
+    const badges = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.collectExternalIdBadges === 'function')
+      ? KirokuEngine.collectExternalIdBadges(targetObj)
+      : [];
+    if (!badges.length) {
+      idsSpecBox.style.display = 'none';
+      return;
+    }
+    idsSpecBox.style.display = '';
+    idsSpecBox.replaceChildren(el('span', null, 'ID в базах (нажми, чтобы скопировать)'));
+    const row = el('div', 'chips');
+    row.style.margin = '2px 0 0';
+    badges.forEach(b => {
+      const btn = el('button', 'tp-id-chip');
+      btn.type = 'button';
+      btn.title = `Скопировать ID (поиск в каталоге: ${b.query})`;
+      btn.append(el('b', null, b.label + ':'), document.createTextNode(' ' + b.value));
+      btn.onclick = async () => {
+        const copyVal = b.fullValue || b.value;
+        try { await navigator.clipboard.writeText(copyVal); toast(`Скопирован ${b.label} ID: ${copyVal}`); }
+        catch (e) { toast(`${b.label} ID: ${copyVal}`); }
+      };
+      row.append(btn);
+    });
+    idsSpecBox.append(row);
+  };
+  fillFullPageIdsSpecBox(inCol || activeItem);
+  specsGrid.append(idsSpecBox);
 
   const tpProgressBox = el('div', 'ep-tracker-bar tp-ep-tracker-wrap');
   tpProgressBox.style.display = 'none';
@@ -3759,6 +3789,18 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
       }
     }
     latestMediaMeta = mediaMeta || null;
+    if (mediaMeta) {
+      if (Number(mediaMeta.id) > 0 && !Number(activeItem.aniId) && activeItem.category !== 'Фильм' && activeItem.category !== 'Сериал') {
+        activeItem.aniId = Number(mediaMeta.id);
+      }
+      if (Number(mediaMeta.idMal) > 0 && !Number(activeItem.mal)) {
+        activeItem.mal = Number(mediaMeta.idMal);
+      }
+      if (mediaMeta.imdbId && !activeItem.imdbId) {
+        activeItem.imdbId = mediaMeta.imdbId;
+      }
+      fillFullPageIdsSpecBox(curMatch || activeItem);
+    }
     const foundAired = num(mediaMeta?.episodesAired) || (num(mediaMeta?.nextAiringEpisode?.episode) > 1 ? num(mediaMeta.nextAiringEpisode.episode) - 1 : 0);
     if (foundAired > 0) {
       activeItem.airedEps = foundAired;
@@ -4110,6 +4152,7 @@ async function openCatalogByCreator(kindType, nameStr, itemCat) {
   }
   const myCreatorReq = (typeof cg !== 'undefined') ? ++cg.t : 0;
   window._cgInCreatorView = true;
+  if ($('cgCreatorMatchesBar')) { $('cgCreatorMatchesBar').style.display = 'none'; $('cgCreatorMatchesBar').replaceChildren(); }
   cgGrid.replaceChildren(...Array.from({ length: 8 }, () => el('div', 'sk')));
   $('cgMore').style.display = 'none';
   if ($('cgHeroWrap')) $('cgHeroWrap').style.display = 'none';

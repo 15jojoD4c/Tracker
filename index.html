@@ -18,12 +18,12 @@
 <link rel="icon" href="./favicon.ico" sizes="any">
 <!-- ВАЖНО: при обновлении версии кэша (?v=...) синхронно меняй и const APP_VER внизу index.html -->
 <style>html,body{background:#0a0b12;color:#f1f3f9;margin:0}html[data-theme=white],html[data-theme=white] body{background:#f4f6fb;color:#14161f}body.auth-checking > *{display:none!important}</style>
-<link rel="preload" href="./kiroku_engine.js?v=20261206" as="script">
-<link rel="preload" href="./app_core.js?v=20261206" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261206" as="script">
-<link rel="preload" href="./app.js?v=20261206" as="script">
-<link rel="stylesheet" href="./style.css?v=20261206">
-<link rel="stylesheet" href="./mobile.css?v=20261206" media="(max-width: 768px)">
+<link rel="preload" href="./kiroku_engine.js?v=20261208" as="script">
+<link rel="preload" href="./app_core.js?v=20261208" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261208" as="script">
+<link rel="preload" href="./app.js?v=20261208" as="script">
+<link rel="stylesheet" href="./style.css?v=20261208">
+<link rel="stylesheet" href="./mobile.css?v=20261208" media="(max-width: 768px)">
 </head>
 <body class="auth-checking">
 
@@ -112,7 +112,7 @@
       <div id="cgFilters">
         <div class="cg-top-controls">
           <div class="cg-search-row">
-            <input id="cgSearch" placeholder="Поиск по названию...">
+            <input id="cgSearch" placeholder="Поиск по названию, автору, студии или ID...">
             <button id="cgClear" title="Очистить поиск" type="button">✕</button>
           </div>
           <div id="cgSubKindBar" class="cg-subkind-bar" aria-label="Категория"></div>
@@ -133,6 +133,7 @@
             <option value="classic">Классика (до 2000 г.)</option>
             <option value="rare">Малоизвестные</option>
           </select>
+          <button class="tb cg-mode-mob-btn" id="cgModeMobBtn" type="button" aria-haspopup="dialog" aria-expanded="false">Сейчас актуально ▾</button>
           <button class="tb" id="cgFltBtn" type="button" aria-expanded="false">Фильтры ▾</button>
           <button class="tb mob-size-btn" id="cgMobSizeBtn" type="button" title="Размер карточек на экране" aria-label="Размер карточек">⊞ 2</button>
           <div class="pick-menu-wrap" id="cgPickMenuWrap">
@@ -168,6 +169,7 @@
       </div>
       <!-- Видимые чипы активных фильтров каталога (показываются даже если панель фильтров свёрнута на телефоне — Часть 1 п.5) -->
       <div id="cgActiveChipsBar" class="cg-active-chips" style="display:none"></div>
+      <div id="cgCreatorMatchesBar" class="cg-creators-bar" style="display:none"></div>
       <div class="grid" id="cgGrid"></div>
       <div style="text-align:center;margin:24px"><button class="btn btn-s" id="cgMore" type="button" style="display:none">Показать ещё</button></div>
     </div>
@@ -426,10 +428,10 @@
   <div id="manualTitlesSec" style="display:flex;flex-direction:column;gap:8px">
     <div class="fs">Название</div>
     <input type="text" id="inputTitle" placeholder="Название (русское) *">
-    <button type="button" class="btn btn-s other-titles-toggle" id="toggleOtherTitlesBtn">▸ Другие названия (Английское, Оригинальное, Синонимы)</button>
+    <button type="button" class="btn btn-s other-titles-toggle" id="toggleOtherTitlesBtn">▸ Другие названия (Английское, Романдзи, Оригинальное, Синонимы)</button>
     <div id="otherTitlesBox" class="other-titles-box" style="display:none">
-      <div class="row2"><input id="inputTitleEn" placeholder="Английское"><input id="inputTitleOrig" placeholder="Оригинальное"></div>
-      <input id="inputAlt" placeholder="Другие названия (через запятую)">
+      <div class="row2"><input id="inputTitleEn" placeholder="Английское"><input id="inputRomaji" placeholder="Романдзи (напр. Shingeki no Kyojin)"></div>
+      <div class="row2"><input id="inputTitleOrig" placeholder="Оригинальное (яп. / кор. / др.)"><input id="inputAlt" placeholder="Синонимы (через запятую)"></div>
     </div>
   </div>
   <div class="fs">Постер, год и оценка</div>
@@ -454,17 +456,33 @@
   </div>
 
   <div class="fs">Жанры, подборки и описание</div>
-  <input id="inputTags" placeholder="Жанры и теги (через запятую)">
+  <div class="add-tags-row" id="addTagsRow">
+    <input id="inputTags" placeholder="Жанры и теги (через запятую)">
+    <button type="button" class="btn btn-s add-tags-pick-btn" id="addSysTagsBtn" title="Выбрать жанры и теги из системного списка">🏷 Выбрать</button>
+  </div>
+  <div id="addSysTagsPicker" class="add-sys-tags-picker" style="display:none"></div>
   <input id="inputLists" placeholder="Подборки (через запятую)">
   <textarea id="inputDescription" placeholder="Синопсис / Описание..."></textarea>
 
   <div class="fs">Даты, пересмотры и оценка базы</div>
-  <div class="row3">
+  <div class="row2">
     <input type="date" id="inputCompletedAt" title="Дата завершения просмотра/чтения">
     <input type="number" id="inputRewatchCount" placeholder="Повторных просмотров (0+)" min="0" max="100">
-    <input type="number" id="inputExtRating" placeholder="Внешняя оценка (напр. 8.5)" min="0" max="10" step="0.01">
   </div>
-  <input type="hidden" id="inputExtSrc">
+  <div class="row2">
+    <input type="number" id="inputExtRating" placeholder="Внешняя оценка (напр. 8.5)" min="0" max="10" step="0.01">
+    <input type="text" id="inputExtSrc" list="extSrcList" placeholder="Сайт оценки (AniList, TMDB, Кинопоиск…)">
+  </div>
+  <datalist id="extSrcList">
+    <option value="AniList"></option>
+    <option value="Shikimori"></option>
+    <option value="MyAnimeList"></option>
+    <option value="TMDB"></option>
+    <option value="IMDb"></option>
+    <option value="Кинопоиск"></option>
+    <option value="MangaDex"></option>
+    <option value="Другой сайт"></option>
+  </datalist>
 
   <div class="fs">Как будет выглядеть</div><div id="pvCard" class="pv"></div>
   <div class="mb" style="justify-content:flex-end">
@@ -742,6 +760,16 @@
   </div>
 </div>
 
+<div class="cg-mode-sheet-backdrop" id="cgModeSheetBackdrop" style="display:none" role="dialog" aria-modal="true" aria-label="Сортировка каталога">
+  <div class="cg-mode-sheet" id="cgModeSheet">
+    <div class="cg-mode-sheet-hdr">
+      <span>Сортировка каталога</span>
+      <button type="button" class="cg-mode-sheet-close" id="cgModeSheetCloseBtn" aria-label="Закрыть">✕</button>
+    </div>
+    <div class="cg-mode-sheet-list" id="cgModeSheetList"></div>
+  </div>
+</div>
+
 <script type="module">
 const importWithTimeout = (url, ms = 25000) => new Promise((resolve, reject) => {
   let settled = false;
@@ -767,7 +795,7 @@ const importWithTimeout = (url, ms = 25000) => new Promise((resolve, reject) => 
 });
 
 // ВАЖНО: должна совпадать с параметром ?v=... в <head> выше
-const APP_VER = "20261206";
+const APP_VER = "20261208";
 window.__FIREBASE_CONFIG__ = {
   apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
   authDomain: "mymediatracker-6e179.firebaseapp.com",
@@ -855,6 +883,7 @@ try {
     query: () => ({}), where: () => ({}), orderBy: () => ({}), limit: () => ({}),
     serverTimestamp: () => Date.now(), deleteField: () => undefined,
     onSnapshot: () => () => {},
+    disableNetwork: noop, enableNetwork: noop,
     writeBatch: () => ({ set() {}, delete() {}, commit: noop })
   });
 }

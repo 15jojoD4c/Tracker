@@ -305,10 +305,10 @@ const auth = getAuth(app);
 const db = (() => {
   try {
     if (typeof initializeFirestore === 'function') {
+      // Используем быстрый штатный WebChannel + Fetch Streams и авто-переключение на long-polling только если сеть/прокси режет стримы
       const opts = {
         ignoreUndefinedProperties: true,
-        experimentalForceLongPolling: true,
-        useFetchStreams: false
+        experimentalAutoDetectLongPolling: true
       };
       if (typeof memoryLocalCache === 'function') {
         opts.localCache = memoryLocalCache();
@@ -316,12 +316,12 @@ const db = (() => {
       return initializeFirestore(app, opts);
     }
   } catch (fsErr) {
-    console.warn('Firestore long-polling init fallback:', fsErr);
+    console.warn('Firestore init fallback:', fsErr);
     try {
       if (typeof initializeFirestore === 'function') {
         return initializeFirestore(app, {
           ignoreUndefinedProperties: true,
-          experimentalForceLongPolling: true
+          experimentalAutoDetectLongPolling: true
         });
       }
     } catch (fsErr2) {}
@@ -1308,20 +1308,111 @@ const setSync = () => {
 };
 
 const CLOUD_OP_TIMEOUT_MS = 35000;
+const CLOUD_READ_SDK_TIMEOUT_MS = 20000;
+const CLOUD_REST_TIMEOUT_MS = 12000;
 
-const withCloudTimeout = (p, timeoutMs = CLOUD_OP_TIMEOUT_MS) => {
+const withCloudTimeout = (p, timeoutMs = CLOUD_OP_TIMEOUT_MS, onLateSuccess = null) => {
   let timer = 0;
+  let timedOut = false;
+  const base = Promise.resolve(p);
+  base.then(
+    val => {
+      if (timedOut && typeof onLateSuccess === 'function') {
+        try { onLateSuccess(val); } catch (e) {}
+      }
+    },
+    () => {}
+  );
   const timeoutPromise = new Promise((_, reject) => {
     timer = setTimeout(() => {
+      timedOut = true;
       const err = new Error('Превышено время ожидания ответа Firestore');
       err.code = 'deadline-exceeded';
       reject(err);
     }, timeoutMs);
   });
-  return Promise.race([Promise.resolve(p), timeoutPromise]).finally(() => {
+  return Promise.race([base, timeoutPromise]).finally(() => {
     clearTimeout(timer);
   });
 };
+
+let _firestoreResetInFlight = null;
+async function resetFirestoreNetworkTransport() {
+  if (window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine) return false;
+  if (typeof disableNetwork !== 'function' || typeof enableNetwork !== 'function') return false;
+  if (_firestoreResetInFlight) return _firestoreResetInFlight;
+  _firestoreResetInFlight = (async () => {
+    try {
+      await withCloudTimeout(disableNetwork(db), 4000).catch(() => {});
+      await withCloudTimeout(enableNetwork(db), 4000).catch(() => {});
+      return true;
+    } catch (e) {
+      return false;
+    } finally {
+      _firestoreResetInFlight = null;
+    }
+  })();
+  return _firestoreResetInFlight;
+}
+
+async function readDocViaRestFallback(docId, timeoutMs = CLOUD_REST_TIMEOUT_MS) {
+  if (!docId || !navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK || !auth.currentUser || typeof fetch !== 'function') {
+    return null;
+  }
+  const projectId = (firebaseConfig && firebaseConfig.projectId) || '';
+  if (!projectId) return null;
+  let token = '';
+  try {
+    token = await withCloudTimeout(auth.currentUser.getIdToken(), 6000);
+  } catch (e) {
+    return null;
+  }
+  if (!token) return null;
+  const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : 0;
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/items/${encodeURIComponent(String(docId))}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: 'Bearer ' + token },
+      signal: ctrl ? ctrl.signal : undefined
+    });
+    if (res.status === 404) {
+      return {
+        id: String(docId),
+        exists: () => false,
+        data: () => undefined,
+        metadata: { fromCache: false }
+      };
+    }
+    if (res.status === 429) {
+      const qErr = new Error('Firestore quota exceeded');
+      qErr.code = 'resource-exhausted';
+      throw qErr;
+    }
+    if (res.status === 403) {
+      const pErr = new Error('Firestore permission denied');
+      pErr.code = 'permission-denied';
+      throw pErr;
+    }
+    if (!res.ok) return null;
+    const raw = await res.json();
+    const decoded = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.decodeFirestoreRestDocument === 'function')
+      ? KirokuEngine.decodeFirestoreRestDocument(raw)
+      : {};
+    return {
+      id: String(docId),
+      exists: () => true,
+      data: () => decoded,
+      metadata: { fromCache: false }
+    };
+  } catch (err) {
+    if (err && (err.code === 'resource-exhausted' || err.code === 'permission-denied')) throw err;
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function isColdUnavailableErr(err) {
   const c = String(err?.code || '').toLowerCase();
@@ -1329,26 +1420,51 @@ function isColdUnavailableErr(err) {
   return c.includes('unavailable') || c.includes('failed-precondition') || /offline|failed to get document/i.test(m);
 }
 
-async function readDocResilient(docRef, forceServer = false, timeoutMs = CLOUD_OP_TIMEOUT_MS) {
+async function readDocResilient(docRef, forceServer = false, timeoutMs = CLOUD_READ_SDK_TIMEOUT_MS) {
+  const onLateOk = () => {
+    if (cloudAccessError === 'timeout' && !isCloudQuotaBlocked()) clearCloudErrorState();
+  };
+  let lastErr = null;
   if (forceServer && navigator.onLine && typeof getDocFromServer === 'function') {
     try {
-      return await withCloudTimeout(getDocFromServer(docRef), timeoutMs);
+      return await withCloudTimeout(getDocFromServer(docRef), timeoutMs, onLateOk);
     } catch (srvErr) {
-      if (!isColdUnavailableErr(srvErr)) throw srvErr;
+      lastErr = srvErr;
+      const errCode = String(srvErr?.code || '').toLowerCase();
+      if (!isColdUnavailableErr(srvErr) && !errCode.includes('deadline-exceeded')) throw srvErr;
     }
   }
-  return await withCloudTimeout(getDoc(docRef), timeoutMs);
+  if (!lastErr) {
+    try {
+      return await withCloudTimeout(getDoc(docRef), timeoutMs, onLateOk);
+    } catch (sdkErr) {
+      lastErr = sdkErr;
+    }
+  }
+  // Если WebChannel/Long-Polling SDK завис по таймауту — мгновенно пробуем read-only Firestore REST GET
+  const lastCode = String(lastErr?.code || '').toLowerCase();
+  if ((lastCode.includes('deadline-exceeded') || isColdUnavailableErr(lastErr)) && navigator.onLine && docRef && docRef.id) {
+    const restSnap = await readDocViaRestFallback(docRef.id, CLOUD_REST_TIMEOUT_MS);
+    if (restSnap) {
+      if (cloudAccessError === 'timeout' && !isCloudQuotaBlocked()) clearCloudErrorState();
+      return restSnap;
+    }
+  }
+  throw lastErr;
 }
 
 async function readDocsResilient(qRef, forceServer = false, timeoutMs = CLOUD_OP_TIMEOUT_MS) {
+  const onLateOk = () => {
+    if (cloudAccessError === 'timeout' && !isCloudQuotaBlocked()) clearCloudErrorState();
+  };
   if (forceServer && navigator.onLine && typeof getDocsFromServer === 'function') {
     try {
-      return await withCloudTimeout(getDocsFromServer(qRef), timeoutMs);
+      return await withCloudTimeout(getDocsFromServer(qRef), timeoutMs, onLateOk);
     } catch (srvErr) {
       if (!isColdUnavailableErr(srvErr)) throw srvErr;
     }
   }
-  return await withCloudTimeout(getDocs(qRef), timeoutMs);
+  return await withCloudTimeout(getDocs(qRef), timeoutMs, onLateOk);
 }
 
 const track = (p, timeoutMs = CLOUD_OP_TIMEOUT_MS) => {
@@ -1360,7 +1476,12 @@ const track = (p, timeoutMs = CLOUD_OP_TIMEOUT_MS) => {
     settled = true;
     pend = Math.max(0, pend - 1);
   };
-  return withCloudTimeout(p, timeoutMs).then(res => {
+  const onLateOk = () => {
+    if (!pend && cloudAccessError === 'timeout' && !isCloudQuotaBlocked()) {
+      clearCloudErrorState();
+    }
+  };
+  return withCloudTimeout(p, timeoutMs, onLateOk).then(res => {
     donePend();
     if (!pend && !isCloudQuotaBlocked()) {
       syncBad = false;
@@ -1389,8 +1510,11 @@ addEventListener('online', () => {
     return;
   }
   if (user && !user.isLocal && !isCloudQuotaBlocked() && auth.currentUser) {
-    setTimeout(() => {
+    setTimeout(async () => {
       if (!user || user.isLocal || isCloudQuotaBlocked() || !auth.currentUser) return;
+      if (cloudAccessError === 'timeout' || cloudAccessError === 'unavailable') {
+        await resetFirestoreNetworkTransport();
+      }
       if (!unsub && _activeCloudSessionUid === user.uid) {
         attachCloudProfileListener(user.uid, _cloudSessionToken);
       }
@@ -1602,30 +1726,11 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
   const prevCount = Math.max(0, Number(prof.colChunkCount || 0));
   const revVal = Date.now();
   try {
-    // 1. Разбиваем запись чанков на несколько последовательных writeBatch (<= 8 чанков и <= 5.5 МБ каждый, с запасом ниже 10 МиБ лимита Firestore)
+    // 1. Готовим батчи чанков, список лишних старых чанков и метаданные профиля prof_${uid}
     const chunkBatches = (typeof KirokuEngine !== 'undefined' && KirokuEngine.splitChunksIntoBatches)
       ? KirokuEngine.splitChunksIntoBatches(chunks, 8, 5500000)
       : (chunks.length ? [chunks] : []);
 
-    for (const batchChunks of chunkBatches) {
-      const b = writeBatch(db);
-      batchChunks.forEach(ch => {
-        b.set(doc(db, 'items', `prof_col_${uid}_${ch.chunkIdx}`), {
-          kind: 'profile',
-          isProfile: true,
-          isColChunk: true,
-          userId: uid,
-          chunkIdx: ch.chunkIdx,
-          chunkTotal: ch.chunkTotal,
-          chunkRev: revVal,
-          count: ch.count,
-          payloadJson: ch.payloadJson
-        });
-      });
-      await track(b.commit());
-    }
-
-    // 2. Собираем все лишние старые чанки для удаления после успешной записи новых
     const excessChunkIds = new Set();
     for (let oldIdx = chunks.length; oldIdx < prevCount; oldIdx++) {
       excessChunkIds.add(`prof_col_${uid}_${oldIdx}`);
@@ -1635,19 +1740,6 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
     }
     const excessList = [...excessChunkIds];
 
-    // Если лишних чанков много (>300), удаляем их отдельными батчами по 350, оставляя хвост под финальный батч с prof_${uid}
-    let tailDeletes = excessList;
-    if (excessList.length > 300) {
-      const preDeletes = excessList.slice(0, excessList.length - 300);
-      tailDeletes = excessList.slice(excessList.length - 300);
-      for (let i = 0; i < preDeletes.length; i += 350) {
-        const bDel = writeBatch(db);
-        preDeletes.slice(i, i + 350).forEach(dId => bDel.delete(doc(db, 'items', dId)));
-        await track(bDel.commit());
-      }
-    }
-
-    // 3. Финальный writeBatch: удаление оставшихся лишних чанков + единая запись метаданных prof_${uid} (и грязных полей профиля, если есть)
     let autoDirtyProf = false;
     if (!opts.extraProfPayload) {
       try { autoDirtyProf = localStorage.getItem('profDirty_' + uid) === '1'; } catch (e) {}
@@ -1656,7 +1748,7 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
       ? opts.extraProfPayload
       : (autoDirtyProf ? buildCleanProfPayloadForCloud(uid, false) : null);
 
-    const profMetaUpdate = {
+    const profMetaUpdate = stripUndefinedDeep({
       ...(effectiveExtraProf || {}),
       kind: 'profile',
       isProfile: true,
@@ -1668,11 +1760,70 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
       colRev: revVal,
       colCount: itemsArr.length,
       schemaMigratedV4: true
-    };
-    const finalBatch = writeBatch(db);
-    tailDeletes.forEach(dId => finalBatch.delete(doc(db, 'items', dId)));
-    finalBatch.set(doc(db, 'items', 'prof_' + uid), stripUndefinedDeep(profMetaUpdate), { merge: true });
-    await track(finalBatch.commit());
+    });
+    const profMetaBytes = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.utf8ByteLength === 'function')
+      ? KirokuEngine.utf8ByteLength(JSON.stringify(profMetaUpdate))
+      : JSON.stringify(profMetaUpdate).length * 2;
+
+    const combineInOneBatch = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.canCombineChunksAndProfileInSingleBatch === 'function')
+      ? KirokuEngine.canCombineChunksAndProfileInSingleBatch(chunkBatches, excessList.length, profMetaBytes)
+      : false;
+
+    if (combineInOneBatch) {
+      // Быстрый атомарный путь: 1 writeBatch (чанки + удаление лишних + prof_${uid}) вместо 2 последовательных round-trip!
+      const singleBatch = writeBatch(db);
+      (chunkBatches[0] || []).forEach(ch => {
+        singleBatch.set(doc(db, 'items', `prof_col_${uid}_${ch.chunkIdx}`), {
+          kind: 'profile',
+          isProfile: true,
+          isColChunk: true,
+          userId: uid,
+          chunkIdx: ch.chunkIdx,
+          chunkTotal: ch.chunkTotal,
+          chunkRev: revVal,
+          count: ch.count,
+          payloadJson: ch.payloadJson
+        });
+      });
+      excessList.forEach(dId => singleBatch.delete(doc(db, 'items', dId)));
+      singleBatch.set(doc(db, 'items', 'prof_' + uid), profMetaUpdate, { merge: true });
+      await track(singleBatch.commit());
+    } else {
+      // Многобатчевый путь для очень больших коллекций (>1 батча или >300 лишних чанков)
+      for (const batchChunks of chunkBatches) {
+        const b = writeBatch(db);
+        batchChunks.forEach(ch => {
+          b.set(doc(db, 'items', `prof_col_${uid}_${ch.chunkIdx}`), {
+            kind: 'profile',
+            isProfile: true,
+            isColChunk: true,
+            userId: uid,
+            chunkIdx: ch.chunkIdx,
+            chunkTotal: ch.chunkTotal,
+            chunkRev: revVal,
+            count: ch.count,
+            payloadJson: ch.payloadJson
+          });
+        });
+        await track(b.commit());
+      }
+
+      let tailDeletes = excessList;
+      if (excessList.length > 300) {
+        const preDeletes = excessList.slice(0, excessList.length - 300);
+        tailDeletes = excessList.slice(excessList.length - 300);
+        for (let i = 0; i < preDeletes.length; i += 350) {
+          const bDel = writeBatch(db);
+          preDeletes.slice(i, i + 350).forEach(dId => bDel.delete(doc(db, 'items', dId)));
+          await track(bDel.commit());
+        }
+      }
+
+      const finalBatch = writeBatch(db);
+      tailDeletes.forEach(dId => finalBatch.delete(doc(db, 'items', dId)));
+      finalBatch.set(doc(db, 'items', 'prof_' + uid), profMetaUpdate, { merge: true });
+      await track(finalBatch.commit());
+    }
 
     prof.colStorageV2 = true;
     prof.colChunkCount = chunks.length;
@@ -1737,7 +1888,7 @@ async function loadCollectionChunksFromCloud(uid, chunkCount, forceServer = fals
   if (!uid || cnt === 0) return [];
   const fetchAll = async useServer => {
     const snaps = await Promise.all(
-      Array.from({ length: cnt }, (_, idx) => readDocResilient(doc(db, 'items', `prof_col_${uid}_${idx}`), useServer, CLOUD_OP_TIMEOUT_MS))
+      Array.from({ length: cnt }, (_, idx) => readDocResilient(doc(db, 'items', `prof_col_${uid}_${idx}`), useServer, CLOUD_READ_SDK_TIMEOUT_MS))
     );
     const docs = snaps.filter(s => s && s.exists()).map(s => s.data());
     const anyFromCache = snaps.some(s => Boolean(s?.metadata?.fromCache));
@@ -2272,8 +2423,13 @@ async function syncItemsFromCloud(effUid, force = false) {
           } catch (chunkErr) {
             const code = String(chunkErr?.code || '').toLowerCase();
             if (code.includes('permission-denied')) _chunkStorageDenied = true;
-            else if (isQuotaError(chunkErr)) throw chunkErr;
-            // При временной ошибке чтения чанка пробуем fallback-запрос по userId ниже вместо мгновенного падения
+            else if (
+              isQuotaError(chunkErr)
+              || (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.shouldFallbackAfterCloudReadError === 'function' && !KirokuEngine.shouldFallbackAfterCloudReadError(chunkErr))
+            ) {
+              throw chunkErr;
+            }
+            // При ошибке структуры/отсутствия чанка пробуем fallback-запрос по userId ниже
           }
         }
       }
@@ -2288,6 +2444,10 @@ async function syncItemsFromCloud(effUid, force = false) {
           snapFromCache = Boolean(snapAll?.metadata?.fromCache);
           docsList = snapAll.docs;
         } catch (singleErr) {
+          const canFallbackQuery = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.shouldFallbackAfterCloudReadError === 'function')
+            ? KirokuEngine.shouldFallbackAfterCloudReadError(singleErr)
+            : !isQuotaError(singleErr);
+          if (!canFallbackQuery) throw singleErr;
           const snapFallback = await readDocsResilient(query(collection(db, 'items'), where('kind', '==', 'title'), where('userId', '==', effUid)), mustReadServer, CLOUD_OP_TIMEOUT_MS);
           snapFromCache = Boolean(snapFallback?.metadata?.fromCache);
           docsList = snapFallback.docs;
@@ -2493,7 +2653,8 @@ window.forceCloudSyncNow = async function forceCloudSyncNow(manual = true) {
     if (manual) toast('Сессия авторизации ещё инициализируется, подожди пару секунд.', true);
     return;
   }
-  // При ручном клике сбрасываем временный кулдаун и скрытие карточки ошибки, чтобы сразу проверить восстановление связи/квоты
+  // При ручном клике сбрасываем временный кулдаун и при таймауте/обрыве переподключаем транспорт Firestore
+  const hadTransportIssue = cloudAccessError === 'timeout' || cloudAccessError === 'unavailable';
   clearTimeout(_initialCloudRetryTimer);
   _initialCloudRetryTimer = 0;
   _cloudEmptyNoticeDismissed = false;
@@ -2505,7 +2666,10 @@ window.forceCloudSyncNow = async function forceCloudSyncNow(manual = true) {
     render();
   }
   try {
-    const pSnap = await readDocResilient(doc(db, 'items', 'prof_' + user.uid), navigator.onLine, CLOUD_OP_TIMEOUT_MS);
+    if (hadTransportIssue) {
+      await resetFirestoreNetworkTransport();
+    }
+    const pSnap = await readDocResilient(doc(db, 'items', 'prof_' + user.uid), navigator.onLine, CLOUD_READ_SDK_TIMEOUT_MS);
     if (pSnap && !pSnap.metadata?.fromCache) {
       clearCloudErrorState(user.uid);
     }
@@ -2654,7 +2818,7 @@ async function forcePullProfileAndCollectionFromServer(effUid, sessionToken) {
   }
   let serverProfReadOk = false;
   try {
-    const sProfSnap = await readDocResilient(doc(db, 'items', 'prof_' + effUid), true, CLOUD_OP_TIMEOUT_MS);
+    const sProfSnap = await readDocResilient(doc(db, 'items', 'prof_' + effUid), true, CLOUD_READ_SDK_TIMEOUT_MS);
     if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
     serverProfReadOk = true;
     if (sProfSnap && sProfSnap.exists()) {
@@ -2662,7 +2826,15 @@ async function forcePullProfileAndCollectionFromServer(effUid, sessionToken) {
       applyServerProfileDocToLocal(effUid, sProfSnap.data(), false);
     }
   } catch (profErr) {
-    // Если профиль не прочитался с сервера, всё равно пробуем подтянуть коллекцию с сервера ниже
+    // Если сервер ответил таймаутом/квотой — не запускаем следом ещё один тяжёлый запрос всей коллекции
+    const canContinue = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.shouldFallbackAfterCloudReadError === 'function')
+      ? KirokuEngine.shouldFallbackAfterCloudReadError(profErr)
+      : !isQuotaError(profErr);
+    if (!canContinue) {
+      markInitialCloudSyncBlocked(effUid);
+      handleCloudError(profErr, true);
+      return false;
+    }
   }
   if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
   const syncedOk = await syncItemsFromCloud(effUid, true);
@@ -3136,7 +3308,7 @@ window.startApp = function startApp() {
 };
 
 // ---------- Отрисовка и утилиты ----------
-const names = i => [i.title, i.titleEn, i.titleOrig, i.alt, i.author, i.studio, i.source, i.year, (i.tags || []).join(' ')].join(' ').toLowerCase();
+const names = i => [i.title, i.titleEn, i.romaji, i.titleOrig, i.alt, i.author, i.studio, i.source, i.year, (i.tags || []).join(' ')].join(' ').toLowerCase();
 const xmatch = i => xf.k === 'source' ? i.source === xf.v : (i[xf.k] || '').split(',').some(x => x.trim().toLowerCase() === xf.v.toLowerCase());
 let lastId = 0;
 const newId = () => { const n = Date.now() * 1000 + Math.floor(Math.random() * 1000); return lastId = n > lastId ? n : lastId + 1; };
@@ -4008,7 +4180,10 @@ function itemMatchesCurrentCollectionFilter(i) {
     : st === 'Любимое' ? !!i.fav
     : st === 'Смотрю/Читаю' ? (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю')
     : i.status === st;
-  return (!q || names(i).includes(q)) && matchesSelectedCategory(i) && matchesReleaseFilter(i) && (!xf || xmatch(i)) &&
+  const qMatch = !q
+    || names(i).includes(q)
+    || (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.itemMatchesIdQuery === 'function' && KirokuEngine.itemMatchesIdQuery(i, q));
+  return qMatch && matchesSelectedCategory(i) && matchesReleaseFilter(i) && (!xf || xmatch(i)) &&
     stMatch &&
     (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) &&
     (lf === 'Все' || (i.lists || []).some(t => t.toLowerCase() === lf));
@@ -5611,7 +5786,7 @@ function renderMyListsFolderBlock() {
 }
 
 // ---- Подписи полей формы (без поля inputRecBy и inputMyNote)
-const LBL = {inputCategory: 'Категория', inputStatus: 'Статус просмотра', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputTitleOrig: 'Оригинальное название', inputAlt: 'Другие названия (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputCompletedAt: 'Дата просмотра / завершения', inputRewatchCount: 'Счётчик пересмотров (раз)', inputExtRating: 'Внешняя оценка (AniList / TMDB)', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (через запятую)', inputEps: 'Серий или глав', inputWatchedEps: 'Просмотрено серий / прочитано глав', inputVols: 'Томов (для манги и ранобэ)', inputDur: 'Минут на серию или фильм', inputDescription: 'Синопсис / описание'};
+const LBL = {inputCategory: 'Категория', inputStatus: 'Статус просмотра', inputTitle: 'Название (русское) *', inputTitleEn: 'Английское название', inputRomaji: 'Романдзи (латиница)', inputTitleOrig: 'Оригинальное название', inputAlt: 'Синонимы (через запятую)', inputPoster: 'Ссылка на постер (URL)', inputYear: 'Год выхода', inputRating: 'Моя оценка (1–10)', inputCompletedAt: 'Дата просмотра / завершения', inputRewatchCount: 'Счётчик пересмотров (раз)', inputExtRating: 'Внешняя оценка', inputExtSrc: 'Сайт внешней оценки', inputAuthor: 'Автор / режиссёр', inputStudio: 'Студия', inputSource: 'Первоисточник', inputTags: 'Жанры и теги (через запятую)', inputLists: 'Подборки (через запятую)', inputEps: 'Серий или глав', inputWatchedEps: 'Просмотрено серий / прочитано глав', inputVols: 'Томов (для манги и ранобэ)', inputDur: 'Минут на серию или фильм', inputDescription: 'Синопсис / описание'};
 Object.entries(LBL).forEach(([id, t]) => { const e = $(id); if (!e) return; const w = el('div', 'fld'); e.replaceWith(w); w.append(el('label', null, t), e); });
 
 if ($('toggleOtherTitlesBtn')) {
@@ -5620,9 +5795,115 @@ if ($('toggleOtherTitlesBtn')) {
     if (!box) return;
     const isHidden = box.style.display === 'none';
     box.style.display = isHidden ? 'flex' : 'none';
-    $('toggleOtherTitlesBtn').textContent = (isHidden ? '▾ ' : '▸ ') + 'Другие названия (Английское, Оригинальное, Синонимы)';
+    $('toggleOtherTitlesBtn').textContent = (isHidden ? '▾ ' : '▸ ') + 'Другие названия (Английское, Романдзи, Оригинальное, Синонимы)';
   };
 }
+
+let _addSysTagsSearch = '';
+function getAddModalSystemTagGroups(cat) {
+  const isVid = cat === 'Фильм' || cat === 'Сериал' || cat === 'Мультфильм';
+  if (isVid && typeof TG !== 'undefined') {
+    const mainIds = [28, 12, 16, 35, 80, 18, 14, 27, 9648, 10749, 878, 53];
+    const extraIds = [99, 10751, 36, 10402, 10752, 37, 10759, 10765, 10768, 10762, 10764, 10766];
+    return [
+      ['Основные жанры', mainIds.map(k => TG[k]).filter(Boolean)],
+      ['Тематика и форматы', extraIds.map(k => TG[k]).filter(Boolean)]
+    ];
+  }
+  if (typeof aniOptions === 'function') {
+    const out = [];
+    const seen = new Set();
+    aniOptions().forEach(([grpName, pairs]) => {
+      const labels = [];
+      pairs.forEach(([, lbl]) => {
+        const clean = String(lbl || '').replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+        const finalLbl = clean || lbl;
+        const low = finalLbl.toLowerCase();
+        if (finalLbl && !seen.has(low)) {
+          seen.add(low);
+          labels.push(finalLbl);
+        }
+      });
+      if (labels.length) out.push([grpName, labels]);
+    });
+    return out;
+  }
+  return [['Основные жанры', ['Экшен', 'Приключения', 'Комедия', 'Драма', 'Фэнтези', 'Романтика', 'Детектив', 'Психология', 'Триллер', 'Ужасы', 'Научная фантастика', 'Повседневность', 'Спорт', 'Сверхъестественное', 'Меха', 'Музыка', 'Исэкай', 'Школа', 'Сёнэн', 'Сэйнэн', 'Сёдзё', 'Дзёсэй', 'Юри', 'Яой']]];
+}
+
+function renderAddSysTagsPicker() {
+  const box = $('addSysTagsPicker');
+  if (!box || box.style.display === 'none') return;
+  const cat = $('inputCategory')?.value || 'Фильм';
+  const curSet = new Set(parseTags($('inputTags')?.value || '').map(x => x.toLowerCase()));
+  const groups = getAddModalSystemTagGroups(cat);
+  const qLow = _addSysTagsSearch.trim().toLowerCase();
+
+  box.replaceChildren();
+  const sInp = el('input', 'add-sys-tags-search');
+  sInp.type = 'text';
+  sInp.placeholder = 'Поиск жанра или тега…';
+  sInp.value = _addSysTagsSearch;
+  sInp.oninput = () => {
+    _addSysTagsSearch = sInp.value;
+    const pos = sInp.selectionStart || sInp.value.length;
+    renderAddSysTagsPicker();
+    const again = box.querySelector('.add-sys-tags-search');
+    if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (e) {} }
+  };
+  box.append(sInp);
+
+  let anyShown = false;
+  groups.forEach(([gTitle, labels]) => {
+    const filtered = qLow ? labels.filter(l => l.toLowerCase().includes(qLow)) : labels;
+    if (!filtered.length) return;
+    anyShown = true;
+    const gWrap = el('div');
+    gWrap.append(el('div', 'add-sys-tags-grp-title', gTitle));
+    const chipsWrap = el('div', 'add-sys-tags-chips');
+    filtered.forEach(lbl => {
+      const isOn = curSet.has(lbl.toLowerCase());
+      const btn = el('button', 'add-sys-tag-chip' + (isOn ? ' on' : ''), (isOn ? '✓ ' : '+ ') + lbl);
+      btn.type = 'button';
+      btn.onclick = () => {
+        const res = (typeof KirokuEngine !== 'undefined' && KirokuEngine.toggleTagInCommaList)
+          ? KirokuEngine.toggleTagInCommaList($('inputTags').value, lbl)
+          : (() => {
+              const arr = parseTags($('inputTags').value);
+              const idx = arr.findIndex(x => x.toLowerCase() === lbl.toLowerCase());
+              if (idx >= 0) arr.splice(idx, 1); else arr.push(lbl);
+              return { value: arr.join(', '), active: idx < 0 };
+            })();
+        $('inputTags').value = res.value;
+        pvDraw();
+        draftSave();
+        renderAddSysTagsPicker();
+      };
+      chipsWrap.append(btn);
+    });
+    gWrap.append(chipsWrap);
+    box.append(gWrap);
+  });
+  if (!anyShown) box.append(el('div', 'meta', 'Ничего не найдено по запросу.'));
+}
+
+if ($('addSysTagsBtn')) {
+  $('addSysTagsBtn').onclick = () => {
+    const box = $('addSysTagsPicker');
+    if (!box) return;
+    const willOpen = box.style.display === 'none';
+    box.style.display = willOpen ? 'flex' : 'none';
+    $('addSysTagsBtn').classList.toggle('on', willOpen);
+    $('addSysTagsBtn').textContent = willOpen ? '✕ Скрыть' : '🏷 Выбрать';
+    if (willOpen) {
+      _addSysTagsSearch = '';
+      renderAddSysTagsPicker();
+    }
+  };
+}
+$('inputTags')?.addEventListener('input', () => {
+  if ($('addSysTagsPicker') && $('addSysTagsPicker').style.display !== 'none') renderAddSysTagsPicker();
+});
 
 const stars = el('div', 'stars');
 const starPaint = () => [...stars.children].forEach((b, k) => b.classList.toggle('on', k < +$('inputRating').value));
@@ -5691,6 +5972,7 @@ function catFields() {
   const o = $('inputOngoing').parentElement; if (o) o.style.display = c === 'Фильм' ? 'none' : '';
   syncInputStatusOptionsForCategory(c);
   syncWatchedEpsFieldInAddModal();
+  if ($('addSysTagsPicker') && $('addSysTagsPicker').style.display !== 'none') renderAddSysTagsPicker();
 }
 $('inputCategory').addEventListener('change', catFields);
 $('inputStatus')?.addEventListener('change', syncWatchedEpsFieldInAddModal);
@@ -5699,7 +5981,8 @@ $('inputEps')?.addEventListener('input', syncWatchedEpsFieldInAddModal);
 function pvDraw() {
   const b = $('pvCard'); b.replaceChildren(); const pc = el('div', 'pvp'), im = el('img'), st = el('div', 'status', $('inputStatus').value), info = el('div');
   im.alt = ''; im.src = $('posterPreview').src || FALL; st.dataset.s = $('inputStatus').value; pc.append(im, st);
-  info.append(el('div', 'title', $('inputTitle').value || 'Название тайтла'), el('div', 'meta', [$('inputYear').value, $('inputCategory').value, $('inputExtRating').value ? '★ ' + $('inputExtRating').value : ''].filter(Boolean).join(' • ')), el('div', 'tg', $('inputTags').value));
+  const extVal = $('inputExtRating')?.value ? ('★ ' + $('inputExtRating').value + ($('inputExtSrc')?.value.trim() ? ' (' + $('inputExtSrc').value.trim() + ')' : '')) : '';
+  info.append(el('div', 'title', $('inputTitle').value || 'Название тайтла'), el('div', 'meta', [$('inputYear').value, $('inputCategory').value, extVal].filter(Boolean).join(' • ')), el('div', 'tg', $('inputTags').value));
   b.append(pc, info);
 }
 $('addModal').addEventListener('input', pvDraw); $('addModal').addEventListener('change', pvDraw); $('posterPreview').addEventListener('load', pvDraw);
@@ -5710,7 +5993,7 @@ function openAdd(item) {
   exTok++; exP = Promise.resolve();
   $('formTitle').textContent = item ? 'Редактировать тайтл' : 'Добавить тайтл';
   $('saveNextBtn').style.display = item ? 'none' : '';
-  const i = item || {id: '', title: '', category: 'Фильм', status: 'В планах', fav: false, year: '', rating: '', extRating: '', description: '', titleEn: '', titleOrig: '', alt: '', tags: [], lists: [], author: '', studio: '', source: '', ongoing: false, eps: '', vols: '', dur: '', myNote: '', rewatchCount: 0, completedAt: 0};
+  const i = item || {id: '', title: '', category: 'Фильм', status: 'В планах', fav: false, year: '', rating: '', extRating: '', extSrc: '', description: '', titleEn: '', romaji: '', titleOrig: '', alt: '', tags: [], lists: [], author: '', studio: '', source: '', ongoing: false, eps: '', vols: '', dur: '', myNote: '', rewatchCount: 0, completedAt: 0};
   $('editId').value = i.id;
   $('inputTitle').value = i.title;
   $('inputCategory').value = i.category;
@@ -5724,10 +6007,13 @@ function openAdd(item) {
   $('inputExtSrc').value = i.extSrc || '';
   $('inputDescription').value = i.description || '';
   $('inputTitleEn').value = i.titleEn || '';
+  if ($('inputRomaji')) $('inputRomaji').value = i.romaji || '';
   $('inputTitleOrig').value = i.titleOrig || '';
   $('inputAlt').value = i.alt || '';
   $('inputTags').value = (i.tags || []).join(', ');
   $('inputLists').value = (i.lists || []).join(', ');
+  if ($('addSysTagsPicker')) $('addSysTagsPicker').style.display = 'none';
+  if ($('addSysTagsBtn')) { $('addSysTagsBtn').classList.remove('on'); $('addSysTagsBtn').textContent = '🏷 Выбрать'; }
   window._editingRecBy = i.recBy || '';
   $('inputAuthor').value = i.author || '';
   $('inputStudio').value = i.studio || '';
@@ -5740,9 +6026,9 @@ function openAdd(item) {
   $('inputVols').value = i.vols || '';
   $('inputDur').value = i.dur || '';
   if ($('otherTitlesBox') && $('toggleOtherTitlesBtn')) {
-    const hasExtraNames = Boolean((i.titleEn || '').trim() || (i.titleOrig || '').trim() || (i.alt || '').trim());
+    const hasExtraNames = Boolean((i.titleEn || '').trim() || (i.romaji || '').trim() || (i.titleOrig || '').trim() || (i.alt || '').trim());
     $('otherTitlesBox').style.display = hasExtraNames ? 'flex' : 'none';
-    $('toggleOtherTitlesBtn').textContent = (hasExtraNames ? '▾ ' : '▸ ') + 'Другие названия (Английское, Оригинальное, Синонимы)';
+    $('toggleOtherTitlesBtn').textContent = (hasExtraNames ? '▾ ' : '▸ ') + 'Другие названия (Английское, Романдзи, Оригинальное, Синонимы)';
   }
   setAddFormManualMode(true, false);
 
@@ -5858,9 +6144,10 @@ $('saveItemBtn').onclick = async () => {
       completedAt: completedAtTs,
       rewatchCount: +$('inputRewatchCount').value || 0,
       extRating: $('inputExtRating').value,
-      extSrc: $('inputExtSrc').value,
+      extSrc: ($('inputExtSrc').value || '').trim(),
       description: $('inputDescription').value.trim(),
       titleEn: $('inputTitleEn').value.trim(),
+      romaji: $('inputRomaji') ? $('inputRomaji').value.trim() : '',
       titleOrig: $('inputTitleOrig').value.trim(),
       alt: $('inputAlt').value.trim(),
       author: $('inputAuthor').value.trim(),
@@ -5896,7 +6183,7 @@ $('saveItemBtn').onclick = async () => {
     if (picked.trailerId) it.trailerId = picked.trailerId;
     const old = items.find(x => x.id === it.id);
     if (old) {
-      ['pin', 'seasons', 'seasonsMeta', 'format', 'aniId', 'mal', 'tmdb', 'imdbId', 'vols', 'trailerId', 'badgeCharImg', 'badgeCharName', '_docId', 'importBatchId', 'importSource', 'isAdult', 'isTmdbAnime', 'origLang', 'originCountry', 'tmdbGenreIds'].forEach(k => {
+      ['pin', 'seasons', 'seasonsMeta', 'format', 'aniId', 'mal', 'shikiId', 'mdId', 'tmdb', 'imdbId', 'vols', 'trailerId', 'badgeCharImg', 'badgeCharName', '_docId', 'importBatchId', 'importSource', 'isAdult', 'isTmdbAnime', 'origLang', 'originCountry', 'tmdbGenreIds'].forEach(k => {
         if (old[k] && !it[k]) it[k] = old[k];
       });
     } else if (user && user.uid) {
@@ -5996,7 +6283,8 @@ function openDetail(id) {
     return `${catLabel(i)} • ${i.year || 'Год не указан'}${detRelText}${compDateStr}${i.seasons > 1 ? ' • ' + i.seasons + ' ' + pluralRu(i.seasons, 'сезон', 'сезона', 'сезонов') : ''}${i.eps ? ' • ' + i.eps + (i.category === 'Манга' || i.category === 'Ранобэ' ? ' гл.' : ' эп.') : ''}${i.vols ? ' • ' + i.vols + ' ' + pluralRu(i.vols, 'том', 'тома', 'томов') : ''}${i.dur ? ' • ' + i.dur + ' мин' : ''}${ongNote}`;
   };
   $('detailMeta').textContent = buildDetailMetaText();
-  $('detailNames').textContent = [i.titleEn, i.titleOrig, i.alt].filter(Boolean).join(' / ');
+  const detNamesUniq = [...new Set([i.titleEn, i.romaji, i.titleOrig, i.alt].map(x => String(x || '').trim()).filter(Boolean))];
+  $('detailNames').textContent = detNamesUniq.join(' / ');
 
   const cr = $('detailCredits'); cr.replaceChildren();
   [['Автор', 'author'], ['Студия', 'studio'], ['Источник', 'source']].forEach(([lab, k]) => {
@@ -6006,6 +6294,26 @@ function openDetail(id) {
     v.forEach(x => { const c = el('button', 'chip', x); c.onclick = () => { closeAll(); xf = {k, v: x}; render(); toList(); }; row.append(c); });
     cr.append(row);
   });
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.collectExternalIdBadges === 'function') {
+    const idBadges = KirokuEngine.collectExternalIdBadges(i);
+    if (idBadges.length) {
+      const idRow = el('div', 'cr');
+      idRow.append(el('span', 'meta', 'ID:'));
+      idBadges.forEach(b => {
+        const chip = el('button', 'tp-id-chip');
+        chip.type = 'button';
+        chip.title = `Скопировать ID для поиска (${b.query})`;
+        chip.append(el('b', null, b.label + ':'), document.createTextNode(' ' + b.value));
+        chip.onclick = async () => {
+          const copyVal = b.fullValue || b.value;
+          try { await navigator.clipboard.writeText(copyVal); toast(`Скопирован ${b.label} ID: ${copyVal}`); }
+          catch (e) { toast(`${b.label} ID: ${copyVal}`); }
+        };
+        idRow.append(chip);
+      });
+      cr.append(idRow);
+    }
+  }
 
   let ratingTxt = `★ Оценка: ${i.rating ? i.rating + '/10' : '-/10'}${i.extRating ? ' | Внешняя оценка: ' + i.extRating + (i.extSrc ? ' (' + i.extSrc + ')' : '') : ''}`;
   if (i.criteria) {

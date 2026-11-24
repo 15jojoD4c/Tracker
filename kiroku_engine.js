@@ -1518,6 +1518,218 @@
     }
   }
 
+  function parseCatalogYearInput(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!/^\d{4}$/.test(s)) return 0;
+    const n = parseInt(s, 10);
+    return (n >= 1900 && n <= 2100) ? n : 0;
+  }
+
+  function buildFuzzyDateBounds(yrFromRaw, yrToRaw) {
+    let yrFrom = parseCatalogYearInput(yrFromRaw);
+    let yrTo = parseCatalogYearInput(yrToRaw);
+    if (yrFrom && yrTo && yrFrom > yrTo) {
+      const tmp = yrFrom;
+      yrFrom = yrTo;
+      yrTo = tmp;
+    }
+    return {
+      yrFrom,
+      yrTo,
+      sg: yrFrom ? ((yrFrom - 1) * 10000 + 1231) : undefined,
+      sl: yrTo ? ((yrTo + 1) * 10000 + 101) : undefined
+    };
+  }
+
+  function parseDirectIdQuery(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!s || s.length > 80) return null;
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRe.test(s)) {
+      return { source: 'mangadex', mdId: s.toLowerCase(), numericId: 0, raw: s };
+    }
+    const mdPref = s.match(/^(?:md|mangadex)\s*[:#/-]\s*([0-9a-f-]{36})$/i);
+    if (mdPref && uuidRe.test(mdPref[1])) {
+      return { source: 'mangadex', mdId: mdPref[1].toLowerCase(), numericId: 0, raw: s };
+    }
+    const imdbMatch = s.match(/^(?:imdb\s*[:#/-]\s*)?(tt\d{6,10})$/i);
+    if (imdbMatch) {
+      return { source: 'imdb', imdbId: imdbMatch[1].toLowerCase(), numericId: 0, raw: s };
+    }
+    const tmdbPathMatch = s.match(/^(?:tmdb\s*[:#/-]\s*)?(movie|tv)\/(\d{1,9})$/i);
+    if (tmdbPathMatch) {
+      const mediaType = tmdbPathMatch[1].toLowerCase();
+      const numId = parseInt(tmdbPathMatch[2], 10);
+      return { source: 'tmdb', tmdbType: mediaType, tmdbPath: `${mediaType}/${numId}`, numericId: numId, raw: s };
+    }
+    const prefNum = s.match(/^(al|anilist|mal|shiki|shikimori|tmdb|id|#)\s*[:#/-]?\s*(\d{1,9})$/i);
+    if (prefNum) {
+      const p = prefNum[1].toLowerCase();
+      const numId = parseInt(prefNum[2], 10);
+      if (!numId || numId <= 0) return null;
+      const srcMap = {
+        al: 'anilist',
+        anilist: 'anilist',
+        mal: 'mal',
+        shiki: 'shiki',
+        shikimori: 'shiki',
+        tmdb: 'tmdb',
+        id: 'any',
+        '#': 'any'
+      };
+      return { source: srcMap[p] || 'any', numericId: numId, raw: s };
+    }
+    if (/^\d{1,9}$/.test(s)) {
+      const numId = parseInt(s, 10);
+      if (numId > 0) return { source: 'any', numericId: numId, raw: s };
+    }
+    return null;
+  }
+
+  function collectExternalIdBadges(item) {
+    if (!item || typeof item !== 'object') return [];
+    const badges = [];
+    const aniId = Number(item.aniId) || 0;
+    const mal = Number(item.mal) || 0;
+    const shikiId = Number(item.shikiId) || 0;
+    const tmdb = String(item.tmdb || '').trim();
+    const imdbId = String(item.imdbId || '').trim();
+    const mdId = String(item.mdId || '').trim();
+    if (aniId > 0) badges.push({ key: 'aniId', label: 'AniList', value: String(aniId), query: `al:${aniId}` });
+    if (mal > 0) badges.push({ key: 'mal', label: 'MAL / Shiki', value: String(mal), query: `mal:${mal}` });
+    else if (shikiId > 0) badges.push({ key: 'shikiId', label: 'Shikimori', value: String(shikiId), query: `shiki:${shikiId}` });
+    if (shikiId > 0 && mal > 0 && shikiId !== mal) {
+      badges.push({ key: 'shikiId', label: 'Shikimori', value: String(shikiId), query: `shiki:${shikiId}` });
+    }
+    if (tmdb) badges.push({ key: 'tmdb', label: 'TMDB', value: tmdb, query: `tmdb:${tmdb}` });
+    if (imdbId) badges.push({ key: 'imdbId', label: 'IMDb', value: imdbId, query: imdbId });
+    if (mdId) badges.push({ key: 'mdId', label: 'MangaDex', value: mdId.slice(0, 8) + '…', fullValue: mdId, query: `md:${mdId}` });
+    return badges;
+  }
+
+  function itemMatchesIdQuery(item, rawQuery) {
+    if (!item || typeof item !== 'object') return false;
+    const parsed = parseDirectIdQuery(rawQuery);
+    if (!parsed) return false;
+    if (parsed.source === 'mangadex') {
+      return String(item.mdId || '').toLowerCase() === parsed.mdId;
+    }
+    if (parsed.source === 'imdb') {
+      return String(item.imdbId || '').toLowerCase() === parsed.imdbId;
+    }
+    if (parsed.source === 'tmdb') {
+      const t = String(item.tmdb || '').toLowerCase();
+      if (parsed.tmdbPath) return t === parsed.tmdbPath;
+      return t === `movie/${parsed.numericId}` || t === `tv/${parsed.numericId}` || t === String(parsed.numericId);
+    }
+    if (parsed.source === 'anilist') {
+      return Number(item.aniId) === parsed.numericId;
+    }
+    if (parsed.source === 'mal' || parsed.source === 'shiki') {
+      return Number(item.mal) === parsed.numericId || Number(item.shikiId) === parsed.numericId;
+    }
+    // source === 'any'
+    const n = parsed.numericId;
+    const t = String(item.tmdb || '').toLowerCase();
+    return Number(item.aniId) === n
+      || Number(item.mal) === n
+      || Number(item.shikiId) === n
+      || String(item.id || '') === String(n)
+      || t === `movie/${n}`
+      || t === `tv/${n}`
+      || t === String(n);
+  }
+
+  function toggleTagInCommaList(csvStr, tagName) {
+    const cleanTag = String(tagName || '').trim();
+    const list = String(csvStr || '')
+      .split(',')
+      .map(x => x.trim())
+      .filter(Boolean);
+    if (!cleanTag) return { value: list.join(', '), active: false };
+    const low = cleanTag.toLowerCase();
+    const exists = list.some(x => x.toLowerCase() === low);
+    let next;
+    if (exists) {
+      next = list.filter(x => x.toLowerCase() !== low);
+    } else {
+      next = [...list, cleanTag];
+    }
+    return { value: next.join(', '), active: !exists };
+  }
+
+  function shouldFallbackAfterCloudReadError(err) {
+    if (!err) return true;
+    const code = String(err.code || '').toLowerCase();
+    const msg = String(err.message || err || '').toLowerCase();
+    if (
+      code.includes('deadline-exceeded')
+      || code.includes('resource-exhausted')
+      || code.includes('unavailable')
+      || code.includes('cancelled')
+      || /quota exceeded|daily usage limit|превышено время ожидания|offline/i.test(msg)
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  function canCombineChunksAndProfileInSingleBatch(chunkBatches, excessCount, profMetaBytes = 0) {
+    const batches = Array.isArray(chunkBatches) ? chunkBatches : [];
+    if (batches.length > 1) return false;
+    const excess = Math.max(0, Number(excessCount || 0));
+    if (excess > 300) return false;
+    const firstBatch = batches[0] || [];
+    if (firstBatch.length + excess + 1 > 450) return false;
+    let chunksBytes = 0;
+    for (const ch of firstBatch) {
+      chunksBytes += utf8ByteLength(ch && ch.payloadJson ? ch.payloadJson : '') + 512;
+    }
+    const totalBytes = chunksBytes + Math.max(0, Number(profMetaBytes || 0));
+    return totalBytes < 6500000;
+  }
+
+  function decodeFirestoreRestValue(v) {
+    if (!v || typeof v !== 'object') return undefined;
+    if ('nullValue' in v) return null;
+    if ('booleanValue' in v) return Boolean(v.booleanValue);
+    if ('integerValue' in v) {
+      const n = Number(v.integerValue);
+      return Number.isFinite(n) ? n : String(v.integerValue);
+    }
+    if ('doubleValue' in v) return Number(v.doubleValue);
+    if ('stringValue' in v) return String(v.stringValue);
+    if ('timestampValue' in v) {
+      const ms = Date.parse(String(v.timestampValue));
+      return Number.isFinite(ms) ? ms : String(v.timestampValue);
+    }
+    if ('arrayValue' in v) {
+      const vals = v.arrayValue && Array.isArray(v.arrayValue.values) ? v.arrayValue.values : [];
+      return vals.map(decodeFirestoreRestValue);
+    }
+    if ('mapValue' in v) {
+      const out = {};
+      const fields = (v.mapValue && v.mapValue.fields && typeof v.mapValue.fields === 'object') ? v.mapValue.fields : {};
+      for (const [k, fv] of Object.entries(fields)) {
+        out[k] = decodeFirestoreRestValue(fv);
+      }
+      return out;
+    }
+    return undefined;
+  }
+
+  function decodeFirestoreRestDocument(rawDoc) {
+    if (!rawDoc || typeof rawDoc !== 'object' || !rawDoc.fields || typeof rawDoc.fields !== 'object') {
+      return {};
+    }
+    const out = {};
+    for (const [k, fv] of Object.entries(rawDoc.fields)) {
+      const decoded = decodeFirestoreRestValue(fv);
+      if (decoded !== undefined) out[k] = decoded;
+    }
+    return out;
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -1577,7 +1789,17 @@
     formatOngoingDurationSummary,
     extractMissingSequels,
     serializeTitlePageSnapshot,
-    parseTitlePageSnapshot
+    parseTitlePageSnapshot,
+    parseCatalogYearInput,
+    buildFuzzyDateBounds,
+    parseDirectIdQuery,
+    collectExternalIdBadges,
+    itemMatchesIdQuery,
+    toggleTagInCommaList,
+    shouldFallbackAfterCloudReadError,
+    canCombineChunksAndProfileInSingleBatch,
+    decodeFirestoreRestValue,
+    decodeFirestoreRestDocument
   };
 
   if (typeof module !== 'undefined' && module.exports) {

@@ -67,7 +67,8 @@ async function batchSaveItems(listToSave, opts = {}) {
       const byIdMap = new Map(items.map(x => [String(x.id), x]));
       listToSave.forEach(it => { if (it && it.id != null) byIdMap.set(String(it.id), it); });
       const mergedForChunks = [...byIdMap.values()];
-      const ok = await saveCollectionChunksToCloud(user.uid, mergedForChunks, { throwOnError: requireCloud });
+      const chunkWriter = typeof runSerializedChunkWrite === 'function' ? runSerializedChunkWrite : saveCollectionChunksToCloud;
+      const ok = await chunkWriter(user.uid, mergedForChunks, { throwOnError: requireCloud });
       if (ok) {
         clearDirtyIfUnchanged(listToSave);
         if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
@@ -156,7 +157,8 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
         setSync();
       } else if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
         try {
-          const ok = await saveCollectionChunksToCloud(user.uid, items, { silent: true, explicitEmptyAllowed: isNowEmpty });
+          const chunkWriter = typeof runSerializedChunkWrite === 'function' ? runSerializedChunkWrite : saveCollectionChunksToCloud;
+          const ok = await chunkWriter(user.uid, items, { silent: true, explicitEmptyAllowed: isNowEmpty });
           if (!ok) {
             if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
             try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
@@ -471,7 +473,8 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
           }
         }
 
-        const ok = await saveCollectionChunksToCloud(user.uid, nextCollectionPreview, {
+        const chunkWriter = typeof runSerializedChunkWrite === 'function' ? runSerializedChunkWrite : saveCollectionChunksToCloud;
+        const ok = await chunkWriter(user.uid, nextCollectionPreview, {
           throwOnError: replaceAll,
           forceAllowOverwrite: replaceAll,
           explicitEmptyAllowed: replaceAll && nextCollectionPreview.length === 0,
@@ -1475,7 +1478,8 @@ async function findAndMergeDuplicatesModal() {
       try {
         let savedViaChunks = false;
         if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
-          const ok = await saveCollectionChunksToCloud(user.uid, nextMergedItems, { throwOnError: false });
+          const chunkWriter = typeof runSerializedChunkWrite === 'function' ? runSerializedChunkWrite : saveCollectionChunksToCloud;
+          const ok = await chunkWriter(user.uid, nextMergedItems, { throwOnError: false });
           if (ok) {
             savedViaChunks = true;
           } else if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
@@ -2533,7 +2537,6 @@ function renderAnixartHeroAndCategoryCards() {
 
   const cardsRow = $('hybListCardsRow');
   if (cardsRow) {
-    cardsRow.replaceChildren();
     const LIST_DEFS = [
       { st: 'Смотрю/Читаю', title: 'Смотрю', dot: '#10b981', flt: i => i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю' },
       { st: 'Просмотрено/Прочитано', title: 'Просмотрено', dot: '#38bdf8', flt: i => i.status === 'Просмотрено/Прочитано' },
@@ -2543,38 +2546,54 @@ function renderAnixartHeroAndCategoryCards() {
       { st: 'Брошено', title: 'Брошено', dot: '#ef4444', flt: i => i.status === 'Брошено' }
     ];
     const curSt = $('statusFilter').value;
-    LIST_DEFS.forEach(def => {
+    const computedDefs = LIST_DEFS.map(def => {
       const matched = vis.filter(def.flt);
-      const card = el('div', 'hyb-lcard' + (curSt === def.st ? ' active' : ''));
-      card.dataset.st = def.st;
-      const collage = el('div', 'hyb-lcard-collage');
       const posterItems = matched.filter(x => isValidPosterUrl(x.poster)).slice(0, 3);
-      for (let idx = 0; idx < 3; idx++) {
-        if (posterItems[idx]) {
-          const im = el('img', 'c-slot' + (idx === 0 ? ' main' : ''));
-          im.loading = 'lazy';
-          applyPosterImg(im, posterItems[idx].poster, posterItems[idx]);
-          collage.append(im);
-        } else {
-          const empty = el('div', 'c-slot' + (idx === 0 ? ' main' : ''));
-          collage.append(empty);
-        }
-      }
-      const lbl = el('div', 'hyb-lcard-lbl');
-      const dot = el('span'); dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${def.dot};display:inline-block`;
-      lbl.append(dot, document.createTextNode(def.title));
-      const cnt = el('div', 'hyb-lcard-cnt', `${matched.length} ${pluralRu(matched.length, 'тайтл', 'тайтла', 'тайтлов')}`);
-      card.append(collage, lbl, cnt);
-      card.onclick = () => {
-        applyMainTabView('collection');
-        if ($('reviewItemsBox')) $('reviewItemsBox').style.display = 'none';
-        $('profColWrap').style.display = '';
-        $('statusFilter').value = def.st;
-        render(false);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      };
-      cardsRow.append(card);
+      return { def, count: matched.length, posterItems };
     });
+    const collageSig = computedDefs.map(d => d.posterItems.map(x => x.poster).join(',')).join('|');
+    if (cardsRow.dataset.collageSig === collageSig && cardsRow.children.length === LIST_DEFS.length) {
+      computedDefs.forEach(({ def, count }, idx) => {
+        const card = cardsRow.children[idx];
+        if (!card) return;
+        card.classList.toggle('active', curSt === def.st);
+        const cntEl = card.querySelector('.hyb-lcard-cnt');
+        if (cntEl) cntEl.textContent = `${count} ${pluralRu(count, 'тайтл', 'тайтла', 'тайтлов')}`;
+      });
+    } else {
+      cardsRow.dataset.collageSig = collageSig;
+      cardsRow.replaceChildren();
+      computedDefs.forEach(({ def, count, posterItems }) => {
+        const card = el('div', 'hyb-lcard' + (curSt === def.st ? ' active' : ''));
+        card.dataset.st = def.st;
+        const collage = el('div', 'hyb-lcard-collage');
+        for (let idx = 0; idx < 3; idx++) {
+          if (posterItems[idx]) {
+            const im = el('img', 'c-slot' + (idx === 0 ? ' main' : ''));
+            im.loading = 'lazy';
+            applyPosterImg(im, posterItems[idx].poster, posterItems[idx]);
+            collage.append(im);
+          } else {
+            const empty = el('div', 'c-slot' + (idx === 0 ? ' main' : ''));
+            collage.append(empty);
+          }
+        }
+        const lbl = el('div', 'hyb-lcard-lbl');
+        const dot = el('span'); dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${def.dot};display:inline-block`;
+        lbl.append(dot, document.createTextNode(def.title));
+        const cnt = el('div', 'hyb-lcard-cnt', `${count} ${pluralRu(count, 'тайтл', 'тайтла', 'тайтлов')}`);
+        card.append(collage, lbl, cnt);
+        card.onclick = () => {
+          applyMainTabView('collection');
+          if ($('reviewItemsBox')) $('reviewItemsBox').style.display = 'none';
+          $('profColWrap').style.display = '';
+          $('statusFilter').value = def.st;
+          render(false);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+        cardsRow.append(card);
+      });
+    }
   }
 }
 
@@ -3183,11 +3202,11 @@ class CharacterSeiyuuManager {
     return { items: [] };
   }
   static async render(box, item) {
-    if (!box || !item) return;
+    if (!box || !item) return { items: [] };
     box.style.display = 'block'; box.replaceChildren(el('div', 'meta', 'Загрузка персонажей…'));
     try {
       const data = await this.fetchChars(item);
-      if (!data.items.length) { box.style.display = 'none'; return; }
+      if (!data.items.length) { box.style.display = 'none'; return data; }
       box.replaceChildren();
       const hdr = el('div', 'jutsu-hdr'), tw = el('div', 'jutsu-hdr-title');
       const secTitle = data.isAnime ? 'Персонажи и сэйю' : data.isLiveAction ? 'Актёры и роли' : 'Персонажи';
@@ -3218,7 +3237,8 @@ class CharacterSeiyuuManager {
         b.type = 'button'; b.onclick = () => { exp = !exp; b.textContent = exp ? 'СВЕРНУТЬ ▲' : `ПОКАЗАТЬ ВСЕХ (${data.items.length})`; draw(); };
         w.append(b); box.append(w);
       }
-    } catch (e) { box.style.display = 'none'; }
+      return data;
+    } catch (e) { box.style.display = 'none'; return { items: [] }; }
   }
 }
 
@@ -3613,8 +3633,58 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
   wrap.append(hero, mobTabsBar, descSec, mediaPanel, charsPanel, franchisePanel);
   page.append(backWrap, wrap);
 
-  await CharacterSeiyuuManager.render(charsSec, activeItem);
-  const cachedData = await CharacterSeiyuuManager.fetchChars(activeItem);
+  // Запускаем подгрузку описания и персонажей параллельно (не блокируя синопсис ожиданием API персонажей/сэйю)
+  const cleanRawDesc = raw => ruClean(String(raw || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim();
+  const applyDescTextToPage = text => {
+    if (window._fullPageRenderTok !== pageRenderTok) return;
+    if (text) {
+      descBody.textContent = text;
+      syncDescCollapsible(text);
+      if (hasRu(text)) RUC[dKeyFp] = text;
+      if (inCol && inCol.description !== text) {
+        inCol.description = text;
+        saveLocalItems();
+        updateSingleItemCardInDOM(inCol.id);
+      }
+      if (itemObj && !itemObj.desc) itemObj.desc = text;
+    } else {
+      descBody.textContent = 'Описание отсутствует.';
+      syncDescCollapsible('');
+    }
+  };
+
+  let bestDescResolved = initialDesc;
+  const earlyDescPromise = (async () => {
+    if (window._fullPageRenderTok !== pageRenderTok) return;
+    if ((!bestDescResolved || !hasRu(bestDescResolved)) && !isManualFp) {
+      try {
+        const probe = { ...activeItem, desc: bestDescResolved || '' };
+        if (activeItem.tmdb && typeof tmdbInfo === 'function' && !bestDescResolved) {
+          const info = await tmdbInfo(probe);
+          if (info?.desc || info?.description) probe.desc = cleanRawDesc(info.desc || info.description);
+        } else if (activeItem.mal || activeItem.aniId || SHK[activeItem.category]) {
+          await ruFull(probe);
+        }
+        const fetched = cleanRawDesc(probe.desc || probe.description || '');
+        if (fetched && (!bestDescResolved || (hasRu(fetched) && !hasRu(bestDescResolved)))) {
+          bestDescResolved = fetched;
+          applyDescTextToPage(bestDescResolved);
+        }
+      } catch (e) {}
+    }
+    if (bestDescResolved && !hasRu(bestDescResolved)) {
+      try {
+        const tr = await ruTranslate(bestDescResolved);
+        if (tr && hasRu(tr)) {
+          bestDescResolved = tr;
+          applyDescTextToPage(bestDescResolved);
+        }
+      } catch (e) {}
+    }
+  })();
+
+  const cachedData = await CharacterSeiyuuManager.render(charsSec, activeItem);
+  if (window._fullPageRenderTok !== pageRenderTok) return;
   const mediaMeta = cachedData?.mediaMeta;
   const loadedCharsCount = Array.isArray(cachedData?.items) ? cachedData.items.length : 0;
   charsPanel.dataset.hasContent = loadedCharsCount > 0 ? '1' : '0';
@@ -3622,53 +3692,20 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
     mobTabBtns.chars.textContent = `Персонажи (${loadedCharsCount})`;
   }
 
-  // Синхронизируем и подгружаем описание, если оно отсутствовало или было не на русском (локально, без лишних записей в Firestore)
+  // После завершения ранней подгрузки и получения mediaMeta применяем лучшее описание (или убираем заглушку)
   (async () => {
+    await earlyDescPromise;
     if (window._fullPageRenderTok !== pageRenderTok) return;
-    let bestText = initialDesc;
-    const cleanRawDesc = raw => ruClean(String(raw || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim();
     const metaDesc = cleanRawDesc(mediaMeta?.description || '');
-    if (!bestText && metaDesc) bestText = metaDesc;
-    else if (bestText && !hasRu(bestText) && metaDesc && hasRu(metaDesc)) bestText = metaDesc;
-
-    if ((!bestText || !hasRu(bestText)) && !isManualFp) {
+    if (!bestDescResolved && metaDesc) bestDescResolved = metaDesc;
+    else if (bestDescResolved && !hasRu(bestDescResolved) && metaDesc && hasRu(metaDesc)) bestDescResolved = metaDesc;
+    if (bestDescResolved && !hasRu(bestDescResolved)) {
       try {
-        const probe = { ...activeItem, desc: bestText || '' };
-        if (activeItem.tmdb && typeof tmdbInfo === 'function' && !bestText) {
-          const info = await tmdbInfo(probe);
-          if (info?.desc || info?.description) probe.desc = cleanRawDesc(info.desc || info.description);
-        } else if (activeItem.mal || activeItem.aniId || SHK[activeItem.category]) {
-          await ruFull(probe);
-        }
-        const fetched = cleanRawDesc(probe.desc || probe.description || '');
-        if (fetched && (!bestText || (hasRu(fetched) && !hasRu(bestText)))) {
-          bestText = fetched;
-        }
+        const tr = await ruTranslate(bestDescResolved);
+        if (tr && hasRu(tr)) bestDescResolved = tr;
       } catch (e) {}
     }
-
-    if (bestText && !hasRu(bestText)) {
-      try {
-        const tr = await ruTranslate(bestText);
-        if (tr && hasRu(tr)) bestText = tr;
-      } catch (e) {}
-    }
-
-    if (window._fullPageRenderTok !== pageRenderTok) return;
-    if (bestText) {
-      descBody.textContent = bestText;
-      syncDescCollapsible(bestText);
-      if (hasRu(bestText)) RUC[dKeyFp] = bestText;
-      if (inCol && inCol.description !== bestText) {
-        inCol.description = bestText;
-        saveLocalItems();
-        updateSingleItemCardInDOM(inCol.id);
-      }
-      if (itemObj && !itemObj.desc) itemObj.desc = bestText;
-    } else {
-      descBody.textContent = 'Описание отсутствует.';
-      syncDescCollapsible('');
-    }
+    applyDescTextToPage(bestDescResolved);
   })();
 
   if (releaseSpecBox && mediaMeta) {
@@ -5196,6 +5233,13 @@ function applyMainTabView(v, fromHistory = false, opts = {}) {
     }
   }
 
+  if (mode === 'profile' && _profileViewDirty) {
+    _profileViewDirty = false;
+    profStats();
+    renderAnixartHeroAndCategoryCards();
+    renderAnixartProfileExtras();
+  }
+
   if (resetToHome) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -5229,15 +5273,26 @@ function homeTab() {
   }
 }
 
+let _profileViewDirty = false;
+
 function refresh(opts = {}) {
+  const pview = document.body.dataset.pview || '';
   if (opts && opts.itemId != null) {
     updateSingleItemCardInDOM(opts.itemId);
     syncHybridStatusTabsUI();
     catCounts();
-    cgMarks();
-    renderAnixartHeroAndCategoryCards();
-    renderAnixartProfileExtras();
+    refreshTags();
+    refreshLists();
     renderStatusAndCategoryBanner();
+    if (pview === 'catalog') cgMarks();
+    if (pview === 'profile') {
+      _profileViewDirty = false;
+      profStats();
+      renderAnixartHeroAndCategoryCards();
+      renderAnixartProfileExtras();
+    } else {
+      _profileViewDirty = true;
+    }
     return;
   }
   if (opts && Array.isArray(opts.removedIds) && opts.removedIds.length) {
@@ -5253,34 +5308,47 @@ function refresh(opts = {}) {
     refreshTags();
     refreshLists();
     syncHybridStatusTabsUI();
-    profStats();
-    cgMarks();
     catCounts();
-    renderAnixartHeroAndCategoryCards();
-    renderAnixartProfileExtras();
     renderStatusAndCategoryBanner();
-    renderMyListsFolderBlock();
+    if (pview === 'catalog') cgMarks();
+    if (pview === 'profile') {
+      _profileViewDirty = false;
+      profStats();
+      renderAnixartHeroAndCategoryCards();
+      renderAnixartProfileExtras();
+    } else {
+      _profileViewDirty = true;
+    }
     return;
   }
   if (opts && opts.onlyList) {
     render(false);
-    cgMarks();
     catCounts();
-    renderAnixartHeroAndCategoryCards();
-    renderAnixartProfileExtras();
+    if (pview === 'catalog') cgMarks();
+    if (pview === 'profile') {
+      _profileViewDirty = false;
+      renderAnixartHeroAndCategoryCards();
+      renderAnixartProfileExtras();
+    } else {
+      _profileViewDirty = true;
+    }
     return;
   }
   refreshTags();
-  refreshLists();
+  refreshLists(opts && opts.listFilterValue != null ? opts.listFilterValue : null);
   render(false);
-  profStats();
-  cgMarks();
   catCounts();
-  renderAnixartHeroAndCategoryCards();
-  renderAnixartProfileExtras();
   updateProfileMetaAndPrivacyUI();
   renderStatusAndCategoryBanner();
-  renderMyListsFolderBlock();
+  if (pview === 'catalog' || !pview) cgMarks();
+  if (pview === 'profile' || !pview) {
+    _profileViewDirty = false;
+    profStats();
+    renderAnixartHeroAndCategoryCards();
+    renderAnixartProfileExtras();
+  } else {
+    _profileViewDirty = true;
+  }
   if ($('reviewItemsBox')?.style.display !== 'none') renderReviewItemsTab();
 }
 

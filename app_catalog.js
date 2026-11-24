@@ -1686,9 +1686,11 @@ $('selSt').onchange = async () => {
     i.status = v;
     i.needsReview = false;
     if (v === 'Просмотрено/Прочитано' && !i.completedAt) i.completedAt = Date.now();
+    else if (v === 'В планах') i.completedAt = 0;
     if (typeof syncItemProgressOnStatusChange === 'function') syncItemProgressOnStatusChange(i, v);
   });
   await batchSaveItems(hit);
+  profCloud(true);
   refresh();
   toast(`Статус «${v}» установлен для ${hit.length} тайтлов`);
 };
@@ -1825,7 +1827,7 @@ const handleCreateNewListPrompt = async () => {
   if (!name) return;
   prof.customLists = prof.customLists || [];
   if (!prof.customLists.some(x => x.toLowerCase() === name.toLowerCase())) prof.customLists.push(name);
-  profCloud(); refreshLists(); $('listFilter').value = name.toLowerCase(); render(); renderMyListsFolderBlock();
+  profCloud(); refreshLists(name.toLowerCase()); render();
   toast(`Подборка «${name}» создана!`);
 };
 $('createListBtn').onclick = handleCreateNewListPrompt;
@@ -1855,7 +1857,7 @@ $('manageListBtn').onclick = async () => {
   });
   profCloud();
   if (changed.length) await batchSaveItems(changed);
-  refresh(); $('listFilter').value = nn ? nn.toLowerCase() : 'Все'; render();
+  refresh({ listFilterValue: nn ? nn.toLowerCase() : 'Все' });
   toast(nn ? `Подборка «${nn}» сохранена` : `Подборка «${canonical}» удалена`);
 };
 

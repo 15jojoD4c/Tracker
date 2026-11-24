@@ -1756,6 +1756,25 @@ async function loadCollectionChunksFromCloud(uid, chunkCount, forceServer = fals
   return KirokuEngine.unpackCollectionChunks(res.docs).map(fix);
 }
 
+let _chunkSyncTimerResolve = null;
+function runSerializedChunkWrite(uid, listSnapshot, opts = {}) {
+  if (_chunkSyncTimer) {
+    clearTimeout(_chunkSyncTimer);
+    _chunkSyncTimer = 0;
+  }
+  if (_chunkSyncTimerResolve) {
+    const prevResolve = _chunkSyncTimerResolve;
+    _chunkSyncTimerResolve = null;
+    try { prevResolve(false); } catch (e) {}
+  }
+  const prev = _chunkSyncInFlight || Promise.resolve();
+  const cur = prev.catch(() => {}).then(() => saveCollectionChunksToCloud(uid, listSnapshot, opts));
+  _chunkSyncInFlight = cur;
+  return cur.finally(() => {
+    if (_chunkSyncInFlight === cur) _chunkSyncInFlight = null;
+  });
+}
+
 function scheduleChunkCloudSync(immediate = false) {
   if (!user || user.isLocal || !isChunkStorageEnabled()) return Promise.resolve(false);
   const uid = user.uid;
@@ -1774,19 +1793,22 @@ function scheduleChunkCloudSync(immediate = false) {
     setSync();
     return Promise.resolve(false);
   }
-  clearTimeout(_chunkSyncTimer);
-  const runNow = () => {
+  if (_chunkSyncTimer) {
+    clearTimeout(_chunkSyncTimer);
     _chunkSyncTimer = 0;
-    const prev = _chunkSyncInFlight || Promise.resolve();
-    const cur = prev.catch(() => {}).then(() => saveCollectionChunksToCloud(uid, items, { silent: false }));
-    _chunkSyncInFlight = cur;
-    return cur.finally(() => {
-      if (_chunkSyncInFlight === cur) _chunkSyncInFlight = null;
-    });
-  };
+  }
+  if (_chunkSyncTimerResolve) {
+    const prevResolve = _chunkSyncTimerResolve;
+    _chunkSyncTimerResolve = null;
+    try { prevResolve(false); } catch (e) {}
+  }
+  const runNow = () => runSerializedChunkWrite(uid, items, { silent: false });
   if (immediate) return runNow();
   return new Promise(resolve => {
+    _chunkSyncTimerResolve = resolve;
     _chunkSyncTimer = setTimeout(() => {
+      _chunkSyncTimer = 0;
+      _chunkSyncTimerResolve = null;
       runNow().then(resolve);
     }, 1800);
   });
@@ -2125,7 +2147,7 @@ async function flushPendingCloudChanges(showToast = false) {
     if (isChunkStorageEnabled() && (dirtyItems.length || pendingDeletes.length || dirtyChunks)) {
       // Объединяем грязный профиль прямо в финальный writeBatch сохранения чанков — без дублирующей записи в prof_!
       const extraProfPayload = dirtyProf ? buildCleanProfPayloadForCloud(uid, false) : null;
-      const ok = await saveCollectionChunksToCloud(uid, items, {
+      const ok = await runSerializedChunkWrite(uid, items, {
         silent: !showToast,
         throwOnError: false,
         extraProfPayload
@@ -2401,7 +2423,7 @@ async function syncItemsFromCloud(effUid, force = false) {
       // Если загрузили старым способом (500 отдельных доков), 1 раз упаковываем в компактные чанки, чтобы все будущие загрузки стоили 1–2 чтения!
       if (!loadedFromChunks && isChunkStorageEnabled() && items.length > 0 && !isCloudWriteBlocked()) {
         const extraProfPayload = hasDirtyProf ? buildCleanProfPayloadForCloud(effUid, false) : null;
-        const packedOk = await saveCollectionChunksToCloud(effUid, items, { silent: true, extraProfPayload }).catch(() => false);
+        const packedOk = await runSerializedChunkWrite(effUid, items, { silent: true, extraProfPayload }).catch(() => false);
         if (packedOk && pendingDeletesArr.length) removePendingDeletes(pendingDeletesArr, effUid);
       } else if (dirtyLocalItems.length || pendingDeletesArr.length || hasDirtyChunks || hasDirtyProf) {
         await flushPendingCloudChanges(false);
@@ -3444,8 +3466,8 @@ function refreshTags() {
   sel.value = map.has(old) ? old : 'Все';
 }
 
-function refreshLists() {
-  const sel = $('listFilter'); if (!sel) return; const old = sel.value, map = new Map();
+function refreshLists(preferredVal = null) {
+  const sel = $('listFilter'); if (!sel) return; const old = preferredVal != null ? String(preferredVal) : sel.value, map = new Map();
   (prof.customLists || []).forEach(t => { if (t && !map.has(t.toLowerCase())) map.set(t.toLowerCase(), t); });
   getVisibleItems().forEach(i => (i.lists || []).forEach(t => { if (t && !map.has(t.toLowerCase())) map.set(t.toLowerCase(), t); }));
   sel.replaceChildren(new Option('📁 Все подборки', 'Все'));
@@ -3956,7 +3978,7 @@ function patchCollectionCardNode(card, i) {
     if (i.ongoing) bd.append(el('div', 'ong', 'ОНГОИНГ'));
   }
   if (pc && info) buildCardProgressUI(pc, info, i);
-  card.classList.toggle('sel', Boolean(selMode && selSet.has(i.id)));
+  card.classList.toggle('sel', Boolean(selMode && (typeof selHas === 'function' ? selHas(i.id) : selSet.has(i.id))));
 }
 
 function getItemReleaseState(item, meta = null) {
@@ -5884,7 +5906,7 @@ $('saveItemBtn').onclick = async () => {
     const k = items.findIndex(x => String(x.id) === String(it.id));
     if (k > -1) items[k] = it; else items.push(it);
     if (editId) {
-      refresh({ itemId: it.id });
+      refresh();
       const returnTarget = window._editReturnTarget || 'detail';
       window._editReturnTarget = '';
       closeAll(true);
@@ -6086,8 +6108,28 @@ function openDetail(id) {
     }).catch(() => {});
   }
 
-  // Отдельная кнопка-сердечко «Любимое» (при добавлении в Любимое тайтл автоматически становится просмотренным/прочитанным)
   const favB = $('detailFavToggleBtn');
+  const rewB = $('detailRewatchPlusBtn');
+  const rewMinB = $('detailRewatchMinusBtn');
+  const syncDetailQuickState = () => {
+    const lbl = getStatusLabelForCategory(i.status, i.category);
+    $('detailStatus').textContent = lbl + (i.fav ? ' · ❤ Любимое' : '');
+    $('detailStatus').dataset.s = i.status;
+    if (ds) ds.value = STATS.includes(i.status) ? i.status : 'Просмотрено/Прочитано';
+    const addStr = formatAddedDateRu(i);
+    const compStr = (addStr ? ` • Добавлено в «${lbl}»: ${addStr}` : '') + (i.completedAt ? ' • Завершено ' + new Date(i.completedAt).toLocaleDateString('ru-RU') : '');
+    const ongSummary = (detRelState === 'ongoing' && typeof KirokuEngine !== 'undefined' && KirokuEngine.formatOngoingDurationSummary)
+      ? KirokuEngine.formatOngoingDurationSummary(i)
+      : null;
+    const ongNote = ongSummary && ongSummary.shortBadge ? ` • ${ongSummary.shortBadge}` : '';
+    $('detailMeta').textContent = `${catLabel(i)} • ${i.year || 'Год не указан'}${detRelText}${compStr}${i.seasons > 1 ? ' • ' + i.seasons + ' ' + pluralRu(i.seasons, 'сезон', 'сезона', 'сезонов') : ''}${i.eps ? ' • ' + i.eps + (i.category === 'Манга' || i.category === 'Ранобэ' ? ' гл.' : ' эп.') : ''}${i.vols ? ' • ' + i.vols + ' ' + pluralRu(i.vols, 'том', 'тома', 'томов') : ''}${i.dur ? ' • ' + i.dur + ' мин' : ''}${ongNote}`;
+    if (favB) favB.textContent = i.fav ? '❤ В любимом' : '🤍 В любимое';
+    if (rewB) rewB.textContent = `🔁 Пересмотрено: ${num(i.rewatchCount)} раз (+1)`;
+    if (rewMinB) rewMinB.style.display = num(i.rewatchCount) > 0 ? '' : 'none';
+    renderEpisodeProgressControl($('detailProgressWrap'), i);
+  };
+
+  // Отдельная кнопка-сердечко «Любимое» (при добавлении в Любимое тайтл автоматически становится просмотренным/прочитанным)
   if (favB) {
     favB.style.display = '';
     favB.textContent = i.fav ? '❤ В любимом' : '🤍 В любимое';
@@ -6098,20 +6140,20 @@ function openDetail(id) {
         if (!i.completedAt) i.completedAt = Date.now();
         syncItemProgressOnStatusChange(i, i.status);
       }
-      cloudSave(i); refresh({ itemId: i.id }); openDetail(id);
+      cloudSave(i); profCloud(true); refresh({ itemId: i.id }); syncDetailQuickState();
       toast(i.fav ? `Добавлено в «❤ Любимое» и «${getStatusLabelForCategory(i.status, i.category)}»!` : 'Убрано из «❤ Любимое»');
     };
   }
 
-  // Счётчик повторных просмотров (+1, -1, откат и возврат прежнего статуса)
-  const rewB = $('detailRewatchPlusBtn');
-  const rewMinB = $('detailRewatchMinusBtn');
+  // Счётчик повторных просмотров (+1, -1, откат и возврат прежнего статуса и прогресса)
   if (rewB) {
     rewB.style.display = '';
     rewB.textContent = `🔁 Пересмотрено: ${num(i.rewatchCount)} раз (+1)`;
     rewB.onclick = () => {
       const prevCount = num(i.rewatchCount);
       const prevSt = i.status;
+      const prevWatched = num(i.watchedEps);
+      const prevCompAt = num(i.completedAt);
       i.rewatchCount = prevCount + 1;
       if (i.status !== 'Просмотрено/Прочитано' && i.status !== 'Пересматриваю') {
         i.prevStBeforeRewatch = prevSt;
@@ -6119,13 +6161,17 @@ function openDetail(id) {
         if (!i.completedAt) i.completedAt = Date.now();
         syncItemProgressOnStatusChange(i, i.status);
       }
-      cloudSave(i); refresh({ itemId: i.id }); openDetail(id);
+      cloudSave(i); profCloud(true); refresh({ itemId: i.id }); syncDetailQuickState();
       toast(`Пересмотров: ${i.rewatchCount}`, false, {
         label: '↩ Отменить',
         fn: () => {
           i.rewatchCount = prevCount;
           if (i.prevStBeforeRewatch) { i.status = i.prevStBeforeRewatch; delete i.prevStBeforeRewatch; }
-          cloudSave(i); refresh({ itemId: i.id }); openDetail(id);
+          else { i.status = prevSt; }
+          i.watchedEps = prevWatched;
+          i.completedAt = prevCompAt;
+          cloudSave(i); profCloud(true); refresh({ itemId: i.id });
+          if (String(curId) === String(id)) syncDetailQuickState();
         }
       });
     };
@@ -6136,7 +6182,7 @@ function openDetail(id) {
       const prevCount = num(i.rewatchCount);
       if (prevCount <= 0) return;
       i.rewatchCount = prevCount - 1;
-      cloudSave(i); refresh({ itemId: i.id }); openDetail(id);
+      cloudSave(i); profCloud(true); refresh({ itemId: i.id }); syncDetailQuickState();
       toast(`Пересмотров уменьшено: ${i.rewatchCount}`);
     };
   }

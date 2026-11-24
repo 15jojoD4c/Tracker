@@ -54,8 +54,8 @@ function mapAniListMediaNode(m, type = 'ANIME') {
     ext: m.averageScore ? (m.averageScore / 10).toFixed(1) : '', tags: [...(m.genres || []).map(g => RU[g] || g), ...(m.tags || []).filter(t => !t.isMediaSpoiler && t.rank >= 60).slice(0, 8).map(t => ruTag(t.name))],
     desc: m.description ? decode(m.description.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim() : '',
     category: type === 'ANIME' ? 'Аниме' : m.format === 'NOVEL' ? 'Ранобэ' : 'Манга',
-    kind: {KR: 'Манхва', CN: 'Маньхуа', TW: 'Маньхуа', JP: 'Манга'}[m.countryOfOrigin] || 'Комикс',
-    subKind: {KR: 'Манхва', CN: 'Маньхуа', TW: 'Маньхуа', JP: 'Манга'}[m.countryOfOrigin] || 'Комикс'
+    kind: {KR: 'Манхва', CN: 'Маньхуа', TW: 'Маньхуа', JP: 'Манга'}[m.countryOfOrigin] || (m.format === 'MANGA' || !m.countryOfOrigin ? 'Манга' : 'Комикс'),
+    subKind: {KR: 'Манхва', CN: 'Маньхуа', TW: 'Маньхуа', JP: 'Манга'}[m.countryOfOrigin] || (m.format === 'MANGA' || !m.countryOfOrigin ? 'Манга' : 'Комикс')
   };
 }
 
@@ -142,9 +142,9 @@ async function fetchAniListGraphQL(query, variables = {}, timeoutMs = 2600, extS
           ab.name = 'AbortError';
           throw ab;
         }
-        // Таймаут отдельного запроса не должен отключать AniList на 10 минут
+        // Таймаут отдельного запроса не должен циклично блокировать поток каждые 20 секунд
         const isTimeout = netErr && netErr.name === 'AbortError';
-        _anilistDirectBlockedUntil = Date.now() + (isTimeout ? 20 * 1000 : 90 * 1000);
+        _anilistDirectBlockedUntil = Date.now() + (isTimeout ? 5 * 60 * 1000 : 90 * 1000);
         throw netErr;
       } finally {
         clearTimeout(timer);

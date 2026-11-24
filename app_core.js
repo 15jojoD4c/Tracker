@@ -4507,7 +4507,11 @@ if ($('colLoadMoreBtn')) {
   }
 }
 
-$('searchInput').addEventListener('input', () => render(false));
+let _searchDebounceTimer = 0;
+$('searchInput').addEventListener('input', () => {
+  clearTimeout(_searchDebounceTimer);
+  _searchDebounceTimer = setTimeout(() => render(false), 180);
+});
 ['statusFilter', 'tagFilter', 'sortSelect', 'listFilter'].forEach(id => $(id).addEventListener('change', () => {
   if (id === 'listFilter') {
     syncListFilterActionButtons();

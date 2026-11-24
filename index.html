@@ -782,7 +782,7 @@
 </div>
 
 <script type="module">
-const importWithTimeout = (url, ms = 25000) => new Promise((resolve, reject) => {
+const importWithTimeout = (url, ms = 7000) => new Promise((resolve, reject) => {
   let settled = false;
   const timer = setTimeout(() => {
     if (settled) return;
@@ -847,9 +847,9 @@ window.retryFirebaseBootstrap = async function retryFirebaseBootstrap(manual = t
 
 try {
   const [fbApp, fbAuth, fbDb] = await Promise.all([
-    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js", 25000),
-    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js", 25000),
-    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js", 25000)
+    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js", 7000),
+    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js", 7000),
+    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js", 7000)
   ]);
   window.__FIREBASE_OFFLINE_FALLBACK = false;
   Object.assign(window, fbApp, fbAuth, fbDb);

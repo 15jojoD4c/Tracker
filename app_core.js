@@ -752,9 +752,10 @@ let user = null, items = [], loaded = false, cat = 'Всё', kind = 'Все', cu
 let isInitialCloudLoading = false;
 let _initialCloudRetryTimer = 0;
 let _initialCloudRetryCount = 0;
+let _initialCloudAttemptInFlight = null;
+let _authStateResolved = false;
 let _cloudEmptyNoticeDismissed = false;
-const INITIAL_CLOUD_MAX_RETRIES = 2;
-const INITIAL_CLOUD_RETRY_DELAY_MS = 3000;
+const INITIAL_CLOUD_RETRY_DELAYS_MS = [3000, 10000, 30000, 60000];
 let profTried = false;
 let prof = {name: '', bio: '', mood: '', realName: '', bday: '', avatar: '', cover: '', coverColor: 0, bgAll: false};
 let pf = null, pfTarget = '';
@@ -1272,13 +1273,18 @@ function renderCloudStatusBanner() {
   let showBackup = items.length > 0;
   let showDismiss = false;
 
+  const isAuthOrInitialLoading = Boolean(
+    !user.isLocal
+    && (isInitialCloudLoading || (!_authStateResolved && !window.__FIREBASE_OFFLINE_FALLBACK && navigator.onLine && !cloudAccessError && !isCloudQuotaBlocked() && !isInitialCloudSyncBlocked(user.uid)))
+  );
+
   if (user.isLocal) {
     mode = 'is-local';
     dismissKey = 'local';
     title = '💻 Локальный режим (без облачной синхронизации)';
     desc = 'Коллекция хранится только в памяти этого браузера (IndexedDB и localStorage). При очистке данных сайта без бэкапа записи пропадут.';
     showDismiss = true;
-  } else if (isInitialCloudLoading) {
+  } else if (isAuthOrInitialLoading) {
     mode = 'is-local';
     dismissKey = 'initial_loading';
     title = '☁ Загружаем коллекцию из облака...';
@@ -1414,9 +1420,13 @@ const setSync = () => {
         toast('Локальный режим: данные хранятся только в этом браузере.');
       }
     };
+    const isAuthOrInitialLoading = Boolean(
+      user && !user.isLocal
+      && (isInitialCloudLoading || (!_authStateResolved && !window.__FIREBASE_OFFLINE_FALLBACK && navigator.onLine && !cloudAccessError && !isCloudQuotaBlocked() && !isInitialCloudSyncBlocked(user.uid)))
+    );
     if (user && user.isLocal) {
       renderSyncLabel('sync warn clickable', '💻', 'Локально (только браузер)', 'Данные хранятся только в этом браузере. Нажми для подробностей');
-    } else if (isInitialCloudLoading) {
+    } else if (isAuthOrInitialLoading) {
       renderSyncLabel('sync sav', '☁', 'Загрузка из облака...', 'Идёт первичная загрузка коллекции из Firestore');
     } else if (window.__FIREBASE_OFFLINE_FALLBACK) {
       renderSyncLabel('sync err clickable', '⚠', 'Офлайн (только локально)', 'Firebase SDK недоступен, включено локальное сохранение');
@@ -1631,38 +1641,69 @@ const track = (p, timeoutMs = CLOUD_OP_TIMEOUT_MS) => {
     setSync();
   });
 };
-addEventListener('online', () => {
-  setSync();
+function triggerInitialCloudSyncResume(reason) {
   if (window.__FIREBASE_OFFLINE_FALLBACK) {
-    if (typeof window.retryFirebaseBootstrap === 'function') {
+    if (reason === 'online' && typeof window.retryFirebaseBootstrap === 'function') {
       setTimeout(() => {
         if (navigator.onLine && window.__FIREBASE_OFFLINE_FALLBACK) {
           window.retryFirebaseBootstrap(false);
         }
-      }, 1000);
+      }, 600);
     }
     return;
   }
-  if (user && !user.isLocal && !isCloudQuotaBlocked() && auth.currentUser) {
+  if (!user || user.isLocal || !navigator.onLine || !auth.currentUser) return;
+  const effUid = user.uid;
+  const sessionToken = _cloudSessionToken;
+  if (_activeCloudSessionUid !== effUid) return;
+
+  if (isCloudQuotaBlocked()) {
+    if (needsInitialCloudSync(effUid) && !_initialCloudRetryTimer) {
+      scheduleInitialCloudLoadRetry(effUid, sessionToken);
+    }
+    return;
+  }
+
+  if (needsInitialCloudSync(effUid)) {
+    runInitialCloudSyncAttempt(effUid, sessionToken, { showLoadingIfEmpty: true });
+    return;
+  }
+
+  if (reason === 'online') {
     setTimeout(async () => {
-      if (!user || user.isLocal || isCloudQuotaBlocked() || !auth.currentUser) return;
+      if (!user || user.isLocal || isCloudQuotaBlocked() || !auth.currentUser || sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
       if (cloudAccessError === 'timeout' || cloudAccessError === 'unavailable') {
         await resetFirestoreNetworkTransport();
       }
-      if (!unsub && _activeCloudSessionUid === user.uid) {
-        attachCloudProfileListener(user.uid, _cloudSessionToken);
+      if (!unsub && _activeCloudSessionUid === effUid) {
+        attachCloudProfileListener(effUid, sessionToken);
       }
-      if (typeof window.forceCloudSyncNow === 'function') {
+      if (cloudAccessError && typeof window.forceCloudSyncNow === 'function') {
         window.forceCloudSyncNow(false);
-      } else if (!isInitialCloudSyncDone(user.uid) || isInitialCloudSyncBlocked(user.uid)) {
-        if (typeof syncItemsFromCloud === 'function') syncItemsFromCloud(user.uid, false);
       } else if (typeof flushPendingCloudChanges === 'function') {
         flushPendingCloudChanges(false);
       }
-    }, 800);
+    }, 600);
+  }
+}
+
+addEventListener('online', () => {
+  setSync();
+  if (user && !user.isLocal && items.length === 0) render();
+  triggerInitialCloudSyncResume('online');
+});
+addEventListener('offline', () => {
+  setSync();
+  if (user && !user.isLocal && items.length === 0) render();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    triggerInitialCloudSyncResume('visible');
   }
 });
-addEventListener('offline', setSync);
+addEventListener('pageshow', () => {
+  triggerInitialCloudSyncResume('pageshow');
+});
 
 // Гарантируем, что ID документа тайтла никогда не начинается с зарезервированных префиксов prof_, wall_, rec_, bans_, fr_, dm_
 const getCloudDocId = item => {
@@ -1760,10 +1801,28 @@ function isInitialCloudSyncDone(uid) {
 function isInitialCloudSyncBlocked(uid) {
   return Boolean(uid && _initialCloudSyncBlockedUid === uid);
 }
+function needsInitialCloudSync(uid) {
+  return Boolean(uid && user && !user.isLocal && _activeCloudSessionUid === uid && (!isInitialCloudSyncDone(uid) || isInitialCloudSyncBlocked(uid)));
+}
+function stopInitialCloudSyncRetries() {
+  clearTimeout(_initialCloudRetryTimer);
+  _initialCloudRetryTimer = 0;
+  _initialCloudRetryCount = 0;
+}
+function requestPersistentStorageSafe() {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.persist === 'function') {
+      Promise.resolve(navigator.storage.persist()).catch(() => {});
+    }
+  } catch (e) {}
+}
 function markInitialCloudSyncDone(uid) {
   if (!uid) return;
   _initialCloudSyncDoneUid = uid;
   if (_initialCloudSyncBlockedUid === uid) _initialCloudSyncBlockedUid = '';
+  if (_activeCloudSessionUid === uid) {
+    stopInitialCloudSyncRetries();
+  }
 }
 function markInitialCloudSyncBlocked(uid) {
   if (!uid) return;
@@ -2274,6 +2333,7 @@ function legacyCloudSaveSingleItem(it) {
 }
 
 async function startLocalMode(msg) {
+  _authStateResolved = true;
   _cloudSessionToken++;
   if (unsub) { unsub(); unsub = null; }
   _activeCloudSessionUid = '';
@@ -2281,6 +2341,7 @@ async function startLocalMode(msg) {
   _hydrateLocalPromise = null;
   clearCloudErrorState();
   if (typeof resetSessionMemoryState === 'function') resetSessionMemoryState();
+  requestPersistentStorageSafe();
   try { localStorage.setItem('useLocalMode', '1'); } catch (e) {}
   resetProfObjectToDefault();
   try { Object.assign(prof, JSON.parse(localStorage.getItem('prof_local_user') || localStorage.getItem('prof') || '{}')); } catch (e) {}
@@ -2772,73 +2833,138 @@ window.profSaveLocal = profSaveLocal;
 window.forceCloudSyncNow = async function forceCloudSyncNow(manual = true) {
   if (!user || user.isLocal) {
     if (manual) toast('Сейчас включён локальный режим без облака.');
-    return;
+    return false;
   }
   if (!navigator.onLine) {
     setSync();
+    if (items.length === 0) render();
     if (manual) toast('Нет подключения к сети — работаем на локальном кэше.', true);
-    return;
+    return false;
   }
   if (window.__FIREBASE_OFFLINE_FALLBACK) {
     setSync();
+    if (items.length === 0) render();
     if (typeof window.retryFirebaseBootstrap === 'function') {
-      await window.retryFirebaseBootstrap(manual);
+      return await window.retryFirebaseBootstrap(manual);
     } else if (manual) {
       toast('Firebase SDK не загрузился при старте — обнови страницу для подключения к облаку.', true);
     }
-    return;
+    return false;
   }
   if (!auth.currentUser) {
     if (manual) toast('Сессия авторизации ещё инициализируется, подожди пару секунд.', true);
-    return;
+    return false;
   }
+  if (!manual && isCloudQuotaBlocked()) {
+    if (needsInitialCloudSync(user.uid) && !_initialCloudRetryTimer) {
+      scheduleInitialCloudLoadRetry(user.uid, _cloudSessionToken);
+    }
+    return false;
+  }
+  // Не допускаем параллельных загрузок из облака
+  if (_initialCloudAttemptInFlight) {
+    const prevOk = await _initialCloudAttemptInFlight;
+    if (!manual || prevOk) {
+      if (manual && prevOk && !cloudAccessError) toast('Синхронизация с облаком завершена ✓');
+      return prevOk;
+    }
+  }
+  if (_cloudSyncInFlight) {
+    const prevSyncOk = await _cloudSyncInFlight;
+    if (!manual || prevSyncOk) {
+      if (manual && prevSyncOk && !cloudAccessError) toast('Синхронизация с облаком завершена ✓');
+      return prevSyncOk;
+    }
+  }
+
+  const effUid = user.uid;
+  const sessionToken = _cloudSessionToken;
+  if (_activeCloudSessionUid !== effUid) return false;
+
   // При ручном клике сбрасываем временный кулдаун и при таймауте/обрыве переподключаем транспорт Firestore
   const hadTransportIssue = cloudAccessError === 'timeout' || cloudAccessError === 'unavailable';
   clearTimeout(_initialCloudRetryTimer);
   _initialCloudRetryTimer = 0;
   _cloudEmptyNoticeDismissed = false;
-  clearCloudErrorState(user.uid);
+  if (manual) {
+    _initialCloudRetryCount = 0;
+    clearCloudErrorState(effUid);
+  }
   const showCalmLoad = items.length === 0;
   if (showCalmLoad) {
     isInitialCloudLoading = true;
     setSync();
     render();
   }
-  try {
-    if (hadTransportIssue) {
-      await resetFirestoreNetworkTransport();
-    }
-    const pSnap = await readDocResilient(doc(db, 'items', 'prof_' + user.uid), navigator.onLine, CLOUD_READ_SDK_TIMEOUT_MS);
-    if (pSnap && !pSnap.metadata?.fromCache) {
-      clearCloudErrorState(user.uid);
-    }
-    if (pSnap.exists()) {
-      const pd = pSnap.data();
-      applyServerProfileDocToLocal(user.uid, pd, Boolean(pSnap.metadata?.fromCache));
-    }
-    // Сначала загружаем и сливаем облако с локальными dirty-правками, затем гарантируем отправку оставшейся очереди
-    const manualSyncOk = await syncItemsFromCloud(user.uid, true);
-    if (!unsub && _activeCloudSessionUid === user.uid && !isCloudQuotaBlocked()) {
-      attachCloudProfileListener(user.uid, _cloudSessionToken, Boolean(manualSyncOk && items.length > 0));
-    }
-    if (isInitialCloudSyncDone(user.uid) && !isInitialCloudSyncBlocked(user.uid)) {
-      const pendingLeft = getUnsyncedPendingCounts();
-      let dirtyChunksLeft = false;
-      try { dirtyChunksLeft = localStorage.getItem('colChunksDirty_' + user.uid) === '1'; } catch (e) {}
-      if (pendingLeft.total > 0 || dirtyChunksLeft) {
-        await flushPendingCloudChanges(false);
+
+  const runPromise = (async () => {
+    try {
+      if (hadTransportIssue) {
+        await resetFirestoreNetworkTransport();
+      }
+      if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+      let serverProfReadOk = false;
+      const pSnap = await readDocResilient(doc(db, 'items', 'prof_' + effUid), navigator.onLine, CLOUD_READ_SDK_TIMEOUT_MS);
+      if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+      serverProfReadOk = Boolean(pSnap && !pSnap.metadata?.fromCache);
+      if (serverProfReadOk) {
+        clearCloudErrorState(effUid);
+      }
+      if (pSnap.exists()) {
+        const pd = pSnap.data();
+        applyServerProfileDocToLocal(effUid, pd, Boolean(pSnap.metadata?.fromCache));
+      }
+      // Сначала загружаем и сливаем облако с локальными dirty-правками, затем гарантируем отправку оставшейся очереди
+      const manualSyncOk = await syncItemsFromCloud(effUid, true);
+      if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+      const serverConfirmed = Boolean(
+        manualSyncOk
+        && isInitialCloudSyncDone(effUid)
+        && !isInitialCloudSyncBlocked(effUid)
+        && (items.length > 0 || (serverProfReadOk && Number(prof.colCount || 0) === 0 && Number(prof.colChunkCount || 0) === 0))
+      );
+      if (!serverConfirmed && items.length === 0) {
+        if (_initialCloudSyncDoneUid === effUid) _initialCloudSyncDoneUid = '';
+        markInitialCloudSyncBlocked(effUid);
+      }
+      if (!unsub && _activeCloudSessionUid === effUid && !isCloudQuotaBlocked()) {
+        attachCloudProfileListener(effUid, sessionToken, serverConfirmed);
+      }
+      if (serverConfirmed) {
+        stopInitialCloudSyncRetries();
+        const pendingLeft = getUnsyncedPendingCounts();
+        let dirtyChunksLeft = false;
+        try { dirtyChunksLeft = localStorage.getItem('colChunksDirty_' + effUid) === '1'; } catch (e) {}
+        if (pendingLeft.total > 0 || dirtyChunksLeft) {
+          await flushPendingCloudChanges(false);
+        }
+      } else if (needsInitialCloudSync(effUid)) {
+        scheduleInitialCloudLoadRetry(effUid, sessionToken);
+      }
+      if (showCalmLoad) isInitialCloudLoading = false;
+      setSync();
+      if (showCalmLoad) render();
+      if (manual && serverConfirmed && !cloudAccessError) toast('Синхронизация с облаком завершена ✓');
+      else if (manual && !serverConfirmed && !cloudAccessError) toast('Не удалось полностью подтвердить синхронизацию — повторим автоматически.', true);
+      return serverConfirmed;
+    } catch (err) {
+      if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+      if (showCalmLoad) isInitialCloudLoading = false;
+      markInitialCloudSyncBlocked(effUid);
+      handleCloudError(err, !manual);
+      if (needsInitialCloudSync(effUid)) {
+        scheduleInitialCloudLoadRetry(effUid, sessionToken);
+      }
+      if (showCalmLoad) render();
+      return false;
+    } finally {
+      if (_initialCloudAttemptInFlight === runPromise) {
+        _initialCloudAttemptInFlight = null;
       }
     }
-    if (showCalmLoad) isInitialCloudLoading = false;
-    setSync();
-    if (showCalmLoad) render();
-    if (manual && !cloudAccessError) toast('Синхронизация с облаком завершена ✓');
-  } catch (err) {
-    if (showCalmLoad) isInitialCloudLoading = false;
-    markInitialCloudSyncBlocked(user.uid);
-    handleCloudError(err, false);
-    if (showCalmLoad) render();
-  }
+  })();
+  _initialCloudAttemptInFlight = runPromise;
+  return runPromise;
 };
 
 async function hydrateLocalSessionView(uObj) {
@@ -2957,6 +3083,10 @@ function applyServerProfileDocToLocal(effUid, pd, isFromCache = false) {
 async function forcePullProfileAndCollectionFromServer(effUid, sessionToken) {
   if (!effUid || !navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK || isCloudQuotaBlocked()) return false;
   if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+  if (cloudAccessError === 'timeout' || cloudAccessError === 'unavailable') {
+    await resetFirestoreNetworkTransport();
+    if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+  }
   if (auth.currentUser && typeof auth.currentUser.getIdToken === 'function') {
     try { await withCloudTimeout(auth.currentUser.getIdToken(), 10000); } catch (tokErr) {}
     if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
@@ -2965,10 +3095,12 @@ async function forcePullProfileAndCollectionFromServer(effUid, sessionToken) {
   try {
     const sProfSnap = await readDocResilient(doc(db, 'items', 'prof_' + effUid), true, CLOUD_READ_SDK_TIMEOUT_MS);
     if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
-    serverProfReadOk = true;
+    serverProfReadOk = Boolean(sProfSnap && !sProfSnap.metadata?.fromCache);
     if (sProfSnap && sProfSnap.exists()) {
+      if (serverProfReadOk) clearCloudErrorState(effUid);
+      applyServerProfileDocToLocal(effUid, sProfSnap.data(), Boolean(sProfSnap.metadata?.fromCache));
+    } else if (serverProfReadOk) {
       clearCloudErrorState(effUid);
-      applyServerProfileDocToLocal(effUid, sProfSnap.data(), false);
     }
   } catch (profErr) {
     // Если сервер ответил таймаутом/квотой — не запускаем следом ещё один тяжёлый запрос всей коллекции
@@ -2983,61 +3115,141 @@ async function forcePullProfileAndCollectionFromServer(effUid, sessionToken) {
   }
   if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
   const syncedOk = await syncItemsFromCloud(effUid, true);
+  if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
   if (!syncedOk || !isInitialCloudSyncDone(effUid) || isInitialCloudSyncBlocked(effUid)) return false;
-  // Если после ответа с сервера коллекция пуста, но профиль не прочитался или ожидает документы — считаем загрузку незавершённой
+  // Если после ответа с сервера коллекция пуста, но профиль не прочитался с сервера или ожидает документы — не подтверждаем пустую коллекцию!
   if (items.length === 0 && (!serverProfReadOk || Number(prof.colCount || 0) > 0 || Number(prof.colChunkCount || 0) > 0)) {
+    if (_initialCloudSyncDoneUid === effUid) _initialCloudSyncDoneUid = '';
+    markInitialCloudSyncBlocked(effUid);
     return false;
   }
   return true;
 }
 
+async function runInitialCloudSyncAttempt(effUid, sessionToken, { showLoadingIfEmpty = true } = {}) {
+  if (!effUid || sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+  if (!needsInitialCloudSync(effUid)) {
+    stopInitialCloudSyncRetries();
+    return true;
+  }
+  if (_initialCloudAttemptInFlight) {
+    return _initialCloudAttemptInFlight;
+  }
+  if (_cloudSyncInFlight) {
+    await _cloudSyncInFlight;
+    if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+    if (!needsInitialCloudSync(effUid)) {
+      stopInitialCloudSyncRetries();
+      return true;
+    }
+  }
+  if (window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine || !auth.currentUser) {
+    markInitialCloudSyncBlocked(effUid);
+    isInitialCloudLoading = false;
+    setSync();
+    if (items.length === 0) render();
+    return false;
+  }
+  if (isCloudQuotaBlocked()) {
+    markInitialCloudSyncBlocked(effUid);
+    isInitialCloudLoading = false;
+    scheduleInitialCloudLoadRetry(effUid, sessionToken);
+    setSync();
+    if (items.length === 0) render();
+    return false;
+  }
+
+  clearTimeout(_initialCloudRetryTimer);
+  _initialCloudRetryTimer = 0;
+
+  const showLoad = Boolean(showLoadingIfEmpty && items.length === 0);
+  if (showLoad) {
+    isInitialCloudLoading = true;
+    setSync();
+    render();
+  }
+
+  const attemptPromise = (async () => {
+    try {
+      const ok = await forcePullProfileAndCollectionFromServer(effUid, sessionToken);
+      if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+      const done = Boolean(ok && !needsInitialCloudSync(effUid));
+      if (done) {
+        stopInitialCloudSyncRetries();
+        isInitialCloudLoading = false;
+        if (!unsub && !isCloudQuotaBlocked()) {
+          attachCloudProfileListener(effUid, sessionToken, true);
+        }
+        setSync();
+        render();
+        return true;
+      }
+      isInitialCloudLoading = false;
+      scheduleInitialCloudLoadRetry(effUid, sessionToken);
+      setSync();
+      if (items.length === 0) render();
+      return false;
+    } catch (err) {
+      if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+      isInitialCloudLoading = false;
+      markInitialCloudSyncBlocked(effUid);
+      handleCloudError(err, true);
+      scheduleInitialCloudLoadRetry(effUid, sessionToken);
+      setSync();
+      if (items.length === 0) render();
+      return false;
+    } finally {
+      if (_initialCloudAttemptInFlight === attemptPromise) {
+        _initialCloudAttemptInFlight = null;
+      }
+    }
+  })();
+
+  _initialCloudAttemptInFlight = attemptPromise;
+  return attemptPromise;
+}
+
 function scheduleInitialCloudLoadRetry(effUid, sessionToken, onDone) {
   clearTimeout(_initialCloudRetryTimer);
   _initialCloudRetryTimer = 0;
-  if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
-  if (items.length > 0 || !navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK || isCloudQuotaBlocked()) return false;
-  if (_initialCloudRetryCount >= INITIAL_CLOUD_MAX_RETRIES) return false;
+  if (!effUid || sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
+  if (!needsInitialCloudSync(effUid)) {
+    stopInitialCloudSyncRetries();
+    return false;
+  }
+  if (window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine) return false;
 
-  _initialCloudRetryCount++;
-  isInitialCloudLoading = true;
-  setSync();
-  render();
+  const quotaBlockedNow = isCloudQuotaBlocked();
+  const delayMs = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.computeInitialCloudNextDelayMs === 'function')
+    ? KirokuEngine.computeInitialCloudNextDelayMs({
+        attemptIndex: _initialCloudRetryCount,
+        quotaBlockedUntil: cloudQuotaBlockedUntil,
+        nowMs: Date.now(),
+        delays: INITIAL_CLOUD_RETRY_DELAYS_MS
+      })
+    : INITIAL_CLOUD_RETRY_DELAYS_MS[Math.min(_initialCloudRetryCount, INITIAL_CLOUD_RETRY_DELAYS_MS.length - 1)];
+
+  if (!quotaBlockedNow) {
+    _initialCloudRetryCount++;
+  }
+
   _initialCloudRetryTimer = setTimeout(async () => {
     _initialCloudRetryTimer = 0;
     if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
-    if (items.length > 0) {
-      isInitialCloudLoading = false;
-      setSync();
-      render();
+    if (!needsInitialCloudSync(effUid)) {
+      stopInitialCloudSyncRetries();
       if (typeof onDone === 'function') onDone(true);
       return;
     }
-    if (!navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK || isCloudQuotaBlocked()) {
-      isInitialCloudLoading = false;
-      setSync();
-      render();
-      if (typeof onDone === 'function') onDone(false);
-      return;
-    }
-    clearCloudErrorState(effUid);
-    const ok = await forcePullProfileAndCollectionFromServer(effUid, sessionToken);
-    if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
-    if (ok && (items.length > 0 || (Number(prof.colCount || 0) === 0 && Number(prof.colChunkCount || 0) === 0))) {
-      isInitialCloudLoading = false;
-      setSync();
-      render();
-      if (typeof onDone === 'function') onDone(true);
-      return;
-    }
-    if (items.length === 0 && _initialCloudRetryCount < INITIAL_CLOUD_MAX_RETRIES && navigator.onLine && !isCloudQuotaBlocked()) {
+    if (!navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK) return;
+    if (isCloudQuotaBlocked()) {
       scheduleInitialCloudLoadRetry(effUid, sessionToken, onDone);
       return;
     }
-    isInitialCloudLoading = false;
-    setSync();
-    render();
-    if (typeof onDone === 'function') onDone(false);
-  }, INITIAL_CLOUD_RETRY_DELAY_MS);
+    const ok = await runInitialCloudSyncAttempt(effUid, sessionToken, { showLoadingIfEmpty: true });
+    if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
+    if (typeof onDone === 'function') onDone(ok);
+  }, delayMs);
   return true;
 }
 
@@ -3051,22 +3263,19 @@ function attachCloudProfileListener(effUid, sessionToken, alreadyForceSynced = f
   let emptyCacheForceTried = Boolean(alreadyForceSynced);
   const finishOrRetryInitial = ok => {
     if (ok) {
-      clearTimeout(_initialCloudRetryTimer);
-      _initialCloudRetryTimer = 0;
+      stopInitialCloudSyncRetries();
       initialProfileHandled = true;
       isInitialCloudLoading = false;
       setSync();
       render();
       return;
     }
-    const scheduled = scheduleInitialCloudLoadRetry(effUid, sessionToken, retryOk => {
+    isInitialCloudLoading = false;
+    scheduleInitialCloudLoadRetry(effUid, sessionToken, retryOk => {
       if (retryOk) initialProfileHandled = true;
     });
-    if (!scheduled) {
-      isInitialCloudLoading = false;
-      setSync();
-      render();
-    }
+    setSync();
+    if (items.length === 0) render();
   };
   unsub = onSnapshot(doc(db, 'items', 'prof_' + effUid),
     async pSnap => {
@@ -3086,14 +3295,11 @@ function attachCloudProfileListener(effUid, sessionToken, alreadyForceSynced = f
       } else {
         // Если снимок пришёл из локального кэша и документа профиля ещё нет — при пустой коллекции и онлайне принудительно читаем с сервера!
         if (isFromCache) {
-          if (items.length === 0 && navigator.onLine && !emptyCacheForceTried && !_initialCloudRetryTimer && !_cloudSyncInFlight && !window.__FIREBASE_OFFLINE_FALLBACK && !isCloudQuotaBlocked()) {
+          if (items.length === 0 && navigator.onLine && !emptyCacheForceTried && !_initialCloudRetryTimer && !_initialCloudAttemptInFlight && !_cloudSyncInFlight && !window.__FIREBASE_OFFLINE_FALLBACK && !isCloudQuotaBlocked()) {
             emptyCacheForceTried = true;
-            isInitialCloudLoading = true;
-            setSync();
-            render();
-            const forcedOk = await forcePullProfileAndCollectionFromServer(effUid, sessionToken);
+            const forcedOk = await runInitialCloudSyncAttempt(effUid, sessionToken, { showLoadingIfEmpty: true });
             if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
-            finishOrRetryInitial(forcedOk);
+            if (forcedOk) initialProfileHandled = true;
           }
           return;
         }
@@ -3102,15 +3308,14 @@ function attachCloudProfileListener(effUid, sessionToken, alreadyForceSynced = f
       }
 
       // Если первый снимок пришёл из пустого локального кэша, принудительно дочитываем профиль и коллекцию напрямую с сервера
-      if (isFromCache && items.length === 0 && navigator.onLine && !emptyCacheForceTried && !_initialCloudRetryTimer && !_cloudSyncInFlight && !window.__FIREBASE_OFFLINE_FALLBACK && !isCloudQuotaBlocked()) {
+      if (isFromCache && items.length === 0 && navigator.onLine && !emptyCacheForceTried && !_initialCloudRetryTimer && !_initialCloudAttemptInFlight && !_cloudSyncInFlight && !window.__FIREBASE_OFFLINE_FALLBACK && !isCloudQuotaBlocked()) {
         emptyCacheForceTried = true;
-        isInitialCloudLoading = true;
-        setSync();
-        render();
-        const forcedOk = await forcePullProfileAndCollectionFromServer(effUid, sessionToken);
+        const forcedOk = await runInitialCloudSyncAttempt(effUid, sessionToken, { showLoadingIfEmpty: true });
         if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
-        finishOrRetryInitial(forcedOk);
-        if (forcedOk) return;
+        if (forcedOk) {
+          initialProfileHandled = true;
+          return;
+        }
       }
 
       const lastFullSyncAt = Number(localSyncMeta.lastFullSyncAt || 0);
@@ -3133,6 +3338,7 @@ function attachCloudProfileListener(effUid, sessionToken, alreadyForceSynced = f
         : (!initialProfileHandled && (items.length === 0 || (remoteColRev && remoteColRev > localRev)));
 
       if (shouldPull) {
+        if (_initialCloudAttemptInFlight) return;
         const wasEmpty = items.length === 0 && navigator.onLine;
         if (wasEmpty && !isInitialCloudLoading) {
           isInitialCloudLoading = true;
@@ -3141,20 +3347,23 @@ function attachCloudProfileListener(effUid, sessionToken, alreadyForceSynced = f
         }
         const syncedOk = await syncItemsFromCloud(effUid, wasEmpty);
         if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
-        const fullyLoaded = Boolean(syncedOk && isInitialCloudSyncDone(effUid) && !isInitialCloudSyncBlocked(effUid) && (items.length > 0 || (Number(prof.colCount || 0) === 0 && Number(prof.colChunkCount || 0) === 0)));
-        if (wasEmpty) {
-          finishOrRetryInitial(fullyLoaded);
-        } else if (fullyLoaded) {
-          initialProfileHandled = true;
+        const serverConfirmedEmpty = !isFromCache && Number(prof.colCount || 0) === 0 && Number(prof.colChunkCount || 0) === 0;
+        const fullyLoaded = Boolean(syncedOk && isInitialCloudSyncDone(effUid) && !isInitialCloudSyncBlocked(effUid) && (items.length > 0 || serverConfirmedEmpty));
+        if (!fullyLoaded && items.length === 0 && isInitialCloudSyncDone(effUid)) {
+          _initialCloudSyncDoneUid = '';
+          markInitialCloudSyncBlocked(effUid);
         }
+        finishOrRetryInitial(fullyLoaded);
       } else {
-        if ((pSnap.exists() || !isFromCache) && (items.length > 0 || (Number(prof.colCount || 0) === 0 && Number(prof.colChunkCount || 0) === 0))) {
+        // Первичную синхронизацию подтверждаем только после реального ответа сервера (!isFromCache), а не по устаревшему кэшу!
+        if (!isFromCache && (items.length > 0 || (Number(prof.colCount || 0) === 0 && Number(prof.colChunkCount || 0) === 0))) {
           initialProfileHandled = true;
           markInitialCloudSyncDone(effUid);
           if (isInitialCloudLoading) {
-            clearTimeout(_initialCloudRetryTimer);
-            _initialCloudRetryTimer = 0;
             isInitialCloudLoading = false;
+            setSync();
+            render();
+          } else if (items.length === 0) {
             setSync();
             render();
           }
@@ -3188,6 +3397,7 @@ function attachCloudProfileListener(effUid, sessionToken, alreadyForceSynced = f
       if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
       // Firestore навсегда завершает onSnapshot после ошибки — обязательно сбрасываем unsub, чтобы можно было переподключиться!
       unsub = null;
+      isInitialCloudLoading = false;
       markInitialCloudSyncBlocked(effUid);
       let restored = false;
       // Никогда не затираем локальную коллекцию из IDB пустым sync-ответом из localStorage!
@@ -3206,8 +3416,11 @@ function attachCloudProfileListener(effUid, sessionToken, alreadyForceSynced = f
       }
       loaded = true;
       handleCloudError(err, false);
+      if (needsInitialCloudSync(effUid)) {
+        scheduleInitialCloudLoadRetry(effUid, sessionToken);
+      }
       profPaint();
-      if (restored) refresh();
+      if (restored || items.length === 0) refresh();
       homeTab();
     });
 }
@@ -3226,6 +3439,8 @@ async function activateCloudUserSession(uObj) {
   if (typeof resetSessionMemoryState === 'function') resetSessionMemoryState();
   _cloudProfLoaded = false;
 
+  requestPersistentStorageSafe();
+
   try {
     localStorage.setItem('lastCloudUid', effUid);
     if (uObj.email) localStorage.setItem('lastCloudEmail', uObj.email);
@@ -3237,47 +3452,38 @@ async function activateCloudUserSession(uObj) {
   // Защита от гонки и утечки слушателей после async-разрыва hydrateLocalSessionView
   if (myToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
 
-  // При активном кулдауне квоты Firebase НЕ открываем onSnapshot и не делаем облачных чтений — остаёмся на локальном кэше
+  // При активном кулдауне квоты Firebase НЕ открываем onSnapshot и не делаем облачных чтений — остаёмся на локальном кэше и ждём окончания паузы
   if (isCloudQuotaBlocked()) {
     markInitialCloudSyncBlocked(effUid);
+    scheduleInitialCloudLoadRetry(effUid, myToken);
     setSync();
+    if (items.length === 0) render();
     return;
   }
 
   if (window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine) {
     markInitialCloudSyncBlocked(effUid);
     setSync();
+    if (items.length === 0) render();
     return;
   }
 
   let initialForceSynced = false;
   if (items.length === 0 && navigator.onLine) {
-    isInitialCloudLoading = true;
     _initialCloudRetryCount = 0;
     _cloudEmptyNoticeDismissed = false;
-    setSync();
-    render();
-    initialForceSynced = await forcePullProfileAndCollectionFromServer(effUid, myToken);
+    initialForceSynced = await runInitialCloudSyncAttempt(effUid, myToken, { showLoadingIfEmpty: true });
     if (myToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
-    if (initialForceSynced) {
-      isInitialCloudLoading = false;
-      setSync();
-      render();
-    } else {
-      const retryScheduled = scheduleInitialCloudLoadRetry(effUid, myToken, retryOk => {
-        if (retryOk && !unsub && _activeCloudSessionUid === effUid && myToken === _cloudSessionToken) {
-          attachCloudProfileListener(effUid, myToken, true);
-        }
-      });
-      if (!retryScheduled) {
-        isInitialCloudLoading = false;
-        setSync();
-        render();
-      }
-    }
   }
 
-  attachCloudProfileListener(effUid, myToken, initialForceSynced);
+  if (!unsub) {
+    attachCloudProfileListener(effUid, myToken, initialForceSynced);
+  }
+
+  // Даже если локальная копия не пустая, страхуем первичную синхронизацию фоновым повтором на случай подвисшего onSnapshot на мобильном
+  if (needsInitialCloudSync(effUid) && !_initialCloudRetryTimer && !_initialCloudAttemptInFlight) {
+    scheduleInitialCloudLoadRetry(effUid, myToken);
+  }
 }
 
 // ---------- ОБРАБОТЧИКИ АВТОРИЗАЦИИ ----------
@@ -3363,6 +3569,7 @@ function resetSessionMemoryState() {
   _initialCloudSyncDoneUid = '';
   _initialCloudSyncBlockedUid = '';
   _cloudSyncInFlight = null;
+  _initialCloudAttemptInFlight = null;
   _chunkSyncInFlight = null;
   clearTimeout(_chunkSyncTimer);
   _chunkSyncTimer = 0;
@@ -3371,9 +3578,7 @@ function resetSessionMemoryState() {
   _cloudBannerDismissedKey = '';
   _cloudEmptyNoticeDismissed = false;
   isInitialCloudLoading = false;
-  clearTimeout(_initialCloudRetryTimer);
-  _initialCloudRetryTimer = 0;
-  _initialCloudRetryCount = 0;
+  stopInitialCloudSyncRetries();
   clearTimeout(_colRevBumpTimer);
   if (typeof uncertainMatchesQueue !== 'undefined') uncertainMatchesQueue.length = 0;
   if (typeof selSet !== 'undefined') selSet.clear();
@@ -3434,6 +3639,7 @@ window.startApp = function startApp() {
   });
 
   onAuthStateChanged(auth, u => {
+    _authStateResolved = true;
     document.body.classList.remove('auth-checking');
     if (u) {
       try { localStorage.removeItem('useLocalMode'); } catch (e) {}
@@ -4535,12 +4741,35 @@ function render(appendMore = false) {
   const moreBtn = $('colLoadMoreBtn');
   if (moreBtn) moreBtn.style.display = 'none';
 
-  if (!loaded) return grid.append(el('div', 'msg', 'Загрузка...'));
+  if (!loaded) return grid.append(el('div', 'msg', 'Загружаем...'));
   if (!visItems.length) {
     lastList = [];
     renderChips();
     renderStatusAndCategoryBanner();
-    if (isInitialCloudLoading && user && !user.isLocal) {
+    const isCloudUser = Boolean(user && !user.isLocal);
+    const isQuota = Boolean(isCloudUser && (cloudAccessError === 'resource-exhausted' || isCloudQuotaBlocked()));
+    const emptyUiState = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.resolveEmptyCollectionUiState === 'function')
+      ? KirokuEngine.resolveEmptyCollectionUiState({
+          isCloudUser,
+          loaded,
+          authReady: _authStateResolved,
+          isInitialCloudLoading,
+          initialCloudSyncDone: isCloudUser ? isInitialCloudSyncDone(user.uid) : true,
+          initialCloudSyncBlocked: isCloudUser ? isInitialCloudSyncBlocked(user.uid) : false,
+          isQuotaBlocked: isQuota,
+          hasCloudError: Boolean(cloudAccessError),
+          isOnline: navigator.onLine,
+          isOfflineFallback: Boolean(window.__FIREBASE_OFFLINE_FALLBACK)
+        })
+      : (isCloudUser
+          ? (isInitialCloudLoading
+              ? 'loading'
+              : (isQuota
+                  ? 'error_quota'
+                  : (isInitialCloudSyncDone(user.uid) && !isInitialCloudSyncBlocked(user.uid) && !cloudAccessError ? 'empty' : 'error_cloud')))
+          : 'empty');
+
+    if (emptyUiState === 'loading') {
       const loadingNotice = el('div', 'cloud-empty-notice');
       loadingNotice.style.borderColor = 'rgba(56,189,248,.38)';
       loadingNotice.style.background = 'rgba(56,189,248,.09)';
@@ -4550,20 +4779,18 @@ function render(appendMore = false) {
       );
       return grid.append(loadingNotice);
     }
-    const isQuota = user && !user.isLocal && (cloudAccessError === 'resource-exhausted' || isCloudQuotaBlocked());
-    const isOfflineOrErr = user && !user.isLocal && (cloudAccessError || !navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK);
-    if ((isQuota || isOfflineOrErr) && !_cloudEmptyNoticeDismissed) {
-      const notice = el('div', 'cloud-empty-notice ' + (isQuota ? 'is-quota' : 'is-offline'));
+    if (emptyUiState === 'error_quota' || emptyUiState === 'error_cloud') {
+      const notice = el('div', 'cloud-empty-notice ' + (emptyUiState === 'error_quota' ? 'is-quota' : 'is-offline'));
       notice.append(
-        el('h3', null, isQuota ? '⏳ Не удалось загрузить коллекцию — исчерпан дневной лимит Firebase' : '📡 Не удалось загрузить коллекцию из облака'),
-        el('p', null, isQuota
+        el('h3', null, emptyUiState === 'error_quota' ? '⏳ Не удалось загрузить коллекцию — исчерпан дневной лимит Firebase' : '📡 Не удалось загрузить коллекцию из облака'),
+        el('p', null, emptyUiState === 'error_quota'
           ? 'В этом браузере пока нет локальной копии (например, после очистки куки/данных сайта), а бесплатный дневной лимит Firestore (50 000 чтений) временно исчерпан. Твои тайтлы в облаке НЕ удалены — они появятся после суточного сброса лимита (обычно ~10:00–11:00 МСК).'
-          : 'Сервер Firebase сейчас недоступен или нет подключения к сети. Твои данные в облаке не затронуты. Можно повторить попытку, загрузить резервную копию .json или временно добавлять тайтлы локально.')
+          : 'Сервер Firebase сейчас недоступен или нет подключения к сети. Твои данные в облаке не затронуты — загрузка повторится автоматически или можно нажать «Повторить» прямо сейчас.')
       );
       const actRow = el('div', 'row');
       actRow.style.justifyContent = 'center';
       actRow.style.marginTop = '4px';
-      const retryBtn = el('button', 'btn', '↻ Повторить загрузку');
+      const retryBtn = el('button', 'btn', '↻ Повторить');
       retryBtn.type = 'button';
       retryBtn.onclick = () => window.forceCloudSyncNow && window.forceCloudSyncNow(true);
       const impBtn = el('button', 'btn btn-s', '📂 Загрузить бэкап (.json)');
@@ -4572,13 +4799,7 @@ function render(appendMore = false) {
       const addBtn = el('button', 'btn btn-s', '＋ Добавить локально');
       addBtn.type = 'button';
       addBtn.onclick = () => { openAdd(null); draftRestore(); };
-      const hideBtn = el('button', 'btn btn-s', '✕ Скрыть');
-      hideBtn.type = 'button';
-      hideBtn.onclick = () => {
-        _cloudEmptyNoticeDismissed = true;
-        render();
-      };
-      actRow.append(retryBtn, impBtn, addBtn, hideBtn);
+      actRow.append(retryBtn, impBtn, addBtn);
       notice.append(actRow);
       return grid.append(notice);
     }

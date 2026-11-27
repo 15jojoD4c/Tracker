@@ -2184,4 +2184,227 @@ test('computeCardStaggerDelayMs computes smooth bounded cascade delays and clamp
   assert.equal(KirokuEngine.computeCardStaggerDelayMs(10, 20, 6), 120);
 });
 
+test('getInitialCloudRetryDelayMs and computeInitialCloudNextDelayMs escalate 3s -> 10s -> 30s -> 60s and respect quota cooldown', () => {
+  assert.deepEqual([...KirokuEngine.INITIAL_CLOUD_RETRY_DELAYS_MS], [3000, 10000, 30000, 60000]);
+  assert.equal(KirokuEngine.getInitialCloudRetryDelayMs(-1), 3000);
+  assert.equal(KirokuEngine.getInitialCloudRetryDelayMs(0), 3000);
+  assert.equal(KirokuEngine.getInitialCloudRetryDelayMs(1), 10000);
+  assert.equal(KirokuEngine.getInitialCloudRetryDelayMs(2), 30000);
+  assert.equal(KirokuEngine.getInitialCloudRetryDelayMs(3), 60000);
+  assert.equal(KirokuEngine.getInitialCloudRetryDelayMs(12), 60000);
+
+  // Without quota cooldown -> regular escalating delay
+  assert.equal(KirokuEngine.computeInitialCloudNextDelayMs({ attemptIndex: 0, quotaBlockedUntil: 0, nowMs: 10000 }), 3000);
+  assert.equal(KirokuEngine.computeInitialCloudNextDelayMs({ attemptIndex: 1, quotaBlockedUntil: 5000, nowMs: 10000 }), 10000);
+
+  // With active quota cooldown -> waits until quotaBlockedUntil + 1s buffer
+  assert.equal(
+    KirokuEngine.computeInitialCloudNextDelayMs({ attemptIndex: 0, quotaBlockedUntil: 100000, nowMs: 10000 }),
+    91000
+  );
+  // Short remaining quota cooldown still respects base delay
+  assert.equal(
+    KirokuEngine.computeInitialCloudNextDelayMs({ attemptIndex: 2, quotaBlockedUntil: 15000, nowMs: 10000 }),
+    30000
+  );
+});
+
+test('resolveEmptyCollectionUiState never shows empty state for cloud users until server confirms empty', () => {
+  // Before local hydration completes -> loading
+  assert.equal(
+    KirokuEngine.resolveEmptyCollectionUiState({ isCloudUser: false, loaded: false }),
+    'loading'
+  );
+  // Local mode after load -> empty
+  assert.equal(
+    KirokuEngine.resolveEmptyCollectionUiState({ isCloudUser: false, loaded: true }),
+    'empty'
+  );
+  // Cloud user waiting for auth resolution -> loading (NOT empty!)
+  assert.equal(
+    KirokuEngine.resolveEmptyCollectionUiState({
+      isCloudUser: true,
+      loaded: true,
+      authReady: false,
+      isInitialCloudLoading: false,
+      initialCloudSyncDone: false,
+      initialCloudSyncBlocked: false,
+      isOnline: true,
+      isOfflineFallback: false
+    }),
+    'loading'
+  );
+  // Cloud user actively fetching from server -> loading
+  assert.equal(
+    KirokuEngine.resolveEmptyCollectionUiState({
+      isCloudUser: true,
+      loaded: true,
+      authReady: true,
+      isInitialCloudLoading: true,
+      initialCloudSyncDone: false,
+      initialCloudSyncBlocked: true
+    }),
+    'loading'
+  );
+  // Cloud user failed / blocked / unconfirmed -> error_cloud (NOT empty!)
+  assert.equal(
+    KirokuEngine.resolveEmptyCollectionUiState({
+      isCloudUser: true,
+      loaded: true,
+      authReady: true,
+      isInitialCloudLoading: false,
+      initialCloudSyncDone: false,
+      initialCloudSyncBlocked: true,
+      hasCloudError: false,
+      isOnline: true
+    }),
+    'error_cloud'
+  );
+  // Cloud user in __FIREBASE_OFFLINE_FALLBACK -> error_cloud (even if authReady false)
+  assert.equal(
+    KirokuEngine.resolveEmptyCollectionUiState({
+      isCloudUser: true,
+      loaded: true,
+      authReady: false,
+      isInitialCloudLoading: false,
+      initialCloudSyncDone: false,
+      isOfflineFallback: true
+    }),
+    'error_cloud'
+  );
+  // Cloud user hit quota -> error_quota
+  assert.equal(
+    KirokuEngine.resolveEmptyCollectionUiState({
+      isCloudUser: true,
+      loaded: true,
+      authReady: true,
+      isInitialCloudLoading: false,
+      initialCloudSyncDone: false,
+      isQuotaBlocked: true
+    }),
+    'error_quota'
+  );
+  // Cloud user with server-confirmed empty collection -> empty
+  assert.equal(
+    KirokuEngine.resolveEmptyCollectionUiState({
+      isCloudUser: true,
+      loaded: true,
+      authReady: true,
+      isInitialCloudLoading: false,
+      initialCloudSyncDone: true,
+      initialCloudSyncBlocked: false,
+      hasCloudError: false,
+      isOnline: true,
+      isOfflineFallback: false
+    }),
+    'empty'
+  );
+  // Cloud user marked done earlier but has active cloud error -> error_cloud
+  assert.equal(
+    KirokuEngine.resolveEmptyCollectionUiState({
+      isCloudUser: true,
+      loaded: true,
+      authReady: true,
+      isInitialCloudLoading: false,
+      initialCloudSyncDone: true,
+      initialCloudSyncBlocked: false,
+      hasCloudError: true
+    }),
+    'error_cloud'
+  );
+});
+
+test('evaluateFirebaseRecoveryReload blocks auto-reload during modal/input editing and prevents infinite reload loops', () => {
+  const now = 1000000;
+  // Safe auto-reload with clean history
+  const ok = KirokuEngine.evaluateFirebaseRecoveryReload({
+    hasOpenModal: false,
+    hasFocusedEditable: false,
+    reloadTimestamps: [],
+    nowMs: now,
+    windowMs: 180000,
+    maxReloads: 2
+  });
+  assert.equal(ok.canReload, true);
+  assert.equal(ok.limitReached, false);
+  assert.deepEqual(ok.prunedTimestamps, [now]);
+
+  // Modal open -> defer auto-reload without counting against limit
+  const modalBlocked = KirokuEngine.evaluateFirebaseRecoveryReload({
+    hasOpenModal: true,
+    hasFocusedEditable: false,
+    reloadTimestamps: [now - 20000],
+    nowMs: now,
+    windowMs: 180000,
+    maxReloads: 2
+  });
+  assert.equal(modalBlocked.canReload, false);
+  assert.equal(modalBlocked.deferredReason, 'modal');
+  assert.equal(modalBlocked.limitReached, false);
+  assert.deepEqual(modalBlocked.prunedTimestamps, [now - 20000]);
+
+  // Input focused -> defer auto-reload
+  const inputBlocked = KirokuEngine.evaluateFirebaseRecoveryReload({
+    hasOpenModal: false,
+    hasFocusedEditable: true,
+    reloadTimestamps: [],
+    nowMs: now,
+    windowMs: 180000,
+    maxReloads: 2
+  });
+  assert.equal(inputBlocked.canReload, false);
+  assert.equal(inputBlocked.deferredReason, 'input');
+  assert.equal(inputBlocked.limitReached, false);
+
+  // 2 recent reloads within window -> limit reached (stops infinite loop)
+  const loopBlocked = KirokuEngine.evaluateFirebaseRecoveryReload({
+    hasOpenModal: false,
+    hasFocusedEditable: false,
+    reloadTimestamps: [now - 60000, now - 15000],
+    nowMs: now,
+    windowMs: 180000,
+    maxReloads: 2
+  });
+  assert.equal(loopBlocked.canReload, false);
+  assert.equal(loopBlocked.limitReached, true);
+
+  // Old timestamps outside window are pruned -> auto-reload allowed again
+  const expired = KirokuEngine.evaluateFirebaseRecoveryReload({
+    hasOpenModal: false,
+    hasFocusedEditable: false,
+    reloadTimestamps: [now - 300000, now - 250000],
+    nowMs: now,
+    windowMs: 180000,
+    maxReloads: 2
+  });
+  assert.equal(expired.canReload, true);
+  assert.equal(expired.limitReached, false);
+  assert.deepEqual(expired.prunedTimestamps, [now]);
+
+  // Explicit manual retry still reloads
+  const manual = KirokuEngine.evaluateFirebaseRecoveryReload({
+    hasOpenModal: true,
+    hasFocusedEditable: true,
+    reloadTimestamps: [now - 60000, now - 15000],
+    nowMs: now,
+    windowMs: 180000,
+    maxReloads: 2,
+    manual: true
+  });
+  assert.equal(manual.canReload, true);
+  assert.equal(manual.limitReached, false);
+});
+
+test('buildCloudDiagnosticsProfileProbe contains strictly service fields without user profile data', () => {
+  const probe = KirokuEngine.buildCloudDiagnosticsProfileProbe('uid_test_123', 1765000000000);
+  assert.deepEqual(Object.keys(probe).sort(), ['isProfile', 'kind', 'lastVisit', 'userId']);
+  assert.deepEqual(probe, {
+    kind: 'profile',
+    isProfile: true,
+    userId: 'uid_test_123',
+    lastVisit: 1765000000000
+  });
+});
+
+
 

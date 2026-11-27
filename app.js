@@ -5090,11 +5090,13 @@ async function runCloudDiagnostics() {
   });
 
   await runStep('3. Запись и чтение документа профиля (prof_' + uid.slice(0, 6) + '…)', async () => {
-    const cleanProf = buildCleanProfPayloadForCloud(uid, false);
-    cleanProf.lastVisit = Date.now();
-    await withCloudTimeout(setDoc(doc(db, 'items', 'prof_' + uid), cleanProf, { merge: true }));
-    try { localStorage.removeItem('profDirty_' + uid); } catch (e) {}
-    return 'ОК (профиль синхронизирован)';
+    const diagProfRef = doc(db, 'items', 'prof_' + uid);
+    const probePayload = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.buildCloudDiagnosticsProfileProbe === 'function')
+      ? KirokuEngine.buildCloudDiagnosticsProfileProbe(uid, Date.now())
+      : { kind: 'profile', isProfile: true, userId: uid, lastVisit: Date.now() };
+    await withCloudTimeout(setDoc(diagProfRef, probePayload, { merge: true }));
+    await withCloudTimeout(getDocFromServer(diagProfRef));
+    return 'ОК (служебные поля записаны и прочитаны)';
   });
 
   await runStep('4. Самопроверка парсеров (CSV/TSV/HTML/JSON/TXT/IMDb)', async () => {

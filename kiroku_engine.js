@@ -2780,6 +2780,122 @@
     return true;
   }
 
+  // --- Автоповтор первичной облачной синхронизации, состояния пустого экрана и безопасное восстановление Firebase SDK ---
+  const INITIAL_CLOUD_RETRY_DELAYS_MS = Object.freeze([3000, 10000, 30000, 60000]);
+
+  function getInitialCloudRetryDelayMs(attemptIndex, delays = INITIAL_CLOUD_RETRY_DELAYS_MS) {
+    const list = (Array.isArray(delays) && delays.length) ? delays : INITIAL_CLOUD_RETRY_DELAYS_MS;
+    const raw = Math.floor(Number(attemptIndex));
+    const idx = !Number.isFinite(raw) || raw < 0 ? 0 : Math.min(raw, list.length - 1);
+    const val = Number(list[idx]);
+    return Number.isFinite(val) && val > 0 ? val : 60000;
+  }
+
+  function computeInitialCloudNextDelayMs(opts) {
+    const {
+      attemptIndex = 0,
+      quotaBlockedUntil = 0,
+      nowMs = Date.now(),
+      delays = INITIAL_CLOUD_RETRY_DELAYS_MS
+    } = opts || {};
+    const baseDelay = getInitialCloudRetryDelayMs(attemptIndex, delays);
+    const until = Number(quotaBlockedUntil || 0);
+    const now = Number(nowMs || 0);
+    if (Number.isFinite(until) && until > now) {
+      return Math.max(baseDelay, (until - now) + 1000);
+    }
+    return baseDelay;
+  }
+
+  function resolveEmptyCollectionUiState(opts) {
+    const {
+      isCloudUser = false,
+      loaded = false,
+      authReady = false,
+      isInitialCloudLoading = false,
+      initialCloudSyncDone = false,
+      initialCloudSyncBlocked = false,
+      isQuotaBlocked = false,
+      hasCloudError = false,
+      isOnline = true,
+      isOfflineFallback = false
+    } = opts || {};
+    if (!loaded) return 'loading';
+    if (!isCloudUser) return 'empty';
+    if (isInitialCloudLoading) return 'loading';
+    if (isQuotaBlocked) return 'error_quota';
+    if (isOfflineFallback || isOnline === false) return 'error_cloud';
+    if (!authReady && !hasCloudError && !initialCloudSyncBlocked) return 'loading';
+    if (initialCloudSyncDone && !initialCloudSyncBlocked && !hasCloudError) return 'empty';
+    return 'error_cloud';
+  }
+
+  function evaluateFirebaseRecoveryReload(opts) {
+    const {
+      hasOpenModal = false,
+      hasFocusedEditable = false,
+      reloadTimestamps = [],
+      nowMs = Date.now(),
+      windowMs = 180000,
+      maxReloads = 2,
+      manual = false
+    } = opts || {};
+    const now = Number(nowMs) || Date.now();
+    const win = Math.max(1000, Number(windowMs) || 180000);
+    const cap = Math.max(1, Math.floor(Number(maxReloads) || 2));
+    const prunedTimestamps = (Array.isArray(reloadTimestamps) ? reloadTimestamps : [])
+      .map(Number)
+      .filter(ts => Number.isFinite(ts) && ts > 0 && ts <= now + 60000 && (now - ts) < win);
+
+    if (manual) {
+      return {
+        canReload: true,
+        deferredReason: '',
+        limitReached: false,
+        prunedTimestamps: [...prunedTimestamps, now]
+      };
+    }
+    if (prunedTimestamps.length >= cap) {
+      return {
+        canReload: false,
+        deferredReason: '',
+        limitReached: true,
+        prunedTimestamps
+      };
+    }
+    if (hasOpenModal) {
+      return {
+        canReload: false,
+        deferredReason: 'modal',
+        limitReached: false,
+        prunedTimestamps
+      };
+    }
+    if (hasFocusedEditable) {
+      return {
+        canReload: false,
+        deferredReason: 'input',
+        limitReached: false,
+        prunedTimestamps
+      };
+    }
+    return {
+      canReload: true,
+      deferredReason: '',
+      limitReached: false,
+      prunedTimestamps: [...prunedTimestamps, now]
+    };
+  }
+
+  function buildCloudDiagnosticsProfileProbe(uid, nowMs = Date.now()) {
+    return {
+      kind: 'profile',
+      isProfile: true,
+      userId: String(uid || ''),
+      lastVisit: Number(nowMs) || Date.now()
+    };
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -2885,7 +3001,13 @@
     classifyAniListYuriSubtype,
     classifyShikimoriYuriSubtype,
     getAniListYuriFilterMode,
-    matchesAniListYuriFilter
+    matchesAniListYuriFilter,
+    INITIAL_CLOUD_RETRY_DELAYS_MS,
+    getInitialCloudRetryDelayMs,
+    computeInitialCloudNextDelayMs,
+    resolveEmptyCollectionUiState,
+    evaluateFirebaseRecoveryReload,
+    buildCloudDiagnosticsProfileProbe
   };
 
   if (typeof module !== 'undefined' && module.exports) {

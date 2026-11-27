@@ -18,12 +18,12 @@
 <link rel="icon" href="./favicon.ico" sizes="any">
 <!-- ВАЖНО: при обновлении версии кэша (?v=...) синхронно меняй и const APP_VER внизу index.html -->
 <style>html,body{background:#0a0b12;color:#f1f3f9;margin:0}html[data-theme=white],html[data-theme=white] body{background:#f4f6fb;color:#14161f}body.auth-checking > *{display:none!important}</style>
-<link rel="preload" href="./kiroku_engine.js?v=20261220" as="script">
-<link rel="preload" href="./app_core.js?v=20261220" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261220" as="script">
-<link rel="preload" href="./app.js?v=20261220" as="script">
-<link rel="stylesheet" href="./style.css?v=20261220">
-<link rel="stylesheet" href="./mobile.css?v=20261220" media="(max-width: 768px)">
+<link rel="preload" href="./kiroku_engine.js?v=20261221" as="script">
+<link rel="preload" href="./app_core.js?v=20261221" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261221" as="script">
+<link rel="preload" href="./app.js?v=20261221" as="script">
+<link rel="stylesheet" href="./style.css?v=20261221">
+<link rel="stylesheet" href="./mobile.css?v=20261221" media="(max-width: 768px)">
 </head>
 <body class="auth-checking">
 
@@ -820,7 +820,17 @@ const importWithTimeout = (url, ms = 7000) => new Promise((resolve, reject) => {
 });
 
 // ВАЖНО: должна совпадать с параметром ?v=... в <head> выше
-const APP_VER = "20261220";
+const APP_VER = "20261221";
+const FIREBASE_SDK_URLS = [
+  "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+  "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
+  "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"
+];
+const FB_RECOVERY_RELOAD_KEY = "kiroku_fb_recovery_reloads_v1";
+const FB_RECOVERY_WINDOW_MS = 180000;
+const FB_RECOVERY_MAX_RELOADS = 2;
+const FB_RECOVERY_DELAYS_MS = [3000, 10000, 30000, 60000];
+
 window.__FIREBASE_CONFIG__ = {
   apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
   authDomain: "mymediatracker-6e179.firebaseapp.com",
@@ -831,41 +841,218 @@ window.__FIREBASE_CONFIG__ = {
   measurementId: "G-NKNYFSP981"
 };
 
+const readFbRecoveryReloadTimestamps = () => {
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(FB_RECOVERY_RELOAD_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : [];
+  } catch (e) {
+    return [];
+  }
+};
+const writeFbRecoveryReloadTimestamps = arr => {
+  try {
+    if (Array.isArray(arr) && arr.length) sessionStorage.setItem(FB_RECOVERY_RELOAD_KEY, JSON.stringify(arr));
+    else sessionStorage.removeItem(FB_RECOVERY_RELOAD_KEY);
+  } catch (e) {}
+};
+const hasOpenUiModalForReload = () => {
+  try {
+    if (document.querySelector(".modal.open, .modal.show, .cg-filter-sheet.open, .sheet.open, .drawer.open")) return true;
+    const dialogs = document.querySelectorAll('.modal, [role="dialog"], [aria-modal="true"]');
+    for (const el of dialogs) {
+      const st = window.getComputedStyle(el);
+      if (st && st.display !== "none" && st.visibility !== "hidden" && Number(st.opacity || 1) > 0) return true;
+    }
+  } catch (e) {}
+  return false;
+};
+const hasFocusedEditableForReload = () => {
+  try {
+    const active = document.activeElement;
+    if (!active || active === document.body || active === document.documentElement) return false;
+    if (active.isContentEditable) return true;
+    const tag = String(active.tagName || "").toUpperCase();
+    if (tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (tag === "INPUT") {
+      const t = String(active.type || "text").toLowerCase();
+      if (!["button", "submit", "reset"].includes(t)) return true;
+    }
+  } catch (e) {}
+  return false;
+};
+const evaluateSafeFirebaseReload = manual => {
+  const payload = {
+    hasOpenModal: hasOpenUiModalForReload(),
+    hasFocusedEditable: hasFocusedEditableForReload(),
+    reloadTimestamps: readFbRecoveryReloadTimestamps(),
+    nowMs: Date.now(),
+    windowMs: FB_RECOVERY_WINDOW_MS,
+    maxReloads: FB_RECOVERY_MAX_RELOADS,
+    manual: Boolean(manual)
+  };
+  if (typeof window.KirokuEngine !== "undefined" && typeof window.KirokuEngine.evaluateFirebaseRecoveryReload === "function") {
+    return window.KirokuEngine.evaluateFirebaseRecoveryReload(payload);
+  }
+  const now = payload.nowMs;
+  const prunedTimestamps = payload.reloadTimestamps.filter(ts => ts > 0 && ts <= now + 60000 && (now - ts) < FB_RECOVERY_WINDOW_MS);
+  if (payload.manual) return { canReload: true, deferredReason: "", limitReached: false, prunedTimestamps: [...prunedTimestamps, now] };
+  if (prunedTimestamps.length >= FB_RECOVERY_MAX_RELOADS) return { canReload: false, deferredReason: "", limitReached: true, prunedTimestamps };
+  if (payload.hasOpenModal) return { canReload: false, deferredReason: "modal", limitReached: false, prunedTimestamps };
+  if (payload.hasFocusedEditable) return { canReload: false, deferredReason: "input", limitReached: false, prunedTimestamps };
+  return { canReload: true, deferredReason: "", limitReached: false, prunedTimestamps: [...prunedTimestamps, now] };
+};
+
+let _fbRecoveryInFlight = null;
+let _fbRecoveryTimer = 0;
+let _fbDeferredReloadTimer = 0;
+let _fbRecoveryAttempt = 0;
+let _fbModulesVerified = false;
+let _fbReloadLimitReached = false;
+let _fbRecoveryListenersBound = false;
+
+const performSafeFirebaseRecoveryReload = manual => {
+  if (!window.__FIREBASE_OFFLINE_FALLBACK) return true;
+  const decision = evaluateSafeFirebaseReload(manual);
+  writeFbRecoveryReloadTimestamps(decision.prunedTimestamps);
+  if (decision.limitReached) {
+    _fbReloadLimitReached = true;
+    clearTimeout(_fbRecoveryTimer); _fbRecoveryTimer = 0;
+    clearTimeout(_fbDeferredReloadTimer); _fbDeferredReloadTimer = 0;
+    return false;
+  }
+  if (!decision.canReload) {
+    scheduleDeferredFirebaseReloadCheck();
+    return false;
+  }
+  clearTimeout(_fbRecoveryTimer); _fbRecoveryTimer = 0;
+  clearTimeout(_fbDeferredReloadTimer); _fbDeferredReloadTimer = 0;
+  // Сохраняем все локальные правки перед перезагрузкой для инициализации настоящего SDK
+  try { if (typeof window.flushLocalItemsNow === "function") window.flushLocalItemsNow(false); } catch (e) {}
+  try { if (typeof window.profSaveLocal === "function") window.profSaveLocal(true); } catch (e) {}
+  if (manual && typeof window.toast === "function") {
+    window.toast("Связь с Firebase восстановлена — перезагружаем сессию...");
+  }
+  setTimeout(() => location.reload(), manual ? 250 : 120);
+  return true;
+};
+
+const scheduleDeferredFirebaseReloadCheck = () => {
+  if (!window.__FIREBASE_OFFLINE_FALLBACK || !_fbModulesVerified || _fbReloadLimitReached) return;
+  if (_fbDeferredReloadTimer) return;
+  _fbDeferredReloadTimer = setTimeout(() => {
+    _fbDeferredReloadTimer = 0;
+    if (!window.__FIREBASE_OFFLINE_FALLBACK || !_fbModulesVerified || _fbReloadLimitReached) return;
+    performSafeFirebaseRecoveryReload(false);
+  }, 4000);
+};
+
+const scheduleFirebaseFallbackRecovery = () => {
+  if (!window.__FIREBASE_OFFLINE_FALLBACK || _fbReloadLimitReached) return;
+  const preCheck = evaluateSafeFirebaseReload(false);
+  if (preCheck.limitReached) {
+    _fbReloadLimitReached = true;
+    clearTimeout(_fbRecoveryTimer); _fbRecoveryTimer = 0;
+    return;
+  }
+  clearTimeout(_fbRecoveryTimer);
+  const delayMs = (typeof window.KirokuEngine !== "undefined" && typeof window.KirokuEngine.getInitialCloudRetryDelayMs === "function")
+    ? window.KirokuEngine.getInitialCloudRetryDelayMs(_fbRecoveryAttempt, FB_RECOVERY_DELAYS_MS)
+    : FB_RECOVERY_DELAYS_MS[Math.min(_fbRecoveryAttempt, FB_RECOVERY_DELAYS_MS.length - 1)];
+  _fbRecoveryAttempt++;
+  _fbRecoveryTimer = setTimeout(async () => {
+    _fbRecoveryTimer = 0;
+    if (!window.__FIREBASE_OFFLINE_FALLBACK || _fbReloadLimitReached) return;
+    if (!navigator.onLine) return;
+    const reloaded = await window.retryFirebaseBootstrap(false);
+    if (!reloaded && window.__FIREBASE_OFFLINE_FALLBACK && !_fbReloadLimitReached && !_fbModulesVerified) {
+      scheduleFirebaseFallbackRecovery();
+    }
+  }, delayMs);
+};
+
 window.retryFirebaseBootstrap = async function retryFirebaseBootstrap(manual = true) {
+  if (!window.__FIREBASE_OFFLINE_FALLBACK) return true;
   if (!navigator.onLine) {
     if (manual && typeof window.toast === "function") {
       window.toast("Нет подключения к сети — работаем на локальном кэше.", true);
     }
     return false;
   }
-  try {
-    if (manual && typeof window.toast === "function") {
-      window.toast("Проверяем подключение к серверу Firebase...");
-    }
-    await importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js", 25000);
-    // Сохраняем все локальные правки перед перезагрузкой для инициализации настоящего SDK
-    try { if (typeof window.flushLocalItemsNow === "function") window.flushLocalItemsNow(false); } catch (e) {}
-    try { if (typeof window.profSaveLocal === "function") window.profSaveLocal(true); } catch (e) {}
-    if (manual && typeof window.toast === "function") {
-      window.toast("Связь с Firebase восстановлена — перезагружаем сессию...");
-    }
-    setTimeout(() => location.reload(), 250);
-    return true;
-  } catch (err) {
-    if (manual && typeof window.toast === "function") {
-      window.toast("Сервер Firebase по-прежнему недоступен. Данные сохранены локально.", true);
-    }
-    return false;
+  if (_fbModulesVerified) {
+    return performSafeFirebaseRecoveryReload(manual);
   }
+  if (_fbRecoveryInFlight) {
+    return _fbRecoveryInFlight;
+  }
+  _fbRecoveryInFlight = (async () => {
+    try {
+      if (manual && typeof window.toast === "function") {
+        window.toast("Проверяем подключение к серверу Firebase...");
+      }
+      const timeoutMs = manual ? 25000 : 12000;
+      const [fbApp, fbAuth, fbDb] = await Promise.all(
+        FIREBASE_SDK_URLS.map(url => importWithTimeout(url, timeoutMs))
+      );
+      if (!fbApp?.initializeApp || !fbAuth?.getAuth || !fbDb?.getFirestore) {
+        throw new Error("Неполная загрузка модулей Firebase SDK");
+      }
+      _fbModulesVerified = true;
+      return performSafeFirebaseRecoveryReload(manual);
+    } catch (err) {
+      if (manual && typeof window.toast === "function") {
+        window.toast("Сервер Firebase по-прежнему недоступен. Данные сохранены локально.", true);
+      }
+      return false;
+    } finally {
+      _fbRecoveryInFlight = null;
+    }
+  })();
+  return _fbRecoveryInFlight;
+};
+
+const startFirebaseFallbackAutoRecovery = () => {
+  if (!window.__FIREBASE_OFFLINE_FALLBACK || _fbRecoveryListenersBound) return;
+  _fbRecoveryListenersBound = true;
+  const triggerNow = () => {
+    if (!window.__FIREBASE_OFFLINE_FALLBACK || _fbReloadLimitReached) return;
+    if (_fbModulesVerified) {
+      performSafeFirebaseRecoveryReload(false);
+      return;
+    }
+    if (!navigator.onLine) return;
+    clearTimeout(_fbRecoveryTimer); _fbRecoveryTimer = 0;
+    window.retryFirebaseBootstrap(false).then(reloaded => {
+      if (!reloaded && window.__FIREBASE_OFFLINE_FALLBACK && !_fbReloadLimitReached && !_fbModulesVerified) {
+        scheduleFirebaseFallbackRecovery();
+      }
+    });
+  };
+  window.addEventListener("online", triggerNow);
+  window.addEventListener("pageshow", triggerNow);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") triggerNow();
+  });
+  document.addEventListener("focusout", () => {
+    if (_fbModulesVerified && window.__FIREBASE_OFFLINE_FALLBACK && !_fbReloadLimitReached) {
+      setTimeout(() => {
+        if (_fbModulesVerified && window.__FIREBASE_OFFLINE_FALLBACK && !_fbReloadLimitReached) {
+          performSafeFirebaseRecoveryReload(false);
+        }
+      }, 300);
+    }
+  });
+  if (navigator.onLine) scheduleFirebaseFallbackRecovery();
 };
 
 try {
-  const [fbApp, fbAuth, fbDb] = await Promise.all([
-    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js", 7000),
-    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js", 7000),
-    importWithTimeout("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js", 7000)
-  ]);
+  const [fbApp, fbAuth, fbDb] = await Promise.all(
+    FIREBASE_SDK_URLS.map(url => importWithTimeout(url, 7000))
+  );
+  if (!fbApp?.initializeApp || !fbAuth?.getAuth || !fbDb?.getFirestore) {
+    throw new Error("Неполная загрузка модулей Firebase SDK");
+  }
   window.__FIREBASE_OFFLINE_FALLBACK = false;
+  writeFbRecoveryReloadTimestamps([]);
   Object.assign(window, fbApp, fbAuth, fbDb);
 } catch (e) {
   console.warn("Firebase недоступен или медленный VPN (включён быстрый офлайн-фоллбэк):", e);
@@ -930,6 +1117,7 @@ try {
   await loadScript("./app_catalog.js?v=" + APP_VER);
   await loadScript("./app.js?v=" + APP_VER);
   if (typeof window.startApp === "function") window.startApp();
+  if (window.__FIREBASE_OFFLINE_FALLBACK) startFirebaseFallbackAutoRecovery();
 } catch (err) {
   console.error(err);
 } finally {

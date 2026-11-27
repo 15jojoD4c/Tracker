@@ -18,12 +18,12 @@
 <link rel="icon" href="./favicon.ico" sizes="any">
 <!-- ВАЖНО: при обновлении версии кэша (?v=...) синхронно меняй и const APP_VER внизу index.html -->
 <style>html,body{background:#0a0b12;color:#f1f3f9;margin:0}html[data-theme=white],html[data-theme=white] body{background:#f4f6fb;color:#14161f}body.auth-checking > *{display:none!important}</style>
-<link rel="preload" href="./kiroku_engine.js?v=20261214" as="script">
-<link rel="preload" href="./app_core.js?v=20261214" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261214" as="script">
-<link rel="preload" href="./app.js?v=20261214" as="script">
-<link rel="stylesheet" href="./style.css?v=20261214">
-<link rel="stylesheet" href="./mobile.css?v=20261214" media="(max-width: 768px)">
+<link rel="preload" href="./kiroku_engine.js?v=20261220" as="script">
+<link rel="preload" href="./app_core.js?v=20261220" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261220" as="script">
+<link rel="preload" href="./app.js?v=20261220" as="script">
+<link rel="stylesheet" href="./style.css?v=20261220">
+<link rel="stylesheet" href="./mobile.css?v=20261220" media="(max-width: 768px)">
 </head>
 <body class="auth-checking">
 
@@ -133,7 +133,6 @@
             <option value="classic">Классика (до 2000 г.)</option>
             <option value="rare">Малоизвестные</option>
           </select>
-          <button class="tb cg-mode-mob-btn" id="cgModeMobBtn" type="button" aria-haspopup="dialog" aria-expanded="false">Сейчас актуально ▾</button>
           <button class="tb" id="cgFltBtn" type="button" aria-expanded="false">Фильтры ▾</button>
           <button class="tb mob-size-btn" id="cgMobSizeBtn" type="button" title="Размер карточек на экране" aria-label="Размер карточек">⊞ 2</button>
           <div class="pick-menu-wrap" id="cgPickMenuWrap">
@@ -146,25 +145,38 @@
             </div>
           </div>
         </div>
-        <div class="cg-extra-row">
-          <button class="tb" id="cgTagsToggleBtn" type="button">Жанры и теги <span id="cgTagsCountBadge"></span></button>
-          <button class="tb" id="cgOngBtn" type="button">Онгоинг</button>
-          <button class="tb" id="cgFinBtn" type="button">Завершено</button>
-          <button class="tb" id="cgHide" type="button">Скрыть добавленные</button>
-          <select id="cgMin" title="Минимальная внешняя оценка"><option value="0">Любой рейтинг</option><option value="6">★ 6+</option><option value="7">★ 7+</option><option value="8">★ 8+</option></select>
-          <div class="row cg-year-pair" style="gap:4px;background:var(--inp);padding:2px 8px;border-radius:var(--rad-sm);border:1px solid var(--bd)">
-            <input type="number" id="cgYear" placeholder="Год от" aria-label="Год от" min="1900" max="2100" style="width:76px;padding:5px 6px;border:0;background:transparent">
-            <span class="meta" style="margin:0">—</span>
-            <input type="number" id="cgYear2" placeholder="Год до" aria-label="Год до" min="1900" max="2100" style="width:76px;padding:5px 6px;border:0;background:transparent">
+        <div class="cg-filter-backdrop" id="cgFilterBackdrop" aria-hidden="true"></div>
+        <div class="cg-filter-sheet" id="cgFilterSheet" role="region" aria-label="Фильтры каталога">
+          <div class="cg-filter-sheet-hdr" id="cgFilterSheetHdr">
+            <span class="cg-filter-sheet-handle" aria-hidden="true"></span>
+            <div class="cg-filter-sheet-title-row">
+              <span>Фильтры каталога</span>
+              <button type="button" class="cg-filter-sheet-close" id="cgFilterSheetCloseBtn" aria-label="Закрыть фильтры">✕</button>
+            </div>
           </div>
-          <select id="cgLen"></select>
-          <select id="cgAge" title="Возрастной контент"><option value="">Все (вкл. 18+)</option><option value="no">Без 18+</option><option value="only">Только 18+</option></select>
-          <select id="cgCountry"><option value="">Любая страна</option><option value="US">США</option><option value="RU">Россия</option><option value="GB">Великобритания</option><option value="FR">Франция</option><option value="DE">Германия</option><option value="JP">Япония</option><option value="KR">Южная Корея</option><option value="CN">Китай</option><option value="IN">Индия</option></select>
-          <button class="tb" id="cgReset" type="button">Сбросить <span id="cgActiveFiltersBadge"></span></button>
-        </div>
-        <div class="cg-tags-panel" id="cgTagsPanel" style="display:none"></div>
-        <div class="cg-mob-filter-footer" id="cgMobFilterFooter">
-          <button class="btn" id="cgMobApplyBtn" type="button" style="flex:1">Применить и скрыть</button>
+          <div class="cg-filter-sheet-body" id="cgFilterSheetBody">
+            <button class="tb cg-mode-mob-btn" id="cgModeMobBtn" type="button" aria-haspopup="dialog" aria-expanded="false">Сейчас актуально ▾</button>
+            <div class="cg-extra-row">
+              <button class="tb" id="cgTagsToggleBtn" type="button">Жанры и теги <span id="cgTagsCountBadge"></span></button>
+              <button class="tb" id="cgOngBtn" type="button">Онгоинг</button>
+              <button class="tb" id="cgFinBtn" type="button">Завершено</button>
+              <button class="tb" id="cgHide" type="button">Скрыть добавленные</button>
+              <select id="cgMin" title="Минимальная внешняя оценка"><option value="0">Любой рейтинг</option><option value="6">★ 6+</option><option value="7">★ 7+</option><option value="8">★ 8+</option></select>
+              <div class="row cg-year-pair" style="gap:4px;background:var(--inp);padding:2px 8px;border-radius:var(--rad-sm);border:1px solid var(--bd)">
+                <input type="number" id="cgYear" placeholder="Год от" aria-label="Год от" min="1900" max="2100" style="width:76px;padding:5px 6px;border:0;background:transparent">
+                <span class="meta" style="margin:0">—</span>
+                <input type="number" id="cgYear2" placeholder="Год до" aria-label="Год до" min="1900" max="2100" style="width:76px;padding:5px 6px;border:0;background:transparent">
+              </div>
+              <select id="cgLen"></select>
+              <select id="cgAge" title="Возрастной контент"><option value="">Все (вкл. 18+)</option><option value="no">Без 18+</option><option value="only">Только 18+</option></select>
+              <select id="cgCountry"><option value="">Любая страна</option><option value="US">США</option><option value="RU">Россия</option><option value="GB">Великобритания</option><option value="FR">Франция</option><option value="DE">Германия</option><option value="JP">Япония</option><option value="KR">Южная Корея</option><option value="CN">Китай</option><option value="IN">Индия</option></select>
+              <button class="tb" id="cgReset" type="button">Сбросить <span id="cgActiveFiltersBadge"></span></button>
+            </div>
+            <div class="cg-tags-panel" id="cgTagsPanel" style="display:none"></div>
+          </div>
+          <div class="cg-mob-filter-footer" id="cgMobFilterFooter">
+            <button class="btn" id="cgMobApplyBtn" type="button" style="flex:1">Применить и скрыть</button>
+          </div>
         </div>
       </div>
       <!-- Видимые чипы активных фильтров каталога (показываются даже если панель фильтров свёрнута на телефоне — Часть 1 п.5) -->
@@ -262,11 +274,12 @@
 
       <!-- Отдельный блок «Мои подборки» (личные папки) -->
       <div class="my-lists-sec" id="myListsBlock">
-        <div class="row" style="justify-content:space-between;gap:8px">
-          <div class="row" style="gap:8px">
+        <div class="row my-lists-hdr" style="justify-content:space-between;gap:8px">
+          <button class="my-lists-toggle-btn" id="myListsToggleBtn" type="button" aria-expanded="true" aria-label="Свернуть или развернуть подборки" title="Свернуть подборки">
+            <span class="my-lists-chev" aria-hidden="true">▾</span>
             <b style="font-size:14px">Мои подборки</b>
             <span class="meta" id="myListsCountMeta" style="margin:0">0 папок</span>
-          </div>
+          </button>
           <div class="row" style="gap:6px" id="myListsActionsRow">
             <button class="btn btn-s" id="createListTopBtn" type="button" style="padding:6px 12px;font-size:12px">+ Подборка</button>
             <button class="btn btn-s" id="resetListFilterBtn" type="button" style="display:none;padding:6px 12px;font-size:12px">✕ Сбросить фильтр</button>
@@ -279,16 +292,16 @@
       <div class="hyb-subtabs-bar">
         <div class="hyb-status-tabs" id="hybStatusTabs">
           <button class="hyb-st-tab on" data-st="Все" type="button">Все (0)</button>
-          <button class="hyb-st-tab" data-st="Смотрю/Читаю" type="button">Смотрю (0)</button>
+          <button class="hyb-st-tab" data-st="Смотрю/Читаю" type="button">Смотрю / Читаю (0)</button>
           <button class="hyb-st-tab" data-st="В планах" type="button">В планах (0)</button>
-          <button class="hyb-st-tab" data-st="Просмотрено/Прочитано" type="button">Просмотрено (0)</button>
+          <button class="hyb-st-tab" data-st="Просмотрено/Прочитано" type="button">Просмотрено / Прочитано (0)</button>
           <button class="hyb-st-tab" data-st="Отложено" type="button">Отложено (0)</button>
           <button class="hyb-st-tab" data-st="Брошено" type="button">Брошено (0)</button>
           <button class="hyb-st-tab" data-st="Любимое" id="favStatusTabBtn" type="button">Любимое (0)</button>
           <button class="hyb-st-tab" data-st="__review__" id="reviewTabBtn" type="button" style="display:none">Разобрать (0)</button>
         </div>
-        <div class="row" style="gap:6px">
-          <button class="btn btn-s" id="colStatsBtn" type="button" style="font-size:12.5px;padding:7px 12px">📊 Полная статистика</button>
+        <div class="row col-stats-wrap" style="gap:6px">
+          <button class="btn btn-s" id="colStatsBtn" type="button" style="font-size:12.5px;padding:7px 12px" title="Полная статистика" aria-label="Полная статистика"><span class="col-stats-ic" aria-hidden="true">📊</span><span class="col-stats-lbl"> Полная статистика</span></button>
         </div>
       </div>
 
@@ -351,6 +364,7 @@
                 <button class="btn btn-s" id="manageListBtn" type="button" style="display:none;font-size:12.5px;padding:8px 10px">✏ Изменить</button>
                 <button class="btn btn-d" id="deleteListBtn" type="button" style="display:none;font-size:12.5px;padding:8px 10px">🗑 Удалить подборку</button>
               </div>
+              <button class="btn btn-s col-more-reset-btn" id="colMoreResetBtn" type="button" style="display:none;width:100%;font-size:12.5px;padding:8px 10px">✕ Сбросить фильтры</button>
               <button class="btn btn-s" id="checkSequelsBtn" type="button" style="width:100%;font-size:12.5px;padding:8px 10px">🔔 Проверить сиквелы</button>
               <button class="btn btn-s" id="rndBtn" type="button" style="width:100%;font-size:12.5px;padding:8px 10px">🎲 Случайный тайтл из списка</button>
             </div>
@@ -806,7 +820,7 @@ const importWithTimeout = (url, ms = 7000) => new Promise((resolve, reject) => {
 });
 
 // ВАЖНО: должна совпадать с параметром ?v=... в <head> выше
-const APP_VER = "20261214";
+const APP_VER = "20261220";
 window.__FIREBASE_CONFIG__ = {
   apiKey: "AIzaSyCBBC6gBLvCV7Jx1C8NaMheXwqqKPvpnt8",
   authDomain: "mymediatracker-6e179.firebaseapp.com",

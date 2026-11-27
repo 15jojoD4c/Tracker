@@ -2409,7 +2409,8 @@ function renderStatusAndCategoryBanner() {
   const st = $('statusFilter').value, lf = $('listFilter').value;
   banner.style.display = 'flex'; banner.replaceChildren();
   const left = el('div'), right = el('div', 'status-summary-metrics');
-  const stLbl = st === 'Все' ? 'Вся активная коллекция' : `Список: «${st}»`;
+  const stDisp = st === 'Все' ? '' : getStatusLabelForCategory(st, cat);
+  const stLbl = st === 'Все' ? 'Вся активная коллекция' : `Список: «${stDisp}»`;
   const lLbl = lf !== 'Все' ? ` · Подборка «${($('listFilter').selectedOptions[0]?.textContent || '').replace(/^(📁|🔒)\s*/, '')}»` : '';
   left.append(el('b', null, `📊 Статистика выборки (${stLbl}${lLbl})`), el('div', 'meta', 'Учитываются произведения внутри выбранного фильтра'));
   const addP = (l, v) => { const p = el('span', 'status-metric-pill'); p.append(document.createTextNode(l + ': '), el('b', null, v)); right.append(p); };
@@ -2541,9 +2542,12 @@ function renderAnixartHeroAndCategoryCards() {
 
   const cardsRow = $('hybListCardsRow');
   if (cardsRow) {
+    const profStLabels = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.getCollectionStatusLabels === 'function')
+      ? KirokuEngine.getCollectionStatusLabels(vis, 'Все')
+      : { watching: 'Смотрю / Читаю', completed: 'Просмотрено / Прочитано' };
     const LIST_DEFS = [
-      { st: 'Смотрю/Читаю', title: 'Смотрю', dot: '#10b981', flt: i => i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю' },
-      { st: 'Просмотрено/Прочитано', title: 'Просмотрено', dot: '#38bdf8', flt: i => i.status === 'Просмотрено/Прочитано' },
+      { st: 'Смотрю/Читаю', title: profStLabels.watching, dot: '#10b981', flt: i => i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю' },
+      { st: 'Просмотрено/Прочитано', title: profStLabels.completed, dot: '#38bdf8', flt: i => i.status === 'Просмотрено/Прочитано' },
       { st: 'В планах', title: 'В планах', dot: '#a855f7', flt: i => i.status === 'В планах' },
       { st: 'Отложено', title: 'Отложено', dot: '#f59e0b', flt: i => i.status === 'Отложено' },
       { st: 'Любимое', title: 'Любимое', dot: '#ec4899', flt: i => !!i.fav },
@@ -2555,7 +2559,7 @@ function renderAnixartHeroAndCategoryCards() {
       const posterItems = matched.filter(x => isValidPosterUrl(x.poster)).slice(0, 3);
       return { def, count: matched.length, posterItems };
     });
-    const collageSig = computedDefs.map(d => d.posterItems.map(x => x.poster).join(',')).join('|');
+    const collageSig = [profStLabels.watching, profStLabels.completed, ...computedDefs.map(d => d.posterItems.map(x => x.poster).join(','))].join('|');
     if (cardsRow.dataset.collageSig === collageSig && cardsRow.children.length === LIST_DEFS.length) {
       computedDefs.forEach(({ def, count }, idx) => {
         const card = cardsRow.children[idx];
@@ -3287,6 +3291,7 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
   $('catalogView').style.display = 'none';
   $('profileView').style.display = 'none';
   page.style.display = 'block';
+  if (typeof triggerViewEnterAnim === 'function') triggerViewEnterAnim(page);
   window.scrollTo({ top: 0, behavior: opts && opts.instantScroll ? 'auto' : 'smooth' });
 
   const inCol = items.find(i => (itemObj.id != null && String(i.id) === String(itemObj.id)) || same(i, itemObj));
@@ -3880,8 +3885,18 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
       freshMetaTags.push(...mediaMeta.tmdbTags);
     } else if (Array.isArray(mediaMeta?.genres) || Array.isArray(mediaMeta?.tags)) {
       (mediaMeta.genres || []).forEach(g => freshMetaTags.push((typeof RU !== 'undefined' && RU[g]) || g));
-      (mediaMeta.tags || []).filter(t => !t.isMediaSpoiler && t.rank >= 60).slice(0, 8).forEach(t => {
-        freshMetaTags.push(typeof ruTag === 'function' ? ruTag(t.name) : t.name);
+      const cleanMetaTags = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.filterAniListTags === 'function')
+        ? KirokuEngine.filterAniListTags(mediaMeta.tags, 8)
+        : (mediaMeta.tags || []).filter(t => !t.isMediaSpoiler && t.rank >= 65).slice(0, 8);
+      const metaYuriSubtype = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.classifyAniListYuriSubtype === 'function')
+        ? KirokuEngine.classifyAniListYuriSubtype(mediaMeta)
+        : null;
+      cleanMetaTags.forEach(t => {
+        const low = String(t.name || '').trim().toLowerCase();
+        const tagKey = (metaYuriSubtype && (low === 'yuri' || low === "girls' love" || low === 'girls love' || low === 'shoujo ai'))
+          ? metaYuriSubtype
+          : t.name;
+        freshMetaTags.push(typeof ruTag === 'function' ? ruTag(tagKey) : tagKey);
       });
     }
     const cleanFreshTags = [...new Set(freshMetaTags.filter(Boolean))];
@@ -4092,7 +4107,7 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
         card.onclick = () => {
           if (curMatch && activeSeasonsMeta.length && typeof KirokuEngine !== 'undefined' && KirokuEngine.seasonEpToWatchedEps) {
             if (isItemProgressLocked(curMatch)) {
-              toast('В статусе «Просмотрено» прогресс зафиксирован. Смените статус для выбора сезона.');
+              toast(`В статусе «${getStatusLabelForCategory(target.status, target.category)}» прогресс зафиксирован. Смените статус для выбора сезона.`);
               return;
             }
             const nextW = KirokuEngine.seasonEpToWatchedEps(sNum, 1, activeSeasonsMeta);
@@ -4676,9 +4691,12 @@ async function downloadProfilePngBusinessCard() {
     ctx.textAlign = 'left';
 
     // 5. Шесть карточек статусов
+    const cardStLabels = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.getCollectionStatusLabels === 'function')
+      ? KirokuEngine.getCollectionStatusLabels(vis, 'Все')
+      : { watching: 'Смотрю / Читаю', completed: 'Просмотрено / Прочитано' };
     const stCards = [
-      ['Смотрю', vis.filter(i => i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю').length, '#10b981'],
-      ['Просмотрено', vis.filter(i => i.status === 'Просмотрено/Прочитано').length, '#38bdf8'],
+      [cardStLabels.watching, vis.filter(i => i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю').length, '#10b981'],
+      [cardStLabels.completed, vis.filter(i => i.status === 'Просмотрено/Прочитано').length, '#38bdf8'],
       ['В планах', vis.filter(i => i.status === 'В планах').length, '#a855f7'],
       ['Отложено', vis.filter(i => i.status === 'Отложено').length, '#f59e0b'],
       ['Любимое', favCount, '#ec4899'],
@@ -5378,6 +5396,26 @@ function openCollectionMetadataFilter(patch = {}, opts = {}) {
   pushAppHistoryState(nextState, hadModalState);
 }
 
+function triggerViewEnterAnim(targetEl) {
+  if (!targetEl || !targetEl.classList) return;
+  if (targetEl._viewEnterTimer) {
+    clearTimeout(targetEl._viewEnterTimer);
+    targetEl._viewEnterTimer = 0;
+  }
+  targetEl.classList.remove('view-enter');
+  void targetEl.offsetWidth;
+  targetEl.classList.add('view-enter');
+  const cleanup = () => {
+    targetEl.classList.remove('view-enter');
+    if (targetEl._viewEnterTimer) {
+      clearTimeout(targetEl._viewEnterTimer);
+      targetEl._viewEnterTimer = 0;
+    }
+  };
+  targetEl.addEventListener('animationend', cleanup, { once: true });
+  targetEl._viewEnterTimer = setTimeout(cleanup, 280);
+}
+
 // ---------- Переключение 3 главных вкладок: 🌐 Каталог / 📚 Моя коллекция / 👤 Профиль ----------
 function applyMainTabView(v, fromHistory = false, opts = {}) {
   const mode = (v === 'collection' || v === 'profile') ? v : 'catalog';
@@ -5424,6 +5462,16 @@ function applyMainTabView(v, fromHistory = false, opts = {}) {
   if (revBox) revBox.style.display = 'none';
   if (colWrap) colWrap.style.display = isCol ? '' : 'none';
   if (isCol) syncHybridStatusTabsUI();
+
+  if (prevTab !== mode || wasFullPage) {
+    if (mode === 'catalog') {
+      triggerViewEnterAnim($('catalogView'));
+    } else if (isCol) {
+      triggerViewEnterAnim(colWrap);
+    } else {
+      triggerViewEnterAnim(shellEl);
+    }
+  }
 
   if (resetToHome && !keepCreatorView && wasCreatorView && mode !== 'catalog') {
     window._cgInCreatorView = false;

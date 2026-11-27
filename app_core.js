@@ -723,18 +723,22 @@ function getStatusLabelForCategory(st, c) {
     return KirokuEngine.getStatusLabelForCategory(st, c);
   }
   if (!st) return '';
+  const catNorm = String(c || '').trim().toLowerCase();
+  const isAll = !catNorm || catNorm === 'всё' || catNorm === 'все' || catNorm === 'all';
   if (st === 'Смотрю/Читаю') {
     if (isReadCategory(c)) return 'Читаю';
-    if (!c || c === 'Всё') return 'Смотрю / Читаю';
+    if (isAll) return 'Смотрю / Читаю';
     return 'Смотрю';
   }
   if (st === 'Просмотрено/Прочитано') {
     if (isReadCategory(c)) return 'Прочитано';
-    if (!c || c === 'Всё') return 'Просмотрено / Прочитано';
+    if (isAll) return 'Просмотрено / Прочитано';
     return 'Просмотрено';
   }
   if (st === 'Пересматриваю') {
-    return isReadCategory(c) ? 'Перечитываю' : 'Пересматриваю';
+    if (isReadCategory(c)) return 'Перечитываю';
+    if (isAll) return 'Пересматриваю / Перечитываю';
+    return 'Пересматриваю';
   }
   return st;
 }
@@ -3870,11 +3874,17 @@ function syncHybridStatusTabsUI() {
     revBtn.textContent = `📥 Разобрать (${reviewCount})`;
   }
 
+  const colLabels = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.getCollectionStatusLabels === 'function')
+    ? KirokuEngine.getCollectionStatusLabels(vis, cat)
+    : {
+        watching: getStatusLabelForCategory('Смотрю/Читаю', cat),
+        completed: getStatusLabelForCategory('Просмотрено/Прочитано', cat)
+      };
   const labels = {
     'Все': 'Все',
-    'Смотрю/Читаю': getStatusLabelForCategory('Смотрю/Читаю', cat),
+    'Смотрю/Читаю': colLabels.watching,
     'В планах': 'В планах',
-    'Просмотрено/Прочитано': getStatusLabelForCategory('Просмотрено/Прочитано', cat),
+    'Просмотрено/Прочитано': colLabels.completed,
     'Отложено': 'Отложено',
     'Брошено': 'Брошено',
     'Любимое': 'Любимое'
@@ -3889,6 +3899,7 @@ function syncHybridStatusTabsUI() {
   document.querySelectorAll('#hybListCardsRow .hyb-lcard').forEach(card => {
     card.classList.toggle('active', card.dataset.st === curSt && !specialOpen);
   });
+  if (typeof syncBulkStatusSelects === 'function') syncBulkStatusSelects(cat);
 }
 
 // --- Умный трекер серий / глав (хелперы UI) ---
@@ -3938,6 +3949,15 @@ function formatCardEpsMeta(item) {
   return total ? `${total} ${unit}` : '';
 }
 
+const _cardProgressLastTapMs = new Map();
+const _cardProgressBumpIds = new Set();
+
+function triggerCardProgressBump(itemId) {
+  const key = String(itemId);
+  _cardProgressBumpIds.add(key);
+  setTimeout(() => _cardProgressBumpIds.delete(key), 420);
+}
+
 function buildCardProgressUI(pc, info, i) {
   const trackable = isItemProgressTrackable(i);
   const total = Math.max(0, Math.floor(num(i.eps)));
@@ -3955,45 +3975,167 @@ function buildCardProgressUI(pc, info, i) {
     }
     const pct = Math.min(100, Math.max(0, Math.round((Math.min(watched, total) / total) * 100)));
     progTrack.firstChild.style.width = pct + '%';
+    progTrack.firstChild.classList.toggle('is-complete', pct >= 100);
   } else if (progTrack) {
     progTrack.remove();
   }
 
-  // Компактная кнопка «+1 эп.» / «+1 гл.» в нижней текстовой зоне .ci (НЕ поверх постера)
+  // Компактный степпер быстрого прогресса [ − | 10/26 гл. | +1 ] или [ − | ✓ Завершить ] в нижней зоне .ci
   let epRow = info.querySelector('.card-ep-row');
   if (trackable && isActiveWatch) {
     const unit = getItemProgressUnit(i);
     const doneAll = total > 0 && watched >= total;
+    const itemIdKey = String(i.id);
+    const shortTitle = String(i.title || '').length > 28
+      ? String(i.title || '').slice(0, 27).trimEnd() + '…'
+      : String(i.title || '');
+    const doneStatusLabel = getStatusLabelForCategory('Просмотрено/Прочитано', i.category);
+
     if (!epRow) {
       epRow = el('div', 'card-ep-row');
       info.append(epRow);
     }
     epRow.replaceChildren();
-    const plusBtn = el('button', 'card-ep-plus-btn', doneAll ? `✓ ${total}/${total} ${unit}` : `+1 ${unit}`);
-    plusBtn.type = 'button';
-    plusBtn.disabled = doneAll;
-    plusBtn.title = doneAll ? `Все ${unit} отмечены` : `Отметить +1 ${unit}`;
-    plusBtn.onclick = e => {
-      e.stopPropagation();
-      const target = items.find(x => String(x.id) === String(i.id)) || i;
-      const res = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.stepWatchedEps === 'function')
-        ? KirokuEngine.stepWatchedEps(target, 1)
+
+    const stepper = el('div', 'card-ep-stepper' + (doneAll ? ' is-done' : ''));
+    stepper.onclick = e => e.stopPropagation();
+
+    const runCompleteItem = () => {
+      const target = items.find(x => String(x.id) === itemIdKey) || i;
+      const nowMs = Date.now();
+      const res = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.completeItemFromProgress === 'function')
+        ? KirokuEngine.completeItemFromProgress(target, nowMs)
         : (() => {
+            const snap = {
+              prevStatus: target.status || 'Смотрю/Читаю',
+              prevCompletedAt: target.completedAt || null,
+              prevWatchedEps: Math.max(0, Math.floor(num(target.watchedEps)))
+            };
+            if (target.status === 'Просмотрено/Прочитано') return { changed: false, snapshot: snap };
+            target.status = 'Просмотрено/Прочитано';
+            if (!target.completedAt) target.completedAt = nowMs;
             const tot = Math.max(0, Math.floor(num(target.eps)));
-            const prev = Math.max(0, Math.floor(num(target.watchedEps)));
-            const next = tot > 0 ? Math.min(tot, prev + 1) : prev + 1;
-            target.watchedEps = next;
-            return { changed: next !== prev, locked: false, value: next, reachedTotal: tot > 0 && next >= tot && prev < tot };
+            if (tot > 0) target.watchedEps = tot;
+            return { changed: true, snapshot: snap };
           })();
       if (!res.changed) return;
-      target.updatedAt = Date.now();
+      target.updatedAt = nowMs;
+      cloudSave(target);
+      refresh();
+      const targetDoneLbl = getStatusLabelForCategory('Просмотрено/Прочитано', target.category);
+      toast(`«${shortTitle}» → «${targetDoneLbl}»`, false, {
+        label: 'Отменить',
+        fn: () => {
+          const cur = items.find(x => String(x.id) === itemIdKey) || target;
+          if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.restoreItemProgressSnapshot === 'function') {
+            KirokuEngine.restoreItemProgressSnapshot(cur, res.snapshot);
+          } else if (res.snapshot) {
+            cur.status = res.snapshot.prevStatus;
+            if (res.snapshot.prevCompletedAt) cur.completedAt = res.snapshot.prevCompletedAt;
+            else delete cur.completedAt;
+            cur.watchedEps = res.snapshot.prevWatchedEps;
+          }
+          cur.updatedAt = Date.now();
+          cloudSave(cur);
+          refresh();
+        }
+      });
+    };
+
+    const runStep = delta => {
+      const target = items.find(x => String(x.id) === itemIdKey) || i;
+      const nowMs = Date.now();
+      const lastTap = _cardProgressLastTapMs.get(itemIdKey) || 0;
+      const act = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.computeCardProgressAction === 'function')
+        ? KirokuEngine.computeCardProgressAction(target, delta, nowMs, lastTap, 320)
+        : (() => {
+            if (nowMs - lastTap < 320) return { allowed: false, throttled: true, changed: false };
+            const tot = Math.max(0, Math.floor(num(target.eps)));
+            const prev = Math.max(0, Math.floor(num(target.watchedEps)));
+            const next = tot > 0 ? Math.min(tot, Math.max(0, prev + delta)) : Math.max(0, prev + delta);
+            return {
+              allowed: next !== prev,
+              throttled: false,
+              changed: next !== prev,
+              prev,
+              next,
+              total: tot,
+              reachedTotal: tot > 0 && next >= tot && prev < tot
+            };
+          })();
+      if (act.throttled || !act.allowed) return;
+      _cardProgressLastTapMs.set(itemIdKey, nowMs);
+      target.watchedEps = act.next;
+      target.updatedAt = nowMs;
+      triggerCardProgressBump(target.id);
       cloudSave(target);
       refresh({ itemId: target.id });
-      if (res.reachedTotal) {
-        toast(`Все ${total} ${unit} отмечены! Можно перевести в «${getStatusLabelForCategory('Просмотрено/Прочитано', target.category)}»`);
+
+      const prevVal = act.prev;
+      const countText = act.total > 0 ? `${act.next}/${act.total} ${unit}` : `${act.next} ${unit}`;
+      if (act.reachedTotal) {
+        toast(`«${shortTitle}»: все ${act.total} ${unit} отмечены!`, false, {
+          label: `В «${doneStatusLabel}»`,
+          fn: runCompleteItem
+        });
+      } else {
+        toast(`«${shortTitle}»: ${countText}`, false, {
+          label: 'Отменить',
+          fn: () => {
+            const cur = items.find(x => String(x.id) === itemIdKey) || target;
+            if (isItemProgressLocked(cur)) return;
+            cur.watchedEps = prevVal;
+            cur.updatedAt = Date.now();
+            _cardProgressLastTapMs.delete(itemIdKey);
+            triggerCardProgressBump(cur.id);
+            cloudSave(cur);
+            refresh({ itemId: cur.id });
+          }
+        });
       }
     };
-    epRow.append(plusBtn);
+
+    const minusBtn = el('button', 'card-ep-minus-btn', '−');
+    minusBtn.type = 'button';
+    minusBtn.disabled = watched <= 0;
+    minusBtn.title = `Уменьшить на 1 ${unit}`;
+    minusBtn.setAttribute('aria-label', `Уменьшить на 1 ${unit}: ${i.title || ''}`);
+    minusBtn.onclick = e => {
+      e.stopPropagation();
+      runStep(-1);
+    };
+
+    const countEl = el('span', 'card-ep-count' + (_cardProgressBumpIds.has(itemIdKey) ? ' is-bump' : ''));
+    const numSpan = el('span', 'card-ep-num', total > 0 ? `${Math.min(watched, total)}/${total}` : String(watched));
+    const unitSpan = el('span', 'card-ep-unit', ' ' + unit);
+    countEl.append(numSpan, unitSpan);
+    countEl.title = total > 0 ? `${Math.min(watched, total)} из ${total} ${unit}` : `${watched} ${unit}`;
+
+    stepper.append(minusBtn, countEl);
+
+    if (doneAll) {
+      const finBtn = el('button', 'card-ep-finish-btn', '✓ Завершить');
+      finBtn.type = 'button';
+      finBtn.title = `Перевести в «${doneStatusLabel}»`;
+      finBtn.setAttribute('aria-label', `Перевести «${i.title || ''}» в «${doneStatusLabel}»`);
+      finBtn.onclick = e => {
+        e.stopPropagation();
+        runCompleteItem();
+      };
+      stepper.append(finBtn);
+    } else {
+      const plusBtn = el('button', 'card-ep-plus-btn', '+1');
+      plusBtn.type = 'button';
+      plusBtn.title = `Отметить +1 ${unit}`;
+      plusBtn.setAttribute('aria-label', `Отметить +1 ${unit}: ${i.title || ''}`);
+      plusBtn.onclick = e => {
+        e.stopPropagation();
+        runStep(1);
+      };
+      stepper.append(plusBtn);
+    }
+
+    epRow.append(stepper);
   } else if (epRow) {
     epRow.remove();
   }
@@ -4335,8 +4477,9 @@ function itemMatchesCurrentCollectionFilter(i) {
     : st === 'Смотрю/Читаю' ? (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю')
     : i.status === st;
   const qMatch = !q
-    || names(i).includes(q)
-    || (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.itemMatchesIdQuery === 'function' && KirokuEngine.itemMatchesIdQuery(i, q));
+    || (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.itemMatchesSearchText === 'function'
+      ? KirokuEngine.itemMatchesSearchText(i, q)
+      : (names(i).includes(q) || (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.itemMatchesIdQuery === 'function' && KirokuEngine.itemMatchesIdQuery(i, q))));
   return qMatch && matchesSelectedCategory(i) && matchesReleaseFilter(i) && (!xf || xmatch(i)) &&
     stMatch &&
     (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) &&
@@ -4378,8 +4521,13 @@ function render(appendMore = false) {
   if ($('viewBtn')) {
     $('viewBtn').textContent = view === 'list' ? 'Вид: Список' : 'Вид: Сетка';
   }
+  const _moreFilterCount = (ongOnly || finOnly ? 1 : 0) + ($('tagFilter')?.value && $('tagFilter').value !== 'Все' ? 1 : 0) + ($('listFilter')?.value && $('listFilter').value !== 'Все' ? 1 : 0);
   if ($('colMoreBtn')) {
-    $('colMoreBtn').classList.toggle('has-filter', Boolean(ongOnly || finOnly || $('tagFilter')?.value !== 'Все' || $('listFilter')?.value !== 'Все'));
+    $('colMoreBtn').classList.toggle('has-filter', _moreFilterCount > 0);
+    $('colMoreBtn').textContent = _moreFilterCount > 0 ? `Дополнительно (${_moreFilterCount}) ▾` : 'Дополнительно ▾';
+  }
+  if ($('colMoreResetBtn')) {
+    $('colMoreResetBtn').style.display = _moreFilterCount > 0 ? '' : 'none';
   }
   const visItems = getVisibleItems();
   syncHybridStatusTabsUI();
@@ -4448,7 +4596,11 @@ function render(appendMore = false) {
       : st === 'Любимое' ? !!i.fav
       : st === 'Смотрю/Читаю' ? (i.status === 'Смотрю/Читаю' || i.status === 'Пересматриваю')
       : i.status === st;
-    return (!q || names(i).includes(q)) && matchesSelectedCategory(i) && matchesReleaseFilter(i) && (!xf || xmatch(i)) &&
+    const qMatch = !q
+      || (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.itemMatchesSearchText === 'function'
+        ? KirokuEngine.itemMatchesSearchText(i, q)
+        : (names(i).includes(q) || (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.itemMatchesIdQuery === 'function' && KirokuEngine.itemMatchesIdQuery(i, q))));
+    return qMatch && matchesSelectedCategory(i) && matchesReleaseFilter(i) && (!xf || xmatch(i)) &&
       stMatch &&
       (tg === 'Все' || (i.tags || []).some(t => t.toLowerCase() === tg)) &&
       itemMatchesCollectionListFilter(i, lf);
@@ -4466,10 +4618,27 @@ function render(appendMore = false) {
   renderChips();
   setTimeout(selPaint, 0);
   $('countInfo').textContent = `Показано: ${Math.min(currentRenderLimit, list.length)} из ${list.length} (всего: ${visItems.length})`;
-  const xb = $('xfBtn'); xb.style.display = xf ? '' : 'none';
-  if (xf) xb.textContent = `${{author: 'Автор', studio: 'Студия', source: 'Источник'}[xf.k]}: ${xf.v} ✕`;
+  const xb = $('xfBtn');
+  if (xb) {
+    // xf теперь отображается в общей полосе чипов #chips вместе с быстрым сбросом всех фильтров
+    xb.style.display = 'none';
+  }
   renderStatusAndCategoryBanner();
-  if (!list.length) return grid.append(el('div', 'msg', 'Ничего не найдено по выбранным фильтрам.'));
+  if (!list.length) {
+    const emptyBox = el('div', 'msg col-empty-filtered');
+    emptyBox.append(el('div', null, 'Ничего не найдено по выбранным фильтрам.'));
+    const hasActiveFilters = Boolean(
+      q || st !== 'Все' || cat !== 'Всё' || kind !== 'Все' || animeSubKind !== 'Все' || videoSubKind !== 'Все'
+      || ongOnly || finOnly || tg !== 'Все' || lf !== 'Все' || xf
+    );
+    if (hasActiveFilters) {
+      const rBtn = el('button', 'btn btn-s col-empty-reset-btn', '✕ Сбросить все фильтры');
+      rBtn.type = 'button';
+      rBtn.onclick = () => resetAllCollectionFilters(false);
+      emptyBox.append(rBtn);
+    }
+    return grid.append(emptyBox);
+  }
 
   const startIdx = isAppend ? Math.max(0, currentRenderLimit - RENDER_PAGE_SIZE) : 0;
   const slice = list.slice(startIdx, currentRenderLimit);
@@ -4619,6 +4788,49 @@ if ($('finBtn')) {
     $('finBtn').classList.toggle('on', finOnly);
     if ($('ongBtn')) $('ongBtn').classList.toggle('on', ongOnly);
     render();
+  };
+}
+
+function resetCollectionCategoryToAll(shouldRender = true) {
+  cat = 'Всё';
+  kind = 'Все';
+  animeSubKind = 'Все';
+  videoSubKind = 'Все';
+  document.querySelectorAll('#catFilters .fb').forEach(x => x.classList.toggle('on', x.dataset.c === 'Всё'));
+  if ($('kindFilters')) $('kindFilters').style.display = 'none';
+  if ($('animeKindFilters')) $('animeKindFilters').style.display = 'none';
+  if ($('videoKindFilters')) $('videoKindFilters').style.display = 'none';
+  document.querySelectorAll('#kindFilters .kb').forEach(x => x.classList.toggle('on', x.dataset.k === 'Все'));
+  document.querySelectorAll('#animeKindFilters .kb').forEach(x => x.classList.toggle('on', x.dataset.ak === 'Все'));
+  document.querySelectorAll('#videoKindFilters .kb').forEach(x => x.classList.toggle('on', x.dataset.vk === 'Все'));
+  if ($('colKindDropdownBtn')) $('colKindDropdownBtn').textContent = 'Вид: Все виды ▾';
+  if ($('colAnimeKindDropdownBtn')) $('colAnimeKindDropdownBtn').textContent = 'Вид: Все аниме ▾';
+  if ($('colVideoKindDropdownBtn')) $('colVideoKindDropdownBtn').textContent = 'Вид: Все ▾';
+  catCounts();
+  if (shouldRender) render(false);
+}
+
+function resetAllCollectionFilters(silent = false) {
+  if ($('searchInput')) $('searchInput').value = '';
+  if ($('statusFilter')) $('statusFilter').value = 'Все';
+  if ($('tagFilter')) $('tagFilter').value = 'Все';
+  if ($('listFilter')) $('listFilter').value = 'Все';
+  ongOnly = false;
+  finOnly = false;
+  xf = null;
+  $('ongBtn')?.classList.remove('on');
+  $('finBtn')?.classList.remove('on');
+  $('colMorePop')?.classList.remove('open');
+  resetCollectionCategoryToAll(false);
+  if (typeof syncListFilterActionButtons === 'function') syncListFilterActionButtons();
+  if (typeof renderMyListsFolderBlock === 'function') renderMyListsFolderBlock();
+  render(false);
+  if (!silent) toast('Фильтры сброшены');
+}
+
+if ($('colMoreResetBtn')) {
+  $('colMoreResetBtn').onclick = () => {
+    resetAllCollectionFilters(false);
   };
 }
 $('xfBtn').onclick = () => { xf = null; render(); };
@@ -4982,6 +5194,7 @@ let _mangadexLastRunAt = 0;
 const _mangadexRespCache = new Map();
 const _mangadexInflight = new Map();
 let _mangadexDirectBlockedUntil = 0;
+let _mangadexProxyBlockedUntil = 0;
 function _drainMangadexQueue() {
   while (_mangadexActive < 3 && _mangadexQueue.length > 0) {
     const job = _mangadexQueue.shift();
@@ -5009,17 +5222,28 @@ function _enqueueMangaDex(fn) {
     _drainMangadexQueue();
   });
 }
-async function _mangadexJson(url, ms = 6500) {
+async function _mangadexJson(url, ms = 4200) {
   const cached = _mangadexRespCache.get(url);
   if (cached && (Date.now() - cached.t) < 300000) return cached.data;
+  if (Date.now() < _mangadexDirectBlockedUntil && Date.now() < _mangadexProxyBlockedUntil) {
+    throw new Error('MangaDex temporarily unavailable (cached)');
+  }
   if (_mangadexInflight.has(url)) return _mangadexInflight.get(url);
   const prom = _enqueueMangaDex(async () => {
     const tryProxy = async () => {
+      if (Date.now() < _mangadexProxyBlockedUntil) {
+        throw new Error('MangaDex proxy temporarily unavailable');
+      }
       const proxies = [
         'https://corsproxy.io/?' + encodeURIComponent(url),
         'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)
       ];
-      return await Promise.any(proxies.map(pu => ruJson(pu, 6500)));
+      try {
+        return await Promise.any(proxies.map(pu => ruJson(pu, 3200)));
+      } catch (proxyErr) {
+        _mangadexProxyBlockedUntil = Date.now() + 2 * 60 * 1000;
+        throw proxyErr;
+      }
     };
     let data = null;
     if (Date.now() >= _mangadexDirectBlockedUntil) {
@@ -5114,7 +5338,7 @@ async function shikiGraphQL(query, variables = {}, extSignal = null) {
         const ctrl = new AbortController();
         const onExtAbort = () => ctrl.abort();
         if (extSignal) extSignal.addEventListener('abort', onExtAbort, { once: true });
-        const timer = setTimeout(() => ctrl.abort(), 3200);
+        const timer = setTimeout(() => ctrl.abort(), 4500);
         try {
           const resp = await fetch(ep, {
             method: 'POST',
@@ -5139,7 +5363,9 @@ async function shikiGraphQL(query, variables = {}, extSignal = null) {
             hit429 = true;
             break;
           } else {
-            _shikiGqlBlockedHosts.set(ep, Date.now() + 5 * 60 * 1000);
+            const isTimeout = e && e.name === 'AbortError';
+            const blockMs = ep.includes('shikimori.one') ? 5 * 60 * 1000 : (isTimeout ? 45 * 1000 : 2 * 60 * 1000);
+            _shikiGqlBlockedHosts.set(ep, Date.now() + blockMs);
           }
         } finally {
           clearTimeout(timer);
@@ -5217,10 +5443,22 @@ async function wdBatch(mals, prop) {
   j.results.bindings.forEach(b => { out[b.m.value] = {ru: b.l ? b.l.value : '', wiki: b.a ? decodeURIComponent(b.a.value.split('/wiki/')[1] || '') : ''}; }); return out;
 }
 const ruWikiDesc = async t => (await ruJson('https://ru.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(t), 6000)).extract || '';
-async function ruToEn(q) {
-  const s = await ruJson('https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&origin=*&language=ru&uselang=ru&type=item&limit=5&search=' + encodeURIComponent(q), 6000);
-  const c = (s.search || []).find(x => /аниме|манг|ранобэ|новелл/i.test(x.description || '')) || (s.search || [])[0]; if (!c) return '';
-  const e = await ruJson('https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&props=labels&languages=en&ids=' + c.id, 6000);
+async function ruToEn(q, type = '') {
+  const s = await ruJson('https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&origin=*&language=ru&uselang=ru&type=item&limit=10&search=' + encodeURIComponent(q), 5500);
+  const hits = Array.isArray(s?.search) ? s.search : [];
+  if (!hits.length) return '';
+  const isAnime = type === 'ANIME' || type === 'Аниме';
+  const isManga = type === 'MANGA' || type === 'Манга' || type === 'Ранобэ';
+  const prefRe = isAnime
+    ? /аниме|мультсериал|anime|манг|ранобэ/i
+    : isManga
+      ? /манг|манхв|маньху|вебтун|комикс|ранобэ|новелл|webtoon|manhwa|manhua|manga|аниме/i
+      : /аниме|манг|манхв|маньху|вебтун|ранобэ|новелл|комикс/i;
+  const c = hits.find(x => prefRe.test(x.description || ''))
+    || hits.find(x => /серия|произведение|франшиз|роман|книг|сериал|фильм/i.test(x.description || ''))
+    || hits[0];
+  if (!c) return '';
+  const e = await ruJson('https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&props=labels&languages=en&ids=' + c.id, 5500);
   return e.entities?.[c.id]?.labels?.en?.value || '';
 }
 async function ruTitles(kind, mals) {
@@ -5986,6 +6224,7 @@ function renderMyListsFolderBlock() {
   const totalFolders = entries.length + 1;
   const curFilter = ($('listFilter')?.value || 'Все').toLowerCase();
   if (metaEl) metaEl.textContent = `${totalFolders} ${pluralRu(totalFolders, 'папка', 'папки', 'папок')}`;
+  if (typeof syncMyListsCollapseUI === 'function') syncMyListsCollapseUI(curFilter !== 'все');
   if (resetB) {
     resetB.style.display = curFilter !== 'все' ? '' : 'none';
     resetB.onclick = () => {
@@ -6279,12 +6518,15 @@ function syncWatchedEpsFieldInAddModal() {
   const st = $('inputStatus')?.value || '';
   const tot = Math.max(0, Math.floor(num($('inputEps')?.value)));
   const isMovie = c === 'Фильм';
+  const isRead = isReadCategory(c);
   const fld = wInp.closest('.fld');
   if (fld) fld.style.display = isMovie ? 'none' : '';
   if (st === 'Просмотрено/Прочитано' && tot > 0) {
     wInp.value = String(tot);
     wInp.disabled = true;
-    wInp.title = 'Для статуса «Просмотрено/Прочитано» проставлены все серии/главы';
+    wInp.title = isRead
+      ? 'Для статуса «Прочитано» проставлены все главы'
+      : 'Для статуса «Просмотрено» проставлены все серии';
   } else {
     wInp.disabled = false;
     wInp.title = '';
@@ -6293,6 +6535,16 @@ function syncWatchedEpsFieldInAddModal() {
 function catFields() {
   const c = $('inputCategory').value, l = CATL[c], a = $('inputAuthor').previousSibling, t = $('inputStudio').previousSibling;
   if (l && a && t) { a.textContent = l[0]; t.textContent = l[1]; }
+  const isRead = isReadCategory(c);
+  const setFldLbl = (id, text) => {
+    const lbl = $(id)?.closest('.fld')?.querySelector('label');
+    if (lbl) lbl.textContent = text;
+  };
+  setFldLbl('inputStatus', isRead ? 'Статус чтения' : 'Статус просмотра');
+  setFldLbl('inputCompletedAt', isRead ? 'Дата прочтения / завершения' : 'Дата просмотра / завершения');
+  setFldLbl('inputRewatchCount', isRead ? 'Счётчик перечитываний (раз)' : 'Счётчик пересмотров (раз)');
+  setFldLbl('inputEps', isRead ? 'Всего глав' : (c === 'Фильм' ? 'Частей / серий' : 'Всего серий'));
+  setFldLbl('inputWatchedEps', isRead ? 'Прочитано глав' : 'Просмотрено серий');
   const o = $('inputOngoing').parentElement; if (o) o.style.display = c === 'Фильм' ? 'none' : '';
   syncInputStatusOptionsForCategory(c);
   syncWatchedEpsFieldInAddModal();
@@ -6301,6 +6553,36 @@ function catFields() {
 $('inputCategory').addEventListener('change', catFields);
 $('inputStatus')?.addEventListener('change', syncWatchedEpsFieldInAddModal);
 $('inputEps')?.addEventListener('input', syncWatchedEpsFieldInAddModal);
+
+// Сворачивание блока «Мои подборки» (экономит высоту в «Моей коллекции» на мобильных)
+const MY_LISTS_COLLAPSE_KEY = 'kiroku_my_lists_collapsed';
+function readMyListsCollapsedPref() {
+  try {
+    const saved = localStorage.getItem(MY_LISTS_COLLAPSE_KEY);
+    if (saved === '1') return true;
+    if (saved === '0') return false;
+  } catch (e) {}
+  return typeof window !== 'undefined' && window.innerWidth <= 768;
+}
+function syncMyListsCollapseUI(forceExpand = false) {
+  const block = $('myListsBlock');
+  const btn = $('myListsToggleBtn');
+  if (!block || !btn) return;
+  const collapsed = forceExpand ? false : readMyListsCollapsedPref();
+  block.classList.toggle('is-collapsed', collapsed);
+  btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  btn.title = collapsed ? 'Развернуть подборки' : 'Свернуть подборки';
+}
+if ($('myListsToggleBtn')) {
+  $('myListsToggleBtn').addEventListener('click', () => {
+    const block = $('myListsBlock');
+    if (!block) return;
+    const nextCollapsed = !block.classList.contains('is-collapsed');
+    try { localStorage.setItem(MY_LISTS_COLLAPSE_KEY, nextCollapsed ? '1' : '0'); } catch (e) {}
+    syncMyListsCollapseUI(false);
+  });
+  syncMyListsCollapseUI(false);
+}
 
 function pvDraw() {
   const b = $('pvCard'); b.replaceChildren();

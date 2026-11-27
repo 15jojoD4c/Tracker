@@ -51,8 +51,8 @@ header {
 }
 
 .hdr-inner {
-  padding: 7px 10px !important;
-  min-height: 50px;
+  padding: 6px 10px !important;
+  min-height: 46px;
   gap: 6px !important;
   flex-wrap: nowrap !important;
   align-items: center;
@@ -70,27 +70,27 @@ header {
 .hdr-actions {
   flex-shrink: 0;
   flex-wrap: nowrap !important;
-  gap: 6px !important;
+  gap: 5px !important;
 }
 
 .brand {
-  width: 28px;
-  height: 28px;
-  font-size: 13px;
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
   flex-shrink: 0;
 }
 
 .logo {
-  font-size: 16.5px !important;
+  font-size: 16px !important;
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
 
 .hdr-info-btn {
-  width: 28px !important;
-  height: 28px !important;
-  min-width: 28px !important;
-  min-height: 28px !important;
+  width: 25px !important;
+  height: 25px !important;
+  min-width: 25px !important;
+  min-height: 25px !important;
 }
 
 #sizeSel {
@@ -103,28 +103,28 @@ header {
 
 .sync.clickable {
   padding: 0 !important;
-  width: 34px !important;
-  height: 34px !important;
-  min-width: 34px !important;
-  min-height: 34px !important;
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  min-height: 30px !important;
   justify-content: center;
-  font-size: 15px;
+  font-size: 14px;
   flex-shrink: 0;
 }
 
 #openModalBtn {
-  min-height: 34px !important;
-  height: 34px !important;
-  padding: 0 11px !important;
-  font-size: 13px !important;
+  min-height: 30px !important;
+  height: 30px !important;
+  padding: 0 9px !important;
+  font-size: 12px !important;
   gap: 3px;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .av {
-  width: 34px !important;
-  height: 34px !important;
+  width: 30px !important;
+  height: 30px !important;
   flex-shrink: 0;
 }
 
@@ -155,7 +155,7 @@ header {
 .cloud-banner-actions .btn {
   flex: 1 1 auto;
   justify-content: center;
-  min-height: 38px;
+  min-height: 33px;
 }
 
 /* Верхние вкладки на планшете/широком телефоне и нижняя панель навигации */
@@ -174,14 +174,14 @@ header {
   z-index: 55;
   background: #12141b;
   border-top: 1px solid var(--bd);
-  padding: 5px 6px calc(6px + env(safe-area-inset-bottom));
+  padding: 4px 6px calc(5px + env(safe-area-inset-bottom));
   gap: 4px;
 }
 
 #botnav button {
   width: 100%;
   min-width: 0;
-  min-height: 44px;
+  min-height: 38px;
   background: none;
   border: 0;
   color: var(--mu);
@@ -189,11 +189,11 @@ header {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  font-size: 12.5px;
+  gap: 1px;
+  font-size: 11.5px;
   font-weight: 600;
-  padding: 6px 4px;
-  border-radius: 10px;
+  padding: 4px 4px;
+  border-radius: 9px;
   cursor: pointer;
 }
 
@@ -203,7 +203,7 @@ header {
 }
 
 #botnav span {
-  font-size: 12px;
+  font-size: 11px;
   color: inherit;
   white-space: nowrap;
   overflow: hidden;
@@ -220,25 +220,28 @@ body[data-pview="profile"] #catalogLinkProgressBar {
   display: none !important;
 }
 
-/* Вкладки статусов коллекции — компактные и только во вкладке «Моя коллекция» */
+/* Вкладки статусов коллекции + иконка статистики в одну строку на мобильных (Идея №2) */
 body[data-pview="collection"] .hyb-subtabs-bar {
   display: flex !important;
-  flex-direction: column !important;
-  align-items: stretch !important;
-  gap: 5px !important;
-  padding: 5px !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 4px 5px !important;
   margin-bottom: 8px !important;
   border-radius: 12px;
 }
 
 .hyb-status-tabs {
   display: flex !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: auto !important;
   flex-wrap: nowrap !important;
   overflow-x: auto !important;
   -webkit-overflow-scrolling: touch;
   scroll-snap-type: x proximity;
   scrollbar-width: none;
-  width: 100%;
   gap: 5px !important;
   padding-bottom: 1px;
 }
@@ -250,24 +253,33 @@ body[data-pview="collection"] .hyb-subtabs-bar {
 .hyb-st-tab {
   flex: 0 0 auto !important;
   scroll-snap-align: start;
-  min-height: 30px !important;
-  height: 30px !important;
-  padding: 4px 9px !important;
-  font-size: 11.5px !important;
+  min-height: 27px !important;
+  height: 27px !important;
+  padding: 3px 8px !important;
+  font-size: 11px !important;
   white-space: nowrap !important;
 }
 
-.hyb-subtabs-bar > .row {
-  width: 100%;
+.hyb-subtabs-bar > .row,
+.hyb-subtabs-bar > .col-stats-wrap {
+  width: auto !important;
+  flex: 0 0 auto !important;
 }
 
 #colStatsBtn {
-  width: 100%;
-  min-height: 32px !important;
-  height: 32px !important;
-  padding: 0 10px !important;
-  font-size: 11.5px !important;
-  justify-content: center;
+  width: 30px !important;
+  min-width: 30px !important;
+  min-height: 27px !important;
+  height: 27px !important;
+  padding: 0 !important;
+  font-size: 13px !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  border-radius: 8px !important;
+}
+
+#colStatsBtn .col-stats-lbl {
+  display: none !important;
 }
 
 /* === 2. Фильтры и поиск (Каталог и Моя коллекция) === */
@@ -275,10 +287,13 @@ body[data-pview="collection"] .hyb-subtabs-bar {
 .fb,
 .tb,
 .tab,
-select,
-input,
 .cat-dd-btn {
-  min-height: 40px;
+  min-height: 34px;
+}
+
+select,
+input {
+  min-height: 36px;
 }
 
 .mob-size-btn {
@@ -286,9 +301,9 @@ input,
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 0 10px;
-  min-height: 40px;
-  font-size: 12.5px;
+  padding: 0 8px;
+  min-height: 34px;
+  font-size: 11.5px;
   font-weight: 700;
   white-space: nowrap;
   flex-shrink: 0;
@@ -343,8 +358,9 @@ input,
   width: 100%;
   justify-content: space-between;
   min-width: 0;
-  padding: 8px 10px;
-  font-size: 12.5px;
+  min-height: 34px;
+  padding: 5px 8px;
+  font-size: 12px;
   gap: 4px;
   white-space: nowrap;
   overflow: hidden;
@@ -353,26 +369,6 @@ input,
 
 #cgFilters #cgMode {
   display: none !important;
-}
-
-#cgFilters:not(.fopen) #cgModeMobBtn {
-  display: none !important;
-}
-
-#cgFilters.fopen #cgModeMobBtn {
-  display: flex !important;
-  align-items: center;
-  justify-content: space-between;
-  grid-column: 1 / -1;
-  width: 100%;
-  min-width: 0;
-  order: 4;
-  margin-top: 1px;
-  padding: 6px 10px !important;
-  min-height: 34px !important;
-  font-size: 12.5px !important;
-  font-weight: 600;
-  border-radius: 9px;
 }
 
 #cgFltBtn,
@@ -386,25 +382,168 @@ input,
 #cgPickMenuBtn {
   width: 100%;
   justify-content: center;
-  padding: 7px 8px;
-  font-size: 12.5px;
+  min-height: 34px;
+  padding: 5px 7px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
 #cgMobSizeBtn {
-  min-width: 64px;
+  min-width: 58px;
 }
 
-/* Раскрытая панель дополнительных фильтров каталога (компактнее на 1–2 мм по кнопкам) */
+/* Блокировка фонового скролла, пока открыта шторка фильтров каталога */
+body.cg-sheet-open {
+  overflow: hidden !important;
+  touch-action: none;
+}
+
+/* Сама панель каталога остаётся статичной — никаких прыжков сетки при открытии фильтров */
 #cgFilters.fopen {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 8px 9px;
+  display: block;
+  padding: 7px 8px;
   background: var(--card);
   border: 1px solid var(--bd);
   border-radius: 13px;
   margin-bottom: 10px;
+}
+
+/* Затемнение фона под выезжающей шторкой фильтров */
+.cg-filter-backdrop {
+  display: block !important;
+  position: fixed;
+  inset: 0;
+  z-index: 2450;
+  background: rgba(6, 8, 14, 0.64);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+#cgFilters.fopen .cg-filter-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Плавная выезжающая снизу шторка фильтров каталога */
+.cg-filter-sheet {
+  display: flex !important;
+  flex-direction: column;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2460;
+  max-height: 82vh;
+  max-height: 82dvh;
+  background: #141720;
+  color: var(--tx);
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -12px 42px rgba(0, 0, 0, 0.72);
+  overflow: hidden;
+  transform: translate3d(0, 100%, 0);
+  visibility: hidden;
+  pointer-events: none;
+  will-change: transform;
+  transition: transform 250ms cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 250ms;
+}
+
+#cgFilters.fopen .cg-filter-sheet {
+  transform: translate3d(0, 0, 0);
+  visibility: visible;
+  pointer-events: auto;
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0s;
+}
+
+html[data-theme=white] .cg-filter-sheet {
+  background: #ffffff;
+  border-top-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 -10px 36px rgba(0, 0, 0, 0.18);
+}
+
+.cg-filter-sheet-hdr {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 9px;
+  border-bottom: 1px solid var(--bd);
+  flex-shrink: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.cg-filter-sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.24);
+}
+
+html[data-theme=white] .cg-filter-sheet-handle {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.cg-filter-sheet-title-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.cg-filter-sheet-close {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--bd);
+  background: var(--inp);
+  color: var(--tx);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0;
+}
+
+.cg-filter-sheet-body {
+  display: flex !important;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 10px 12px 12px;
+}
+
+.cg-filter-sheet #cgModeMobBtn {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 10px !important;
+  min-height: 32px !important;
+  font-size: 12px !important;
+  font-weight: 600;
+  border-radius: 9px;
+  flex-shrink: 0;
+}
+
+/* Внутри мобильной шторки содержимое не исчезает мгновенно, чтобы анимация закрытия была плавной */
+#cgFilters:not(.fopen) .cg-extra-row {
+  display: grid !important;
 }
 
 .cg-extra-row {
@@ -412,6 +551,9 @@ input,
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   gap: 6px !important;
   width: 100%;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+  border-top: 0 !important;
 }
 
 .cg-extra-row > * {
@@ -420,11 +562,11 @@ input,
   margin: 0 !important;
 }
 
-#cgFilters.fopen .cg-extra-row > button,
-#cgFilters.fopen .cg-extra-row > select {
-  min-height: 33px !important;
-  height: 33px !important;
-  padding: 4px 9px !important;
+.cg-filter-sheet .cg-extra-row > button,
+.cg-filter-sheet .cg-extra-row > select {
+  min-height: 31px !important;
+  height: 31px !important;
+  padding: 3px 9px !important;
   font-size: 12px !important;
   border-radius: 8px !important;
 }
@@ -456,38 +598,54 @@ input,
   align-items: center;
   gap: 5px;
   padding: 2px 8px !important;
-  min-height: 33px !important;
+  min-height: 31px !important;
 }
 
 .cg-year-pair input {
   width: 100% !important;
   min-width: 0;
   text-align: center;
-  padding: 3px 4px !important;
+  padding: 2px 4px !important;
   font-size: 12px !important;
-  min-height: 27px !important;
+  min-height: 25px !important;
 }
 
-#cgFilters.fopen .cg-tchip {
-  padding: 4px 8px !important;
-  font-size: 11.5px !important;
-  min-height: 28px !important;
+.cg-filter-sheet .cg-tags-panel {
+  margin-top: 2px !important;
+  max-height: none !important;
+  overflow-y: visible !important;
+  padding: 9px !important;
 }
 
-#cgFilters.fopen .cg-mob-filter-footer {
+.cg-filter-sheet .cg-tchip {
+  padding: 3px 7px !important;
+  font-size: 11px !important;
+  min-height: 25px !important;
+}
+
+.cg-filter-sheet .cg-mob-filter-footer {
   display: flex !important;
-  padding-top: 6px;
+  flex-shrink: 0;
+  padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--bd);
+  background: inherit;
 }
 
 #cgMobApplyBtn {
   width: 100%;
-  min-height: 36px !important;
+  min-height: 34px !important;
   padding: 6px 12px !important;
   font-weight: 700;
-  font-size: 13px !important;
+  font-size: 12.5px !important;
   justify-content: center;
-  border-radius: 9px;
+  border-radius: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cg-filter-backdrop,
+  .cg-filter-sheet {
+    transition: none !important;
+  }
 }
 
 .cg-active-chips {
@@ -509,6 +667,21 @@ input,
   white-space: nowrap;
 }
 
+.cg-active-chips .cg-chip-reset-all,
+#catFilters #chips .cg-chip-reset-all {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #2f161e !important;
+  box-shadow: 6px 0 12px rgba(10, 11, 18, 0.92);
+}
+
+html[data-theme=white] .cg-active-chips .cg-chip-reset-all,
+html[data-theme=white] #catFilters #chips .cg-chip-reset-all {
+  background: #fee2e2 !important;
+  box-shadow: 6px 0 12px rgba(244, 246, 251, 0.96);
+}
+
 .cg-tag-chips {
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
 }
@@ -516,7 +689,7 @@ input,
 /* Компактная шапка фильтров и поиска в «Моей коллекции» */
 #colToolbar {
   display: grid !important;
-  grid-template-columns: minmax(0, 1.02fr) auto minmax(0, 0.86fr) minmax(0, 1.38fr) !important;
+  grid-template-columns: minmax(0, 0.92fr) auto minmax(0, 0.74fr) minmax(0, 1.62fr) !important;
   gap: 5px !important;
   align-items: center;
   width: 100%;
@@ -541,21 +714,21 @@ input,
 #colToolbar #colMoreBtn {
   width: 100%;
   min-width: 0;
-  min-height: 33px !important;
-  height: 33px !important;
+  min-height: 29px !important;
+  height: 29px !important;
   margin: 0 !important;
   justify-content: center;
   align-items: center;
-  font-size: 11.5px !important;
+  font-size: 11px !important;
   line-height: 1 !important;
-  padding: 0 6px !important;
+  padding: 0 5px !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
 }
 
 #colToolbar #colMobSizeBtn {
-  padding: 0 8px !important;
+  padding: 0 7px !important;
 }
 
 #colToolbar #colMoreWrap {
@@ -580,28 +753,50 @@ input,
 #catFilters .cat-dd-btn {
   width: 100%;
   justify-content: space-between;
-  min-height: 34px !important;
-  height: 34px !important;
-  padding: 4px 10px !important;
-  font-size: 12px !important;
+  min-height: 30px !important;
+  height: 30px !important;
+  padding: 3px 9px !important;
+  font-size: 11.5px !important;
 }
 
 .col-release-toggles #ongBtn,
 .col-release-toggles #finBtn {
   flex: 1 1 0;
   min-width: 0;
-  min-height: 36px !important;
-  height: 36px !important;
+  min-height: 31px !important;
+  height: 31px !important;
   justify-content: center;
   align-items: center;
   text-align: center;
-  padding: 0 8px !important;
-  font-size: 12.5px !important;
+  padding: 0 7px !important;
+  font-size: 11.5px !important;
   white-space: nowrap;
 }
 
 #catFilters #chips {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  gap: 5px;
   width: 100%;
+  padding-bottom: 2px;
+}
+
+#catFilters #chips:empty {
+  display: none;
+}
+
+#catFilters #chips::-webkit-scrollbar {
+  display: none;
+}
+
+#catFilters #chips .chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 11px;
+  padding: 3px 8px;
 }
 
 #catFilters #countInfo {
@@ -619,17 +814,29 @@ input,
   border-radius: 10px !important;
 }
 
-/* Компактный блок «Мои подборки» */
+/* Компактный сворачиваемый блок «Мои подборки» (Идея №2) */
 .my-lists-sec {
-  padding: 8px 10px !important;
-  margin-bottom: 8px !important;
+  padding: 7px 10px !important;
+  margin-bottom: 7px !important;
+}
+
+.my-lists-sec.is-collapsed {
+  padding: 6px 10px !important;
+}
+
+.my-lists-toggle-btn b {
+  font-size: 13px !important;
+}
+
+.my-lists-toggle-btn .meta {
+  font-size: 11px !important;
 }
 
 .my-lists-sec .btn {
-  min-height: 28px !important;
-  height: 28px !important;
-  padding: 0 9px !important;
-  font-size: 11.5px !important;
+  min-height: 25px !important;
+  height: 25px !important;
+  padding: 0 8px !important;
+  font-size: 11px !important;
 }
 
 .my-lists-grid {
@@ -701,9 +908,9 @@ html[data-theme=white] :is(.cat-dd-menu, .pick-menu-pop, .toolbar-more-pop, .hyb
 .cat-dd-menu button,
 .pick-menu-pop button,
 .hyb-more-pop button {
-  min-height: 42px !important;
-  padding: 10px 12px !important;
-  font-size: 14px !important;
+  min-height: 36px !important;
+  padding: 7px 11px !important;
+  font-size: 13px !important;
 }
 
 /* Горизонтальная лента «Рекомендуем сегодня» в каталоге */
@@ -831,12 +1038,12 @@ html[data-grid-size="md"] .grid:not(.list) {
   right: 6px !important;
   bottom: 6px !important;
   z-index: 3;
-  width: 32px !important;
-  height: 32px !important;
-  min-width: 32px !important;
-  min-height: 32px !important;
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
   padding: 0 !important;
-  font-size: 14px !important;
+  font-size: 13px !important;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
 }
 
@@ -845,11 +1052,11 @@ html[data-grid-size="md"] .grid:not(.list) {
   bottom: 6px !important;
   top: auto !important;
   z-index: 3;
-  width: 32px !important;
-  height: 32px !important;
-  min-width: 32px !important;
-  min-height: 32px !important;
-  font-size: 15px !important;
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  font-size: 13.5px !important;
   opacity: 1 !important;
   background: rgba(16, 19, 26, 0.88) !important;
   color: #fff !important;
@@ -997,7 +1204,7 @@ html[data-theme=white] .modal .mc::before {
 .modal .mc .mb > .row .btn {
   flex: 1 1 auto;
   justify-content: center;
-  min-height: 40px;
+  min-height: 35px;
 }
 
 .row2 {
@@ -1047,10 +1254,10 @@ html[data-theme=white] .modal .mc::before {
 #detailModal .mc > .mb:last-child .btn {
   width: 100% !important;
   min-width: 0 !important;
-  height: 42px !important;
-  min-height: 42px !important;
-  padding: 0 10px !important;
-  font-size: 12.5px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 8px !important;
+  font-size: 12px !important;
   line-height: 1 !important;
   white-space: nowrap !important;
   overflow: hidden !important;
@@ -1086,7 +1293,7 @@ html[data-theme=white] .modal .mc::before {
 #rndModal .mc > .row:last-child {
   display: grid !important;
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  gap: 8px !important;
+  gap: 7px !important;
   width: 100% !important;
   margin-top: 6px !important;
   align-items: stretch !important;
@@ -1095,10 +1302,10 @@ html[data-theme=white] .modal .mc::before {
 #rndModal .mc > .row:last-child > .btn {
   width: 100% !important;
   min-width: 0 !important;
-  height: 42px !important;
-  min-height: 42px !important;
-  padding: 0 10px !important;
-  font-size: 12.5px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 8px !important;
+  font-size: 12px !important;
   font-weight: 600 !important;
   line-height: 1 !important;
   white-space: nowrap !important;
@@ -1107,14 +1314,14 @@ html[data-theme=white] .modal .mc::before {
   justify-content: center !important;
   align-items: center !important;
   flex: none !important;
-  border-radius: 10px !important;
+  border-radius: 9px !important;
 }
 
 #rndAdd {
   grid-column: 1 / -1 !important;
-  height: 44px !important;
-  min-height: 44px !important;
-  font-size: 13.5px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  font-size: 13px !important;
   font-weight: 700 !important;
 }
 
@@ -1133,8 +1340,8 @@ html[data-theme=white] .modal .mc::before {
   right: 12px !important;
   left: auto !important;
   transform: none !important;
-  padding: 6px 12px !important;
-  font-size: 12.5px !important;
+  padding: 4px 10px !important;
+  font-size: 12px !important;
   font-weight: 600 !important;
 }
 
@@ -1161,9 +1368,9 @@ html[data-theme=white] .modal .mc::before {
 }
 
 .qa-float-menu button {
-  padding: 10px 12px !important;
-  font-size: 13.5px !important;
-  min-height: 42px !important;
+  padding: 8px 11px !important;
+  font-size: 13px !important;
+  min-height: 36px !important;
 }
 
 /* Попап персонажа и просмотр постера */
@@ -1197,9 +1404,9 @@ html[data-theme=white] .modal .mc::before {
 }
 
 #titlePageView > .row:first-child .btn {
-  padding: 7px 12px !important;
-  font-size: 12.5px !important;
-  min-height: 36px !important;
+  padding: 5px 10px !important;
+  font-size: 12px !important;
+  min-height: 31px !important;
 }
 
 .tp-wrap {
@@ -1439,10 +1646,10 @@ html[data-theme=white] .modal .mc::before {
 .tp-act-row > .btn {
   width: 100% !important;
   min-width: 0 !important;
-  height: 38px !important;
-  min-height: 38px !important;
-  padding: 0 10px !important;
-  font-size: 12px !important;
+  height: 33px !important;
+  min-height: 33px !important;
+  padding: 0 8px !important;
+  font-size: 11.5px !important;
   font-weight: 600 !important;
   line-height: 1 !important;
   white-space: nowrap !important;
@@ -1451,14 +1658,14 @@ html[data-theme=white] .modal .mc::before {
   justify-content: center !important;
   align-items: center !important;
   flex: none !important;
-  border-radius: 10px !important;
+  border-radius: 9px !important;
 }
 
 .tp-act-row > .qa-trigger {
   grid-column: 1 / -1 !important;
-  height: 42px !important;
-  min-height: 42px !important;
-  font-size: 13.5px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  font-size: 12.5px !important;
   font-weight: 700 !important;
 }
 
@@ -1566,13 +1773,13 @@ html[data-theme=white] .modal .mc::before {
   justify-content: center;
   gap: 4px;
   width: 100%;
-  margin-top: 10px;
-  padding: 8px 12px;
-  border-radius: 10px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 9px;
   border: 1px solid var(--bd);
   background: rgba(255, 255, 255, 0.04);
   color: var(--ac, #a78bfa);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -1676,8 +1883,9 @@ html[data-theme="white"] .tp-desc-sec[data-collapsible="1"] .tp-desc-toggle-btn 
 
 .hyb-clean-actions > .btn {
   flex: 1;
-  padding: 8px;
-  font-size: 12.5px;
+  padding: 6px 8px;
+  min-height: 33px;
+  font-size: 12px;
   justify-content: center;
 }
 
@@ -1756,10 +1964,10 @@ html[data-theme="white"] .tp-desc-sec[data-collapsible="1"] .tp-desc-toggle-btn 
 /* Плавающая кнопка «Наверх ↑» над нижней навигацией */
 .scroll-top-btn {
   right: 14px !important;
-  bottom: calc(68px + env(safe-area-inset-bottom)) !important;
-  width: 40px !important;
-  height: 40px !important;
-  font-size: 17px !important;
+  bottom: calc(64px + env(safe-area-inset-bottom)) !important;
+  width: 35px !important;
+  height: 35px !important;
+  font-size: 15px !important;
 }
 
 /* Компактный трекер прогресса на мобильных карточках и в модалках */
@@ -1767,16 +1975,70 @@ html[data-theme="white"] .tp-desc-sec[data-collapsible="1"] .tp-desc-toggle-btn 
   margin-top: 4px;
 }
 
+.card-ep-stepper {
+  gap: 3px;
+  padding: 2px;
+}
+
+.card-ep-minus-btn {
+  width: 21px;
+  height: 21px;
+  font-size: 12.5px;
+}
+
+.card-ep-count {
+  font-size: 10px;
+}
+
+.card-ep-stepper.is-done .card-ep-unit {
+  display: none;
+}
+
 .card-ep-plus-btn {
-  width: 100%;
-  height: 26px;
+  min-width: 30px;
+  height: 21px;
+  font-size: 10.5px;
+  padding: 0 7px;
+}
+
+.card-ep-finish-btn {
+  height: 21px;
+  font-size: 10px;
+  padding: 0 7px;
+}
+
+html[data-grid-size="sm"] .grid:not(.list) .card-ep-stepper {
+  gap: 2px;
+  padding: 1.5px;
+}
+
+html[data-grid-size="sm"] .grid:not(.list) .card-ep-minus-btn {
+  width: 18px;
+  height: 18px;
   font-size: 11px;
-  padding: 0 8px;
+}
+
+html[data-grid-size="sm"] .grid:not(.list) .card-ep-count {
+  font-size: 9px;
+  padding: 0 1px;
+}
+
+html[data-grid-size="sm"] .grid:not(.list) .card-ep-unit,
+html[data-grid-size="sm"] .grid:not(.list) .card-ep-stepper.is-done .card-ep-count {
+  display: none;
 }
 
 html[data-grid-size="sm"] .grid:not(.list) .card-ep-plus-btn {
-  height: 22px;
+  min-width: 24px;
+  height: 18px;
   font-size: 9.5px;
+  padding: 0 5px;
+}
+
+html[data-grid-size="sm"] .grid:not(.list) .card-ep-finish-btn {
+  flex: 1 1 auto;
+  height: 18px;
+  font-size: 9px;
   padding: 0 4px;
 }
 
@@ -1792,10 +2054,10 @@ html[data-grid-size="sm"] .grid:not(.list) .card-ep-plus-btn {
 
 .ep-season-sel {
   min-width: 52px;
-  min-height: 32px !important;
-  height: 32px !important;
+  min-height: 29px !important;
+  height: 29px !important;
   padding: 0 6px !important;
-  font-size: 13.5px !important;
+  font-size: 13px !important;
 }
 
 .tp-ep-tracker-wrap {
@@ -1809,10 +2071,10 @@ html[data-grid-size="sm"] .grid:not(.list) .card-ep-plus-btn {
   }
 
   #openModalBtn {
-    width: 34px !important;
+    width: 30px !important;
     padding: 0 !important;
     justify-content: center;
-    font-size: 19px !important;
+    font-size: 17px !important;
     line-height: 1;
   }
 
@@ -1830,3 +2092,27 @@ html[data-grid-size="sm"] .grid:not(.list) .card-ep-plus-btn {
     justify-content: center;
   }
 }
+
+/* Плавный выезд мобильных выпадающих меню (bottom sheet) снизу вверх (Идея №5) */
+@keyframes kirokuSheetPopIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+
+.cat-dd-wrap.open .cat-dd-menu,
+.toolbar-more-pop.open,
+.pick-menu-pop.open,
+.hyb-more-pop.open {
+  transform-origin: bottom center;
+  animation: kirokuSheetPopIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cat-dd-wrap.open .cat-dd-menu,
+  .toolbar-more-pop.open,
+  .pick-menu-pop.open,
+  .hyb-more-pop.open {
+    animation: none !important;
+  }
+}
+

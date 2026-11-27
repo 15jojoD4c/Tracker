@@ -1684,6 +1684,504 @@ test('Clickable metadata transitions resolve catalog sections/tags cleanly, seri
   assert.deepEqual(nextColSnap.xf, { k: 'studio', v: 'OLM' });
 });
 
+test('normalizeSearchText and tokenizeSearchText unify ё/е, hyphens, and punctuation', () => {
+  assert.equal(KirokuEngine.normalizeSearchText('Звёздное дитя'), 'звездное дитя');
+  assert.equal(KirokuEngine.normalizeSearchText('Ван-Пис!'), 'ван пис');
+  assert.equal(KirokuEngine.normalizeSearchText('[Oshi no Ko] — Vol. 1'), 'oshi no ko vol 1');
+  assert.deepEqual(KirokuEngine.tokenizeSearchText('  Синяя   тюрьма:   Блю-Лок '), ['синяя', 'тюрьма', 'блю', 'лок']);
+  assert.equal(KirokuEngine.normalizeSearchText(''), '');
+  assert.deepEqual(KirokuEngine.tokenizeSearchText('   '), []);
+});
 
+test('extractRuCacheMatches reverse-matches RUC Russian manga/anime keys and skips descriptions', () => {
+  const ruc = {
+    mangas121496: 'Поднятие уровня в одиночку',
+    t_mangas_656: 'Бродяга',
+    d_mangas_656: 'Описание манги Бродяга про Миямото Мусаси',
+    animes16498: 'Атака титанов',
+    mangas13: 'Ван-Пис',
+    ranobe70261: 'Реинкарнация безработного'
+  };
+
+  const mangaHit = KirokuEngine.extractRuCacheMatches('поднятие уровня в одиночку', ruc, 'MANGA');
+  assert.equal(mangaHit.length, 1);
+  assert.equal(mangaHit[0].malId, 121496);
+  assert.equal(mangaHit[0].exact, true);
+
+  // Hyphenated Russian title matches space-separated query
+  const onePiece = KirokuEngine.extractRuCacheMatches('Ван Пис', ruc, 'MANGA');
+  assert.equal(onePiece.length, 1);
+  assert.equal(onePiece[0].malId, 13);
+
+  // Manga lookup ignores anime keys and description keys
+  const animeSkipped = KirokuEngine.extractRuCacheMatches('Атака титанов', ruc, 'MANGA');
+  assert.equal(animeSkipped.length, 0);
+  const descSkipped = KirokuEngine.extractRuCacheMatches('Миямото Мусаси', ruc, 'MANGA');
+  assert.equal(descSkipped.length, 0);
+
+  // Anime lookup finds anime key
+  const animeHit = KirokuEngine.extractRuCacheMatches('Атака титанов', ruc, 'ANIME');
+  assert.equal(animeHit.length, 1);
+  assert.equal(animeHit[0].malId, 16498);
+
+  // Novel lookup finds ranobe key
+  const novelHit = KirokuEngine.extractRuCacheMatches('Реинкарнация безработного', ruc, 'NOVEL');
+  assert.equal(novelHit.length, 1);
+  assert.equal(novelHit[0].malId, 70261);
+});
+
+test('rankShikimoriRuCandidates ranks main manga above homonyms/spin-offs/novels and detects weak matches', () => {
+  // 1. Homonym tiebreak: "Бродяга" -> Vagabond (9.27) must beat Haikaisha (0)
+  const vagabondRes = KirokuEngine.rankShikimoriRuCandidates(
+    [
+      { id: '99999', malId: 99999, name: 'Haikaisha', english: 'Haikaisha', russian: 'Бродяга', kind: 'manga', score: 0 },
+      { id: '656', malId: 656, name: 'Vagabond', english: 'Vagabond', russian: 'Бродяга', kind: 'manga', score: 9.27 }
+    ],
+    'Бродяга',
+    { isAnime: false, isNovel: false }
+  );
+  assert.equal(vagabondRes.hasStrongRuMatch, true);
+  assert.equal(vagabondRes.malIds[0], 656);
+  assert.equal(vagabondRes.enQueries[0], 'Vagabond');
+
+  // 2. Main manga vs spin-off / one-shot / light_novel filtering
+  const spinoffRes = KirokuEngine.rankShikimoriRuCandidates(
+    [
+      { id: '1', malId: 1, name: 'Oyakusoku no Neverland', english: 'Oyakusoku no Neverland', russian: 'Обещанный Неверленд: Спецвыпуск', kind: 'one_shot', score: 6.69 },
+      { id: '2', malId: 2, name: 'Yakusoku no Neverland LN', english: 'The Promised Neverland', russian: 'Обещанный Неверленд', kind: 'light_novel', score: 8.5 },
+      { id: '100128', malId: 100128, name: 'Yakusoku no Neverland', english: 'The Promised Neverland', russian: 'Обещанный Неверленд', kind: 'manga', score: 8.14 }
+    ],
+    'Обещанный Неверленд',
+    { isAnime: false, isNovel: false }
+  );
+  assert.equal(spinoffRes.hasStrongRuMatch, true);
+  assert.equal(spinoffRes.malIds.includes(2), false); // light_novel filtered out for Manga search
+  assert.equal(spinoffRes.malIds[0], 100128);
+
+  // 3. Weak Shikimori partial matches must set hasStrongRuMatch = false so translation fallback runs
+  const tbateRes = KirokuEngine.rankShikimoriRuCandidates(
+    [
+      { id: '111', malId: 111, name: 'Start Over', english: 'Start Over', russian: 'Начало конца', kind: 'manga', score: 0 }
+    ],
+    'Начало после конца',
+    { isAnime: false, isNovel: false }
+  );
+  assert.equal(tbateRes.hasStrongRuMatch, false);
+
+  const sweetHomeRes = KirokuEngine.rankShikimoriRuCandidates(
+    [
+      { id: '222', malId: 222, name: 'Bitter Sweet Home', english: 'Bitter Sweet Home', russian: 'Горько-сладкий дом', kind: 'manga', score: 0 }
+    ],
+    'Сладкий дом',
+    { isAnime: false, isNovel: false }
+  );
+  assert.equal(sweetHomeRes.hasStrongRuMatch, false);
+
+  const madeInAbyssRes = KirokuEngine.rankShikimoriRuCandidates(
+    [
+      { id: '333', malId: 333, name: 'Naraku no Futari', english: 'Naraku no Futari', russian: 'Влюблённые в бездне', kind: 'manga', score: 6.8 }
+    ],
+    'Сделано в Бездне',
+    { isAnime: false, isNovel: false }
+  );
+  assert.equal(madeInAbyssRes.hasStrongRuMatch, false);
+});
+
+test('rankCatalogSearchResults promotes exact Russian, translated English, and top MAL matches', () => {
+  // Translated English fallback match (webtoon / unofficial Russian title)
+  const rankedWebtoon = KirokuEngine.rankCatalogSearchResults(
+    [
+      { id: '1', mal: 111, title: 'Начало конца', en: 'Start Over', romaji: 'Start Over', ext: '6.0', poster: 'p1' },
+      { id: '2', mal: 0, title: 'The Beginning After the End', en: 'The Beginning After the End', romaji: 'The Beginning After the End', ext: '8.7', poster: 'p2' }
+    ],
+    'Начало после конца',
+    {
+      malIds: [111],
+      hasStrongRuMatch: false,
+      translatedEn: 'The Beginning After the End',
+      enQueries: ['The Beginning After the End', 'Start Over']
+    }
+  );
+  assert.equal(rankedWebtoon[0].id, '2');
+
+  // Strong Russian + MAL ID match beats spin-off anthology
+  const rankedMain = KirokuEngine.rankCatalogSearchResults(
+    [
+      { id: 's1', mal: 500, title: 'Синяя тюрьма: Антология', en: 'Blue Lock Anthology', romaji: 'Blue Lock Anthology', ext: '7.0', poster: 'p1', format: 'ONE_SHOT' },
+      { id: 'm1', mal: 114745, title: 'Синяя тюрьма: Блю Лок', en: 'Blue Lock', romaji: 'Blue Lock', ext: '8.4', poster: 'p2', format: 'MANGA' }
+    ],
+    'Синяя тюрьма',
+    {
+      malIds: [114745, 500],
+      hasStrongRuMatch: true,
+      translatedEn: 'Blue Lock',
+      enQueries: ['Blue Lock']
+    }
+  );
+  assert.equal(rankedMain[0].id, 'm1');
+});
+
+test('itemMatchesSearchText matches Russian/English titles, ё/е, hyphens, multi-word order, and IDs', () => {
+  const onePiece = {
+    id: 'local_1',
+    title: 'Ван-Пис',
+    titleEn: 'One Piece',
+    romaji: 'One Piece',
+    author: 'Эйитиро Ода',
+    mal: 13,
+    tags: ['Приключения', 'Сёнэн']
+  };
+  const oshi = {
+    id: 'local_2',
+    title: 'Звёздное дитя',
+    titleEn: 'Oshi no Ko',
+    romaji: '[Oshi no Ko]',
+    mal: 126146
+  };
+
+  assert.equal(KirokuEngine.itemMatchesSearchText(onePiece, 'ван пис'), true);
+  assert.equal(KirokuEngine.itemMatchesSearchText(onePiece, 'One Piece'), true);
+  assert.equal(KirokuEngine.itemMatchesSearchText(onePiece, 'ода эйитиро'), true);
+  assert.equal(KirokuEngine.itemMatchesSearchText(onePiece, 'mal:13'), true);
+  assert.equal(KirokuEngine.itemMatchesSearchText(onePiece, 'Берсерк'), false);
+
+  assert.equal(KirokuEngine.itemMatchesSearchText(oshi, 'звездное дитя'), true);
+  assert.equal(KirokuEngine.itemMatchesSearchText(oshi, 'Звёздное дитя'), true);
+  assert.equal(KirokuEngine.itemMatchesSearchText(oshi, 'oshi no ko'), true);
+});
+
+test('createCatalogCache.allValues returns non-expired cached arrays and omits expired entries', () => {
+  const cache = KirokuEngine.createCatalogCache(1000, 10);
+  cache.set('p1', [{ id: 'a' }], 100);
+  cache.set('p2', [{ id: 'b' }], 500);
+
+  assert.deepEqual(cache.allValues(600), [[{ id: 'a' }], [{ id: 'b' }]]);
+  // At t=1200, p1 (set at 100, ttl 1000) is expired, p2 (set at 500) is still valid
+  assert.deepEqual(cache.allValues(1200), [[{ id: 'b' }]]);
+});
+
+test('AniList tag rank thresholds and filterAniListTags exclude meme-tagged Yuri (Bocchi the Rock) and spoiler tags while keeping genuine Yuri and demographics', () => {
+  assert.equal(KirokuEngine.getMinAniListTagRank('Yuri'), 75);
+  assert.equal(KirokuEngine.getMinAniListTagRank("Boys' Love"), 75);
+  assert.equal(KirokuEngine.getMinAniListTagRank('Shounen'), 60);
+  assert.equal(KirokuEngine.getMinAniListTagRank('Seinen'), 60);
+  assert.equal(KirokuEngine.getMinAniListTagRank('Isekai'), 65);
+
+  assert.equal(KirokuEngine.mapAniListTagAlias('Yuri'), 'Yuri');
+  assert.equal(KirokuEngine.mapAniListTagAlias('Yaoi'), "Boys' Love");
+  assert.equal(KirokuEngine.mapAniListTagAlias('Harem'), 'Female Harem');
+  assert.equal(KirokuEngine.mapAniListTagAlias('Reverse Harem'), 'Male Harem');
+  assert.equal(KirokuEngine.mapAniListTagAlias('Time Travel'), 'Time Manipulation');
+
+  // Query minTagRank: single Yuri -> 75; mixed Yuri + Shounen -> 60 (so API doesn't drop Shounen, client filters Yuri >= 75); empty -> undefined
+  assert.equal(KirokuEngine.computeAniListQueryMinTagRank(['Yuri'], undefined), 75);
+  assert.equal(KirokuEngine.computeAniListQueryMinTagRank(undefined, ['Yuri']), 75);
+  assert.equal(KirokuEngine.computeAniListQueryMinTagRank(['Yuri', 'Shounen'], undefined), 60);
+  assert.equal(KirokuEngine.computeAniListQueryMinTagRank(['Isekai'], undefined), 65);
+  assert.equal(KirokuEngine.computeAniListQueryMinTagRank([], []), undefined);
+
+  // Bocchi the Rock tags: Yuri rank 61 must be filtered out; CGDCT 86 & Band 94 stay
+  const bocchiTags = [
+    { name: 'Yuri', rank: 61, isMediaSpoiler: false },
+    { name: 'Cute Girls Doing Cute Things', rank: 86, isMediaSpoiler: false },
+    { name: 'Band', rank: 94, isMediaSpoiler: false },
+    { name: 'Tragedy', rank: 82, isMediaSpoiler: true }
+  ];
+  const cleanBocchi = KirokuEngine.filterAniListTags(bocchiTags);
+  assert.deepEqual(cleanBocchi.map((t: { name: string }) => t.name), ['Band', 'Cute Girls Doing Cute Things']);
+
+  // Bloom Into You tags: Yuri rank 98 stays at #1
+  const bloomTags = [
+    { name: 'School', rank: 74, isMediaSpoiler: false },
+    { name: 'Yuri', rank: 98, isMediaSpoiler: false }
+  ];
+  const cleanBloom = KirokuEngine.filterAniListTags(bloomTags);
+  assert.deepEqual(cleanBloom.map((t: { name: string }) => t.name), ['Yuri', 'School']);
+
+  // Attack on Titan: Shounen rank 63 stays (demographic threshold is 60), Bleach Isekai 50 is excluded
+  const mixed = [
+    { name: 'Shounen', rank: 63, isMediaSpoiler: false },
+    { name: 'Isekai', rank: 50, isMediaSpoiler: false }
+  ];
+  assert.deepEqual(KirokuEngine.filterAniListTags(mixed).map((t: { name: string }) => t.name), ['Shounen']);
+});
+
+test('classifyAniListYuriSubtype and matchesAniListYuriFilter cleanly separate light Shoujo Ai from explicit/ecchi Yuri', () => {
+  // 1. Light romance (Bloom Into You): Yuri rank 98, non-adult, no Ecchi/Hentai -> Shoujo Ai
+  const bloomIntoYou = {
+    isAdult: false,
+    genres: ['Drama', 'Romance', 'Slice of Life'],
+    tags: [
+      { name: 'Yuri', rank: 98, isMediaSpoiler: false },
+      { name: 'School', rank: 75, isMediaSpoiler: false }
+    ]
+  };
+  assert.equal(KirokuEngine.classifyAniListYuriSubtype(bloomIntoYou), 'Shoujo Ai');
+
+  // 2. Ecchi Yuri (Gushing Over Magical Girls): Yuri rank 90 + Ecchi genre -> Yuri
+  const gushingOver = {
+    isAdult: false,
+    genres: ['Comedy', 'Ecchi', 'Mahou Shoujo'],
+    tags: [
+      { name: 'Yuri', rank: 90, isMediaSpoiler: false },
+      { name: 'BDSM', rank: 88, isMediaSpoiler: false }
+    ]
+  };
+  assert.equal(KirokuEngine.classifyAniListYuriSubtype(gushingOver), 'Yuri');
+
+  // 3. Adult 18+ Yuri -> Yuri
+  const adultYuri = {
+    isAdult: true,
+    genres: ['Hentai', 'Romance'],
+    tags: [{ name: 'Yuri', rank: 95, isMediaSpoiler: false }]
+  };
+  assert.equal(KirokuEngine.classifyAniListYuriSubtype(adultYuri), 'Yuri');
+
+  // 4. Non-Yuri meme-tagged show (Bocchi the Rock, Yuri rank 61) -> null (neither Shoujo Ai nor Yuri!)
+  const bocchi = {
+    isAdult: false,
+    genres: ['Comedy', 'Music', 'Slice of Life'],
+    tags: [
+      { name: 'Yuri', rank: 61, isMediaSpoiler: false },
+      { name: 'Band', rank: 94, isMediaSpoiler: false }
+    ]
+  };
+  assert.equal(KirokuEngine.classifyAniListYuriSubtype(bocchi), null);
+
+  // Filter mode: wantShoujoAi matches ONLY Bloom Into You; wantExplicitYuri matches ONLY Gushing Over & Adult Yuri
+  const shoujoMode = KirokuEngine.getAniListYuriFilterMode(['Shoujo Ai'], []);
+  assert.equal(shoujoMode.wantShoujoAi, true);
+  assert.equal(shoujoMode.wantExplicitYuri, false);
+  assert.equal(KirokuEngine.matchesAniListYuriFilter(bloomIntoYou, shoujoMode), true);
+  assert.equal(KirokuEngine.matchesAniListYuriFilter(gushingOver, shoujoMode), false);
+  assert.equal(KirokuEngine.matchesAniListYuriFilter(adultYuri, shoujoMode), false);
+  assert.equal(KirokuEngine.matchesAniListYuriFilter(bocchi, shoujoMode), false);
+
+  const yuriMode = KirokuEngine.getAniListYuriFilterMode(['Yuri'], []);
+  assert.equal(yuriMode.wantShoujoAi, false);
+  assert.equal(yuriMode.wantExplicitYuri, true);
+  assert.equal(KirokuEngine.matchesAniListYuriFilter(bloomIntoYou, yuriMode), false);
+  assert.equal(KirokuEngine.matchesAniListYuriFilter(gushingOver, yuriMode), true);
+  assert.equal(KirokuEngine.matchesAniListYuriFilter(adultYuri, yuriMode), true);
+  assert.equal(KirokuEngine.matchesAniListYuriFilter(bocchi, yuriMode), false);
+
+  // Exclude only explicit Yuri keeps light Shoujo Ai!
+  const exclExplicit = KirokuEngine.getAniListYuriFilterMode([], ['Yuri']);
+  assert.equal(KirokuEngine.matchesAniListYuriFilter(bloomIntoYou, exclExplicit), true);
+  assert.equal(KirokuEngine.matchesAniListYuriFilter(gushingOver, exclExplicit), false);
+
+  // Shikimori classifier: PG-13 Yuri (Bloom Into You / Citrus) -> Shoujo Ai; r_plus / Ecchi / rx / Hentai -> Yuri
+  assert.equal(
+    KirokuEngine.classifyShikimoriYuriSubtype({
+      rating: 'pg_13',
+      genres: [{ name: 'Drama' }, { name: 'Yuri' }, { name: 'School' }]
+    }),
+    'Shoujo Ai'
+  );
+  assert.equal(
+    KirokuEngine.classifyShikimoriYuriSubtype({
+      rating: 'r_plus',
+      genres: [{ name: 'Comedy' }, { name: 'Ecchi' }, { name: 'Yuri' }]
+    }),
+    'Yuri'
+  );
+  assert.equal(
+    KirokuEngine.classifyShikimoriYuriSubtype({
+      rating: 'rx',
+      genres: [{ name: 'Hentai' }, { name: 'Yuri' }]
+    }),
+    'Yuri'
+  );
+});
+
+test('getStatusLabelForCategory and getCollectionStatusLabels distinguish Manga/Ranobe reading vs Watch vs mixed All (both Все and Всё)', () => {
+  // Read categories
+  for (const cat of ['Манга', 'Ранобэ', 'Манхва', 'Маньхуа', 'Додзинси', 'Комикс']) {
+    assert.equal(KirokuEngine.getStatusLabelForCategory('Смотрю/Читаю', cat), 'Читаю');
+    assert.equal(KirokuEngine.getStatusLabelForCategory('Просмотрено/Прочитано', cat), 'Прочитано');
+    assert.equal(KirokuEngine.getStatusLabelForCategory('Пересматриваю', cat), 'Перечитываю');
+  }
+  // Watch categories
+  for (const cat of ['Аниме', 'Фильм', 'Сериал', 'Мультфильм', 'Кино и сериалы']) {
+    assert.equal(KirokuEngine.getStatusLabelForCategory('Смотрю/Читаю', cat), 'Смотрю');
+    assert.equal(KirokuEngine.getStatusLabelForCategory('Просмотрено/Прочитано', cat), 'Просмотрено');
+    assert.equal(KirokuEngine.getStatusLabelForCategory('Пересматриваю', cat), 'Пересматриваю');
+  }
+  // Both 'Все' (with е) and 'Всё' (with ё) and empty string return combined labels!
+  for (const allCat of ['Все', 'Всё', 'All', '']) {
+    assert.equal(KirokuEngine.getStatusLabelForCategory('Смотрю/Читаю', allCat), 'Смотрю / Читаю');
+    assert.equal(KirokuEngine.getStatusLabelForCategory('Просмотрено/Прочитано', allCat), 'Просмотрено / Прочитано');
+    assert.equal(KirokuEngine.getStatusLabelForCategory('Пересматриваю', allCat), 'Пересматриваю / Перечитываю');
+  }
+
+  // getCollectionStatusLabels adapts to actual items when activeCategory is 'Все'/'Всё'
+  const onlyManga = [{ category: 'Манга' }, { category: 'Ранобэ' }];
+  assert.deepEqual(KirokuEngine.getCollectionStatusLabels(onlyManga, 'Все'), {
+    watching: 'Читаю',
+    completed: 'Прочитано',
+    rewatching: 'Перечитываю'
+  });
+  const onlyAnime = [{ category: 'Аниме' }, { category: 'Фильм' }];
+  assert.deepEqual(KirokuEngine.getCollectionStatusLabels(onlyAnime, 'Всё'), {
+    watching: 'Смотрю',
+    completed: 'Просмотрено',
+    rewatching: 'Пересматриваю'
+  });
+  const mixedItems = [{ category: 'Аниме' }, { category: 'Манга' }];
+  assert.deepEqual(KirokuEngine.getCollectionStatusLabels(mixedItems, 'Все'), {
+    watching: 'Смотрю / Читаю',
+    completed: 'Просмотрено / Прочитано',
+    rewatching: 'Пересматриваю / Перечитываю'
+  });
+  // Explicit category overrides items list
+  assert.deepEqual(KirokuEngine.getCollectionStatusLabels(mixedItems, 'Манга'), {
+    watching: 'Читаю',
+    completed: 'Прочитано',
+    rewatching: 'Перечитываю'
+  });
+});
+
+test('computeCardProgressAction handles +1, -1, bounds, rapid-tap cooldown, locked items, and reachedTotal', () => {
+  const manga = { category: 'Манга', status: 'Смотрю/Читаю', eps: 26, watchedEps: 10 };
+
+  // Normal +1 step
+  const stepUp = KirokuEngine.computeCardProgressAction(manga, 1, 5000, 0, 320);
+  assert.equal(stepUp.allowed, true);
+  assert.equal(stepUp.throttled, false);
+  assert.equal(stepUp.prev, 10);
+  assert.equal(stepUp.next, 11);
+  assert.equal(stepUp.pct, 42);
+  assert.equal(stepUp.reachedTotal, false);
+  assert.equal(stepUp.canComplete, false);
+  // Pure function: must not mutate input item
+  assert.equal(manga.watchedEps, 10);
+
+  // Rapid accidental double-tap within 320ms is throttled
+  const throttled = KirokuEngine.computeCardProgressAction(manga, 1, 5150, 5000, 320);
+  assert.equal(throttled.allowed, false);
+  assert.equal(throttled.throttled, true);
+  assert.equal(throttled.next, 10);
+
+  // Tap after cooldown (>= 320ms) is allowed
+  const afterCooldown = KirokuEngine.computeCardProgressAction(manga, -1, 5350, 5000, 320);
+  assert.equal(afterCooldown.allowed, true);
+  assert.equal(afterCooldown.throttled, false);
+  assert.equal(afterCooldown.next, 9);
+
+  // Lower bound at 0 prevents negative progress
+  const zeroItem = { category: 'Аниме', status: 'Смотрю/Читаю', eps: 12, watchedEps: 0 };
+  const underflow = KirokuEngine.computeCardProgressAction(zeroItem, -1, 6000, 0, 320);
+  assert.equal(underflow.allowed, false);
+  assert.equal(underflow.changed, false);
+  assert.equal(underflow.next, 0);
+
+  // Reaching final episode sets reachedTotal and canComplete
+  const almostDone = { category: 'Аниме', status: 'Смотрю/Читаю', eps: 12, watchedEps: 11 };
+  const finishStep = KirokuEngine.computeCardProgressAction(almostDone, 1, 7000, 0, 320);
+  assert.equal(finishStep.allowed, true);
+  assert.equal(finishStep.next, 12);
+  assert.equal(finishStep.pct, 100);
+  assert.equal(finishStep.reachedTotal, true);
+  assert.equal(finishStep.canComplete, true);
+
+  // Locked (already completed) item rejects steps
+  const lockedItem = { category: 'Аниме', status: 'Просмотрено/Прочитано', eps: 12, watchedEps: 12 };
+  const lockedRes = KirokuEngine.computeCardProgressAction(lockedItem, -1, 8000, 0, 320);
+  assert.equal(lockedRes.allowed, false);
+  assert.equal(lockedRes.locked, true);
+});
+
+test('completeItemFromProgress transitions to completed and restoreItemProgressSnapshot reverts losslessly', () => {
+  const anime: Record<string, any> = {
+    id: 42,
+    category: 'Аниме',
+    status: 'Смотрю/Читаю',
+    eps: 12,
+    watchedEps: 12
+  };
+  const ts = 1760000000000;
+  const res = KirokuEngine.completeItemFromProgress(anime, ts);
+  assert.equal(res.changed, true);
+  assert.equal(anime.status, 'Просмотрено/Прочитано');
+  assert.equal(anime.completedAt, ts);
+  assert.equal(anime.watchedEps, 12);
+
+  // Calling complete again is a safe no-op
+  const repeat = KirokuEngine.completeItemFromProgress(anime, ts + 1000);
+  assert.equal(repeat.changed, false);
+
+  // Undo restores exact prior state (including removing completedAt when previously unset)
+  const restored = KirokuEngine.restoreItemProgressSnapshot(anime, res.snapshot);
+  assert.equal(restored, true);
+  assert.equal(anime.status, 'Смотрю/Читаю');
+  assert.equal(anime.completedAt, undefined);
+  assert.equal(anime.watchedEps, 12);
+});
+
+test('collectCollectionActiveFilters collects all active filters with category-aware labels, moreCount, and showResetAll threshold', () => {
+  // Default empty state
+  const empty = KirokuEngine.collectCollectionActiveFilters({
+    searchQuery: '   ',
+    cat: 'Всё',
+    status: 'Все',
+    tagValue: 'Все',
+    listValue: 'Все'
+  });
+  assert.equal(empty.totalCount, 0);
+  assert.equal(empty.moreCount, 0);
+  assert.equal(empty.hasAny, false);
+  assert.equal(empty.showResetAll, false);
+
+  // Single filter -> hasAny true, showResetAll false
+  const single = KirokuEngine.collectCollectionActiveFilters({
+    cat: 'Аниме',
+    status: 'Все',
+    tagValue: 'Все',
+    listValue: 'Все'
+  });
+  assert.equal(single.totalCount, 1);
+  assert.equal(single.hasAny, true);
+  assert.equal(single.showResetAll, false);
+  assert.equal(single.filters[0].key, 'cat');
+  assert.equal(single.filters[0].label, 'Категория: Аниме');
+
+  // Multiple filters with Manga category -> status chip uses reading label («Прочитано»), moreCount counts ongOnly+tag+list
+  const multi = KirokuEngine.collectCollectionActiveFilters({
+    searchQuery: 'берсерк',
+    cat: 'Манга',
+    kind: 'Манхва',
+    status: 'Просмотрено/Прочитано',
+    ongOnly: true,
+    tagValue: 'экшен',
+    tagLabel: 'Экшен',
+    listValue: 'list_1',
+    listLabel: '📁 Любимая манга',
+    xf: { k: 'author', v: 'Кэнтаро Миура' }
+  });
+  assert.equal(multi.totalCount, 8);
+  assert.equal(multi.moreCount, 3);
+  assert.equal(multi.showResetAll, true);
+  const byKey = Object.fromEntries(multi.filters.map((f: { key: string; label: string }) => [f.key, f.label]));
+  assert.equal(byKey.search, '🔍 «берсерк»');
+  assert.equal(byKey.cat, 'Категория: Манга');
+  assert.equal(byKey.kind, 'Вид: Манхва');
+  assert.equal(byKey.status, 'Прочитано');
+  assert.equal(byKey.ongOnly, 'Онгоинг');
+  assert.equal(byKey.tag, 'Жанр: Экшен');
+  assert.equal(byKey.list, '📁 Любимая манга');
+  assert.equal(byKey.xf, 'Автор: Кэнтаро Миура');
+});
+
+test('computeCardStaggerDelayMs computes smooth bounded cascade delays and clamps extremes', () => {
+  assert.equal(KirokuEngine.computeCardStaggerDelayMs(0), 0);
+  assert.equal(KirokuEngine.computeCardStaggerDelayMs(-5), 0);
+  assert.equal(KirokuEngine.computeCardStaggerDelayMs(Number.NaN), 0);
+  assert.equal(KirokuEngine.computeCardStaggerDelayMs(1), 18);
+  assert.equal(KirokuEngine.computeCardStaggerDelayMs(5), 90);
+  assert.equal(KirokuEngine.computeCardStaggerDelayMs(12), 216);
+  // Caps at maxIndex so card #500 never waits 9 seconds
+  assert.equal(KirokuEngine.computeCardStaggerDelayMs(500), 216);
+  assert.equal(KirokuEngine.computeCardStaggerDelayMs(10, 20, 6), 120);
+});
 
 

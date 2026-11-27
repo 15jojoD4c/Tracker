@@ -266,6 +266,17 @@
       },
       size() {
         return store.size;
+      },
+      allValues(now = Date.now()) {
+        const out = [];
+        for (const [k, hit] of store.entries()) {
+          if (now - hit.t > ttlMs) {
+            store.delete(k);
+            continue;
+          }
+          if (Array.isArray(hit.v)) out.push(hit.v);
+        }
+        return out;
       }
     };
   }
@@ -979,6 +990,192 @@
     const prev = Math.max(0, Math.floor(Number(item.watchedEps) || 0));
     return setWatchedEps(item, prev + (Number(delta) || 0));
   }
+
+  // Безопасный расчёт быстрого шага прогресса прямо с карточки (защита от случайного двойного тапа и выход за границы)
+  function computeCardProgressAction(item, delta, nowMs = Date.now(), lastTapMs = 0, cooldownMs = 320) {
+    const step = Math.trunc(Number(delta) || 0);
+    if (!item || typeof item !== 'object' || step === 0) {
+      return {
+        allowed: false,
+        throttled: false,
+        locked: false,
+        changed: false,
+        prev: 0,
+        next: 0,
+        total: 0,
+        pct: 0,
+        reachedTotal: false,
+        canComplete: false
+      };
+    }
+    const locked = isProgressLocked(item);
+    const total = Math.max(0, Math.floor(Number(item.eps) || 0));
+    const prev = clampWatchedEps(item.watchedEps, total);
+    const pctPrev = total > 0 ? Math.min(100, Math.max(0, Math.round((Math.min(prev, total) / total) * 100))) : 0;
+
+    if (locked) {
+      return {
+        allowed: false,
+        throttled: false,
+        locked: true,
+        changed: false,
+        prev,
+        next: prev,
+        total,
+        pct: pctPrev,
+        reachedTotal: false,
+        canComplete: false
+      };
+    }
+
+    const cd = Math.max(0, Number(cooldownMs) || 0);
+    const now = Number(nowMs) || 0;
+    const prevTap = Number(lastTapMs) || 0;
+    if (cd > 0 && prevTap > 0 && now >= prevTap && (now - prevTap) < cd) {
+      return {
+        allowed: false,
+        throttled: true,
+        locked: false,
+        changed: false,
+        prev,
+        next: prev,
+        total,
+        pct: pctPrev,
+        reachedTotal: false,
+        canComplete: total > 0 && prev >= total
+      };
+    }
+
+    const next = clampWatchedEps(prev + step, total);
+    const changed = next !== prev;
+    const pct = total > 0 ? Math.min(100, Math.max(0, Math.round((Math.min(next, total) / total) * 100))) : 0;
+    const reachedTotal = total > 0 && next >= total && prev < total;
+    const canComplete = total > 0 && next >= total;
+
+    return {
+      allowed: changed,
+      throttled: false,
+      locked: false,
+      changed,
+      prev,
+      next,
+      total,
+      pct,
+      reachedTotal,
+      canComplete
+    };
+  }
+
+  // Перевод тайтла в «Просмотрено/Прочитано» с сохранением снимка для мгновенной отмены (Undo)
+  function completeItemFromProgress(item, nowMs = Date.now()) {
+    if (!item || typeof item !== 'object') {
+      return { changed: false, snapshot: null };
+    }
+    const total = Math.max(0, Math.floor(Number(item.eps) || 0));
+    const prevStatus = item.status || 'В планах';
+    const prevCompletedAt = item.completedAt || null;
+    const prevWatchedEps = Math.max(0, Math.floor(Number(item.watchedEps) || 0));
+    if (prevStatus === 'Просмотрено/Прочитано') {
+      return {
+        changed: false,
+        snapshot: { prevStatus, prevCompletedAt, prevWatchedEps }
+      };
+    }
+    const ts = Number(nowMs) || Date.now();
+    item.status = 'Просмотрено/Прочитано';
+    if (!item.completedAt) item.completedAt = ts;
+    if (total > 0) item.watchedEps = total;
+    return {
+      changed: true,
+      snapshot: { prevStatus, prevCompletedAt, prevWatchedEps }
+    };
+  }
+
+  function restoreItemProgressSnapshot(item, snapshot) {
+    if (!item || typeof item !== 'object' || !snapshot || typeof snapshot !== 'object') return false;
+    if (typeof snapshot.prevStatus === 'string') item.status = snapshot.prevStatus;
+    if ('prevCompletedAt' in snapshot) {
+      if (snapshot.prevCompletedAt) item.completedAt = snapshot.prevCompletedAt;
+      else delete item.completedAt;
+    }
+    if (typeof snapshot.prevWatchedEps === 'number') {
+      item.watchedEps = Math.max(0, Math.floor(snapshot.prevWatchedEps));
+    }
+    return true;
+  }
+
+  // Сбор активных фильтров «Моей коллекции» для чипов, счётчика на «Дополнительно» и быстрого сброса (Идея №4)
+  function collectCollectionActiveFilters(state) {
+    const s = state && typeof state === 'object' ? state : {};
+    const filters = [];
+    const q = String(s.searchQuery || '').trim();
+    const cat = String(s.cat || 'Всё').trim() || 'Всё';
+    const kind = String(s.kind || 'Все').trim() || 'Все';
+    const animeSubKind = String(s.animeSubKind || 'Все').trim() || 'Все';
+    const videoSubKind = String(s.videoSubKind || 'Все').trim() || 'Все';
+    const status = String(s.status || 'Все').trim() || 'Все';
+    const tagValue = String(s.tagValue || 'Все').trim() || 'Все';
+    const tagLabel = String(s.tagLabel || tagValue).trim();
+    const listValue = String(s.listValue || 'Все').trim() || 'Все';
+    const listLabel = String(s.listLabel || listValue).trim();
+    const ongOnly = Boolean(s.ongOnly);
+    const finOnly = Boolean(s.finOnly);
+    const xf = s.xf && typeof s.xf === 'object' && s.xf.v ? s.xf : null;
+
+    if (q) filters.push({ key: 'search', label: `🔍 «${q}»` });
+    if (cat !== 'Всё' && cat !== 'Все') {
+      const catDisplay = cat === 'Кино и сериалы' ? 'Фильмы и сериалы' : cat;
+      filters.push({ key: 'cat', label: `Категория: ${catDisplay}` });
+    }
+    if (cat === 'Манга' && kind !== 'Все') {
+      filters.push({ key: 'kind', label: `Вид: ${kind}` });
+    }
+    if (cat === 'Аниме' && animeSubKind !== 'Все') {
+      filters.push({ key: 'animeSubKind', label: `Вид: ${animeSubKind === 'Сериал' ? 'Аниме-сериалы' : animeSubKind === 'Фильм' ? 'Аниме-фильмы' : animeSubKind}` });
+    }
+    if (cat === 'Кино и сериалы' && videoSubKind !== 'Все') {
+      filters.push({ key: 'videoSubKind', label: `Вид: ${videoSubKind === 'Фильм' ? 'Фильмы' : videoSubKind === 'Сериал' ? 'Сериалы' : videoSubKind}` });
+    }
+    if (status !== 'Все') {
+      const stLabel = getStatusLabelForCategory(status, cat);
+      filters.push({ key: 'status', label: stLabel });
+    }
+    if (ongOnly) filters.push({ key: 'ongOnly', label: 'Онгоинг' });
+    if (finOnly) filters.push({ key: 'finOnly', label: 'Завершено' });
+    if (tagValue !== 'Все') {
+      filters.push({ key: 'tag', label: `Жанр: ${tagLabel}` });
+    }
+    if (listValue !== 'Все') {
+      filters.push({ key: 'list', label: listLabel });
+    }
+    if (xf) {
+      const prefix = { author: 'Автор', studio: 'Студия', source: 'Источник' }[xf.k] || 'Фильтр';
+      filters.push({ key: 'xf', label: `${prefix}: ${xf.v}` });
+    }
+
+    let moreCount = 0;
+    if (ongOnly || finOnly) moreCount++;
+    if (tagValue !== 'Все') moreCount++;
+    if (listValue !== 'Все') moreCount++;
+
+    return {
+      filters,
+      moreCount,
+      totalCount: filters.length,
+      hasAny: filters.length > 0,
+      showResetAll: filters.length >= 2
+    };
+  }
+
+  // Ограниченная ступенчатая задержка появления карточек (плавная волна без тормозов на больших списках)
+  function computeCardStaggerDelayMs(index, stepMs = 18, maxIndex = 12) {
+    const rawIdx = Math.floor(Number(index));
+    if (!Number.isFinite(rawIdx) || rawIdx <= 0) return 0;
+    const step = Math.max(0, Number(stepMs) || 0);
+    const cap = Math.max(0, Math.floor(Number(maxIndex) || 0));
+    return Math.min(rawIdx, cap) * step;
+  }
+
 
   // --- Защита от серверного бага Shikimori GraphQL (манга с Сёдзё-ай/Юри приходит с единственным жанром Yaoi id=65) ---
   function isShikimoriSuspiciousYaoiOnlyGenres(genres, isAnime = false) {
@@ -1876,20 +2073,57 @@
 
   function getStatusLabelForCategory(status, category) {
     if (!status) return '';
+    const catNorm = String(category || '').trim().toLowerCase();
+    const isAll = !catNorm || catNorm === 'всё' || catNorm === 'все' || catNorm === 'all';
     if (status === 'Смотрю/Читаю') {
       if (isReadCategory(category)) return 'Читаю';
-      if (!category || category === 'Всё') return 'Смотрю / Читаю';
+      if (isAll) return 'Смотрю / Читаю';
       return 'Смотрю';
     }
     if (status === 'Просмотрено/Прочитано') {
       if (isReadCategory(category)) return 'Прочитано';
-      if (!category || category === 'Всё') return 'Просмотрено / Прочитано';
+      if (isAll) return 'Просмотрено / Прочитано';
       return 'Просмотрено';
     }
     if (status === 'Пересматриваю') {
-      return isReadCategory(category) ? 'Перечитываю' : 'Пересматриваю';
+      if (isReadCategory(category)) return 'Перечитываю';
+      if (isAll) return 'Пересматриваю / Перечитываю';
+      return 'Пересматриваю';
     }
     return status;
+  }
+
+  function getCollectionStatusLabels(itemsList, activeCategory) {
+    const catNorm = String(activeCategory || '').trim().toLowerCase();
+    const isAll = !catNorm || catNorm === 'всё' || catNorm === 'все' || catNorm === 'all';
+    if (!isAll) {
+      return {
+        watching: getStatusLabelForCategory('Смотрю/Читаю', activeCategory),
+        completed: getStatusLabelForCategory('Просмотрено/Прочитано', activeCategory),
+        rewatching: getStatusLabelForCategory('Пересматриваю', activeCategory)
+      };
+    }
+    const list = Array.isArray(itemsList) ? itemsList.filter(Boolean) : [];
+    if (list.length) {
+      let hasRead = false;
+      let hasWatch = false;
+      for (let i = 0; i < list.length; i++) {
+        if (isReadCategory(list[i].category)) hasRead = true;
+        else hasWatch = true;
+        if (hasRead && hasWatch) break;
+      }
+      if (hasRead && !hasWatch) {
+        return { watching: 'Читаю', completed: 'Прочитано', rewatching: 'Перечитываю' };
+      }
+      if (hasWatch && !hasRead) {
+        return { watching: 'Смотрю', completed: 'Просмотрено', rewatching: 'Пересматриваю' };
+      }
+    }
+    return {
+      watching: 'Смотрю / Читаю',
+      completed: 'Просмотрено / Прочитано',
+      rewatching: 'Пересматриваю / Перечитываю'
+    };
   }
 
   function normalizeExternalRatingInput(rawRating, rawSource) {
@@ -2064,6 +2298,488 @@
     };
   }
 
+  function normalizeSearchText(str) {
+    if (str == null) return '';
+    return String(str)
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .replace(/[^a-zа-я0-9\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]+/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function tokenizeSearchText(str) {
+    const n = normalizeSearchText(str);
+    return n ? n.split(' ').filter(Boolean) : [];
+  }
+
+  const SPINOFF_MARKER_RE = /(?:^|\s)(антологи[яи]|гайдэн|дополнительн\w*|бонус\w*|спецвыпуск\w*|эпизод\s+с|история\s+[а-яё]+|ёнкома|4\s*koma|anthology|gaiden|side\s*story|bonus|special|one\s*shot|ваншот|альтернатив\w*|иная\s+|another\s+|spin\s*off)(?=$|\s)/i;
+
+  function scoreTitleAgainstQuery(rawTitle, normQ, qTokens) {
+    const nt = normalizeSearchText(rawTitle);
+    if (!nt || !normQ) return { score: 0, exact: false, prefix: false, allWords: false };
+    if (nt === normQ) return { score: 1000, exact: true, prefix: true, allWords: true };
+    if (nt.startsWith(normQ + ' ')) {
+      const extraPenalty = Math.min(180, (nt.length - normQ.length) * 3);
+      return { score: 820 - extraPenalty, exact: false, prefix: true, allWords: true };
+    }
+    if (nt.startsWith(normQ)) {
+      const extraPenalty = Math.min(160, (nt.length - normQ.length) * 3);
+      return { score: 740 - extraPenalty, exact: false, prefix: true, allWords: qTokens.length <= 1 };
+    }
+    const tTokens = nt.split(' ').filter(Boolean);
+    const tSet = new Set(tTokens);
+    const allWholeWords = qTokens.length > 0 && qTokens.every(tok => tSet.has(tok));
+    if (allWholeWords) {
+      const extraTokens = Math.max(0, tTokens.length - qTokens.length);
+      const containsPhrase = nt.includes(normQ);
+      return {
+        score: (containsPhrase ? 620 : 540) - Math.min(160, extraTokens * 32),
+        exact: false,
+        prefix: false,
+        allWords: true
+      };
+    }
+    if (nt.includes(normQ)) {
+      const ratio = normQ.length / Math.max(1, nt.length);
+      return {
+        score: Math.round(320 + ratio * 160),
+        exact: false,
+        prefix: false,
+        allWords: false
+      };
+    }
+    if (qTokens.length >= 2) {
+      let matched = 0;
+      for (const tok of qTokens) {
+        if (tok.length <= 1) continue;
+        if (tSet.has(tok) || (tok.length >= 4 && tTokens.some(w => w.startsWith(tok)))) matched++;
+      }
+      const significant = qTokens.filter(t => t.length > 1).length || qTokens.length;
+      if (matched > 0 && matched >= Math.ceil(significant * 0.6)) {
+        return {
+          score: Math.round(140 + (matched / significant) * 180),
+          exact: false,
+          prefix: false,
+          allWords: matched === significant
+        };
+      }
+    }
+    return { score: 0, exact: false, prefix: false, allWords: false };
+  }
+
+  function extractRuCacheMatches(query, rucMap, type) {
+    const normQ = normalizeSearchText(query);
+    if (!normQ || normQ.length < 2 || !rucMap || typeof rucMap !== 'object') return [];
+    const qTokens = tokenizeSearchText(normQ);
+    const isAnime = type === 'ANIME' || type === 'Аниме';
+    const isNovel = type === 'NOVEL' || type === 'Ранобэ';
+    const allowedPrefixes = isAnime
+      ? ['animes', 't_animes_']
+      : isNovel
+        ? ['ranobe', 't_ranobe_', 'mangas', 't_mangas_']
+        : ['mangas', 't_mangas_'];
+
+    const byMal = new Map();
+    for (const [k, v] of Object.entries(rucMap)) {
+      if (typeof v !== 'string' || !v.trim()) continue;
+      if (k.startsWith('d_')) continue;
+      let malId = 0;
+      for (const pref of allowedPrefixes) {
+        if (k.startsWith(pref)) {
+          const rest = k.slice(pref.length);
+          if (/^\d+$/.test(rest)) {
+            malId = Number(rest);
+            break;
+          }
+        }
+      }
+      if (!malId) continue;
+      const m = scoreTitleAgainstQuery(v, normQ, qTokens);
+      if (m.score < 320) continue;
+      const prev = byMal.get(malId);
+      if (!prev || m.score > prev.score) {
+        byMal.set(malId, { malId, ruTitle: v.trim(), score: m.score, exact: m.exact, prefix: m.prefix });
+      }
+    }
+    return [...byMal.values()]
+      .sort((a, b) => b.score - a.score || a.malId - b.malId)
+      .slice(0, 12);
+  }
+
+  function rankShikimoriRuCandidates(candidates, query, opts) {
+    const list = Array.isArray(candidates) ? candidates : [];
+    const o = opts && typeof opts === 'object' ? opts : {};
+    const normQ = normalizeSearchText(query);
+    const qTokens = tokenizeSearchText(normQ);
+    const qHasSpinoff = SPINOFF_MARKER_RE.test(normQ);
+    const isAnime = Boolean(o.isAnime);
+    const isNovel = Boolean(o.isNovel);
+
+    const scored = list.map((cand, idx) => {
+      if (!cand || typeof cand !== 'object') return null;
+      const kind = String(cand.kind || '').toLowerCase();
+      const candIsNovel = kind === 'light_novel' || kind === 'novel';
+      if (!isAnime) {
+        if (isNovel && kind && !candIsNovel) return null;
+        if (!isNovel && candIsNovel) return null;
+      }
+
+      const ruMatch = scoreTitleAgainstQuery(cand.russian || '', normQ, qTokens);
+      const enMatch = scoreTitleAgainstQuery(cand.english || '', normQ, qTokens);
+      const romajiMatch = scoreTitleAgainstQuery(cand.name || '', normQ, qTokens);
+      let synBest = { score: 0, exact: false, prefix: false, allWords: false };
+      if (Array.isArray(cand.synonyms)) {
+        for (const syn of cand.synonyms) {
+          const sm = scoreTitleAgainstQuery(syn, normQ, qTokens);
+          if (sm.score > synBest.score) synBest = sm;
+        }
+      }
+
+      const bestTitleScore = Math.max(
+        ruMatch.score,
+        Math.round(synBest.score * 0.9),
+        Math.round(enMatch.score * 0.85),
+        Math.round(romajiMatch.score * 0.85)
+      );
+      const numScore = Number(cand.score) || 0;
+      const ratingBonus = numScore > 0 ? numScore * 18 : 0;
+      let total = bestTitleScore + ratingBonus;
+
+      if (!isAnime && kind === 'one_shot' && !qHasSpinoff) total -= 48;
+      if (o.country === 'KR' && kind === 'manhwa') total += 35;
+      else if (o.country === 'CN' && kind === 'manhua') total += 35;
+      else if (o.doujin && kind === 'doujin') total += 35;
+
+      const combinedTitleNorm = normalizeSearchText([cand.russian, cand.english, cand.name].filter(Boolean).join(' '));
+      if (!qHasSpinoff && SPINOFF_MARKER_RE.test(combinedTitleNorm)) {
+        total -= 42;
+      }
+      // Бонус для высокого рейтинга, если Shikimori сам выдал запись в топе по скрытому русскому синониму (напр. «Звёздное дитя» -> «Ребёнок идола»)
+      if (bestTitleScore === 0 && idx < 3 && numScore >= 7.0) {
+        total += 160 - idx * 30;
+      }
+
+      const isStrongMatch = Boolean(
+        (ruMatch.exact && (numScore >= 5.5 || ruMatch.score >= 1000)) ||
+        (ruMatch.prefix && numScore >= 5.5) ||
+        (synBest.exact && numScore >= 6.0)
+      );
+
+      return {
+        cand,
+        malId: Number(cand.malId || cand.id) || 0,
+        enQuery: String(cand.english || cand.name || '').trim(),
+        romajiQuery: String(cand.name || '').trim(),
+        ruTitle: String(cand.russian || '').trim(),
+        totalScore: total,
+        bestTitleScore,
+        numScore,
+        isStrongMatch,
+        idx
+      };
+    }).filter(Boolean);
+
+    scored.sort((a, b) => b.totalScore - a.totalScore || b.numScore - a.numScore || a.idx - b.idx);
+
+    const malIds = [];
+    const seenMal = new Set();
+    const enQueries = [];
+    const seenEn = new Set();
+    for (const row of scored) {
+      if (row.malId > 0 && !seenMal.has(row.malId)) {
+        seenMal.add(row.malId);
+        malIds.push(row.malId);
+      }
+      for (const qCandidate of [row.romajiQuery, row.enQuery]) {
+        const clean = String(qCandidate || '').trim();
+        const key = normalizeSearchText(clean);
+        if (clean && key && !seenEn.has(key)) {
+          seenEn.add(key);
+          enQueries.push(clean);
+        }
+      }
+    }
+
+    const hasStrongRuMatch = scored.some(r => r.isStrongMatch);
+    return {
+      ranked: scored.map(r => r.cand),
+      malIds: malIds.slice(0, 12),
+      enQueries: enQueries.slice(0, 5),
+      hasStrongRuMatch
+    };
+  }
+
+  function rankCatalogSearchResults(itemsList, rawQuery, resolvedMeta) {
+    const list = Array.isArray(itemsList) ? itemsList : [];
+    const normQ = normalizeSearchText(rawQuery);
+    if (!normQ || list.length <= 1) return list.slice();
+
+    const qTokens = tokenizeSearchText(normQ);
+    const qHasSpinoff = SPINOFF_MARKER_RE.test(normQ);
+    const meta = resolvedMeta && typeof resolvedMeta === 'object' ? resolvedMeta : {};
+    const malRankMap = new Map();
+    (Array.isArray(meta.malIds) ? meta.malIds : []).forEach((id, i) => {
+      const n = Number(id) || 0;
+      if (n > 0 && !malRankMap.has(n)) malRankMap.set(n, i);
+    });
+    const translatedNorm = normalizeSearchText(meta.translatedEn || '');
+    const translatedTokens = tokenizeSearchText(translatedNorm);
+    const enAltNorms = (Array.isArray(meta.enQueries) ? meta.enQueries : [])
+      .map(s => normalizeSearchText(s))
+      .filter(Boolean);
+
+    const scored = list.map((item, idx) => {
+      if (!item || typeof item !== 'object') return { item, score: -1e9, idx };
+      const titleM = scoreTitleAgainstQuery(item.title || '', normQ, qTokens);
+      const enM = scoreTitleAgainstQuery(item.en || '', normQ, qTokens);
+      const romM = scoreTitleAgainstQuery(item.romaji || '', normQ, qTokens);
+      const origM = scoreTitleAgainstQuery(item.orig || '', normQ, qTokens);
+      let altBest = 0;
+      if (item.alt) {
+        String(item.alt).split(',').forEach(part => {
+          const pm = scoreTitleAgainstQuery(part, normQ, qTokens);
+          if (pm.score > altBest) altBest = pm.score;
+        });
+      }
+
+      let directScore = Math.max(
+        titleM.score,
+        enM.score,
+        romM.score,
+        Math.round(origM.score * 0.9),
+        Math.round(altBest * 0.85)
+      );
+
+      // Совпадение по переведённому на английский запросу (для вебтунов / неофициальных русских названий)
+      let transScore = 0;
+      if (translatedNorm && translatedNorm !== normQ) {
+        const t1 = scoreTitleAgainstQuery(item.en || '', translatedNorm, translatedTokens);
+        const t2 = scoreTitleAgainstQuery(item.romaji || '', translatedNorm, translatedTokens);
+        const t3 = scoreTitleAgainstQuery(item.title || '', translatedNorm, translatedTokens);
+        let tAlt = 0;
+        if (item.alt) {
+          String(item.alt).split(',').forEach(part => {
+            const pm = scoreTitleAgainstQuery(part, translatedNorm, translatedTokens);
+            if (pm.score > tAlt) tAlt = pm.score;
+          });
+        }
+        transScore = Math.round(Math.max(t1.score, t2.score, t3.score, tAlt * 0.9) * 0.94);
+      }
+
+      let enHintScore = 0;
+      if (meta.hasStrongRuMatch && enAltNorms.length) {
+        const topHint = enAltNorms[0];
+        const topHintTokens = tokenizeSearchText(topHint);
+        const h1 = scoreTitleAgainstQuery(item.en || '', topHint, topHintTokens);
+        const h2 = scoreTitleAgainstQuery(item.romaji || '', topHint, topHintTokens);
+        enHintScore = Math.round(Math.max(h1.score, h2.score) * 0.82);
+      }
+
+      let malBonus = 0;
+      const itemMal = Number(item.mal) || 0;
+      if (itemMal > 0 && malRankMap.has(itemMal)) {
+        const pos = malRankMap.get(itemMal);
+        const baseMal = meta.hasStrongRuMatch ? 780 : 420;
+        malBonus = Math.max(120, baseMal - pos * 55);
+      }
+
+      // Совпадение по автору / студии
+      let creditScore = 0;
+      if (directScore === 0 && transScore === 0) {
+        const authNorm = normalizeSearchText(item.author || '');
+        const studNorm = normalizeSearchText(item.studio || '');
+        if ((authNorm && authNorm.includes(normQ)) || (studNorm && studNorm.includes(normQ))) {
+          creditScore = 260;
+        }
+      }
+
+      const extRating = parseFloat(item.ext) || 0;
+      const qualityBonus = extRating > 0 ? extRating * 16 : 0;
+      const posterBonus = item.poster ? 18 : 0;
+      const hasRuBonus = /[а-яё]/i.test(String(item.title || '')) ? 8 : 0;
+
+      let penalty = 0;
+      if (String(item.format || '').toUpperCase() === 'ONE_SHOT' && !qHasSpinoff) penalty += 40;
+      const titleBag = normalizeSearchText([item.title, item.en, item.romaji].filter(Boolean).join(' '));
+      if (!qHasSpinoff && SPINOFF_MARKER_RE.test(titleBag)) penalty += 38;
+
+      const baseMatch = Math.max(directScore, transScore, enHintScore, malBonus, creditScore);
+      const total = baseMatch + (malBonus > 0 && directScore > 0 ? 110 : 0) + qualityBonus + posterBonus + hasRuBonus - penalty;
+      return { item, score: total, idx };
+    });
+
+    scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
+    return scored.map(x => x.item);
+  }
+
+  function itemMatchesSearchText(item, rawQuery) {
+    const qRaw = String(rawQuery || '').trim();
+    if (!qRaw) return true;
+    if (!item || typeof item !== 'object') return false;
+    if (itemMatchesIdQuery(item, qRaw)) return true;
+
+    const rawLow = qRaw.toLowerCase();
+    const rawHay = [
+      item.title,
+      item.titleEn,
+      item.romaji,
+      item.titleOrig,
+      item.alt,
+      item.author,
+      item.studio,
+      item.source,
+      item.year,
+      Array.isArray(item.tags) ? item.tags.join(' ') : ''
+    ].filter(Boolean).join(' ').toLowerCase();
+    if (rawHay.includes(rawLow)) return true;
+
+    const normQ = normalizeSearchText(qRaw);
+    if (!normQ) return false;
+    const normHay = normalizeSearchText(rawHay);
+    if (normHay.includes(normQ)) return true;
+
+    const qTokens = tokenizeSearchText(normQ);
+    if (qTokens.length >= 2) {
+      return qTokens.every(tok => normHay.includes(tok));
+    }
+    return false;
+  }
+
+  const STRICT_ANILIST_TAG_KEYS = new Set([
+    'yuri', "girls' love", 'girls love', 'shoujo ai',
+    "boys' love", 'boys love', 'yaoi', 'shounen ai'
+  ]);
+  const DEMOGRAPHIC_ANILIST_TAG_KEYS = new Set([
+    'shounen', 'seinen', 'shoujo', 'josei', 'kids'
+  ]);
+
+  function getMinAniListTagRank(tagName) {
+    const key = String(tagName || '').trim().toLowerCase();
+    if (!key) return 65;
+    if (STRICT_ANILIST_TAG_KEYS.has(key)) return 75;
+    if (DEMOGRAPHIC_ANILIST_TAG_KEYS.has(key)) return 60;
+    return 65;
+  }
+
+  function mapAniListTagAlias(tagName) {
+    const raw = String(tagName || '').trim();
+    const low = raw.toLowerCase();
+    if (low === 'yuri' || low === "girls' love" || low === 'girls love' || low === 'shoujo ai') return 'Yuri';
+    if (low === 'yaoi' || low === "boys' love" || low === 'boys love' || low === 'shounen ai') return "Boys' Love";
+    if (low === 'harem') return 'Female Harem';
+    if (low === 'reverse harem') return 'Male Harem';
+    if (low === 'time travel') return 'Time Manipulation';
+    return raw;
+  }
+
+  function computeAniListQueryMinTagRank(includeTags, excludeTags) {
+    const all = [
+      ...(Array.isArray(includeTags) ? includeTags : []),
+      ...(Array.isArray(excludeTags) ? excludeTags : [])
+    ].filter(Boolean);
+    if (!all.length) return undefined;
+    let minRank = 100;
+    for (const tag of all) {
+      const r = getMinAniListTagRank(tag);
+      if (r < minRank) minRank = r;
+    }
+    return minRank;
+  }
+
+  function filterAniListTags(tagsArray, limit) {
+    if (!Array.isArray(tagsArray) || !tagsArray.length) return [];
+    const filtered = tagsArray
+      .filter(t => t && typeof t === 'object' && t.name && !t.isMediaSpoiler && (Number(t.rank) || 0) >= getMinAniListTagRank(t.name))
+      .sort((a, b) => (Number(b.rank) || 0) - (Number(a.rank) || 0));
+    const maxN = Number(limit);
+    return maxN > 0 ? filtered.slice(0, maxN) : filtered;
+  }
+
+  const EXPLICIT_YURI_TAG_KEYS = new Set([
+    'erotica', 'nudity', 'bondage', 'bdsm', 'femdom', 'scissoring', 'tribadism',
+    'cunnilingus', 'masturbation', 'exhibitionism', 'voyeur', 'netorare',
+    'human pet', 'prostitution', 'rape', 'ahegao', 'public sex', 'defloration'
+  ]);
+
+  function isShoujoAiKey(tagName) {
+    const low = String(tagName || '').trim().toLowerCase();
+    return low === 'shoujo ai' || low === "girls' love" || low === 'girls love' || low === 'сёдзё-ай' || low === 'сёдзе-ай';
+  }
+
+  function isExplicitYuriKey(tagName) {
+    const low = String(tagName || '').trim().toLowerCase();
+    return low === 'yuri' || low === 'юри';
+  }
+
+  // Разделение тайтлов с женской романтикой AniList на лёгкий «Сёдзё-ай» ('Shoujo Ai') и откровенный/этти/18+ «Юри» ('Yuri')
+  function classifyAniListYuriSubtype(mediaNode) {
+    if (!mediaNode || typeof mediaNode !== 'object') return null;
+    const genres = Array.isArray(mediaNode.genres)
+      ? mediaNode.genres.map(g => String(g || '').trim().toLowerCase())
+      : [];
+    const rawTags = Array.isArray(mediaNode.tags) ? mediaNode.tags : [];
+    const cleanTags = filterAniListTags(rawTags);
+    const hasYuriTag = cleanTags.some(t => {
+      const low = String(t.name || '').trim().toLowerCase();
+      return low === 'yuri' || low === "girls' love" || low === 'girls love' || low === 'shoujo ai';
+    });
+    const hasGirlsLoveGenre = genres.includes("girls' love") || genres.includes('girls love') || genres.includes('yuri') || genres.includes('shoujo ai');
+    if (!hasYuriTag && !hasGirlsLoveGenre) return null;
+
+    if (Boolean(mediaNode.isAdult) || genres.includes('hentai') || genres.includes('ecchi')) {
+      return 'Yuri';
+    }
+    const hasExplicitTag = rawTags.some(t => {
+      if (!t || typeof t !== 'object' || t.isMediaSpoiler) return false;
+      const low = String(t.name || '').trim().toLowerCase();
+      const rank = Number(t.rank) || 0;
+      return EXPLICIT_YURI_TAG_KEYS.has(low) && rank >= 60;
+    });
+    return hasExplicitTag ? 'Yuri' : 'Shoujo Ai';
+  }
+
+  // На Shikimori жанр «Yuri» (id 34/75) часто навешивается и на лёгкий сёдзё-ай (PG-13 вроде Bloom Into You / Citrus / YuruYuri).
+  // Отделяем откровенное/этти/18+ Юри (rx / r_plus / Hentai / Ecchi / Erotica) от лёгкого Сёдзё-ай.
+  function classifyShikimoriYuriSubtype(shikiNode) {
+    if (!shikiNode || typeof shikiNode !== 'object') return null;
+    const rawGenres = Array.isArray(shikiNode.genres)
+      ? shikiNode.genres.map(g => String((g && g.name) || g || '').trim().toLowerCase())
+      : (Array.isArray(shikiNode.rawGenres) ? shikiNode.rawGenres.map(g => String(g || '').trim().toLowerCase()) : []);
+    const hasGirlsLove = rawGenres.some(g => g === 'yuri' || g === "girls' love" || g === 'girls love' || g === 'shoujo ai');
+    if (!hasGirlsLove) return null;
+    const rating = String(shikiNode.rating || '').trim().toLowerCase();
+    const isExplicit = rating === 'rx' || rating === 'r_plus'
+      || rawGenres.includes('hentai')
+      || rawGenres.includes('ecchi')
+      || rawGenres.includes('erotica');
+    return isExplicit ? 'Yuri' : 'Shoujo Ai';
+  }
+
+  function getAniListYuriFilterMode(includeTags, excludeTags) {
+    const inc = Array.isArray(includeTags) ? includeTags : [];
+    const exc = Array.isArray(excludeTags) ? excludeTags : [];
+    return {
+      wantShoujoAi: inc.some(isShoujoAiKey),
+      wantExplicitYuri: inc.some(isExplicitYuriKey),
+      excludeShoujoAi: exc.some(isShoujoAiKey),
+      excludeExplicitYuri: exc.some(isExplicitYuriKey)
+    };
+  }
+
+  function matchesAniListYuriFilter(mediaNode, filterMode) {
+    if (!filterMode || typeof filterMode !== 'object') return true;
+    const { wantShoujoAi, wantExplicitYuri, excludeShoujoAi, excludeExplicitYuri } = filterMode;
+    if (!wantShoujoAi && !wantExplicitYuri && !excludeShoujoAi && !excludeExplicitYuri) return true;
+    const subtype = classifyAniListYuriSubtype(mediaNode);
+    if (wantShoujoAi && !wantExplicitYuri && subtype !== 'Shoujo Ai') return false;
+    if (wantExplicitYuri && !wantShoujoAi && subtype !== 'Yuri') return false;
+    if (wantShoujoAi && wantExplicitYuri && !subtype) return false;
+    if (excludeShoujoAi && subtype === 'Shoujo Ai') return false;
+    if (excludeExplicitYuri && subtype === 'Yuri') return false;
+    return true;
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -2110,6 +2826,11 @@
     applyStatusProgressTransition,
     setWatchedEps,
     stepWatchedEps,
+    computeCardProgressAction,
+    completeItemFromProgress,
+    restoreItemProgressSnapshot,
+    collectCollectionActiveFilters,
+    computeCardStaggerDelayMs,
     isShikimoriSuspiciousYaoiOnlyGenres,
     sanitizeSuspiciousShikiTags,
     extractCjkCore,
@@ -2142,6 +2863,7 @@
     decodeFirestoreRestDocument,
     isReadCategory,
     getStatusLabelForCategory,
+    getCollectionStatusLabels,
     normalizeExternalRatingInput,
     hydrateStrippedBase64FromIdb,
     preserveLocalUploadedPostersOnCloudMerge,
@@ -2149,7 +2871,21 @@
     resolveCatalogTagKey,
     buildCatalogHistorySnapshot,
     buildCollectionHistorySnapshot,
-    clearSearchForMetadataTransition
+    clearSearchForMetadataTransition,
+    normalizeSearchText,
+    tokenizeSearchText,
+    extractRuCacheMatches,
+    rankShikimoriRuCandidates,
+    rankCatalogSearchResults,
+    itemMatchesSearchText,
+    getMinAniListTagRank,
+    mapAniListTagAlias,
+    computeAniListQueryMinTagRank,
+    filterAniListTags,
+    classifyAniListYuriSubtype,
+    classifyShikimoriYuriSubtype,
+    getAniListYuriFilterMode,
+    matchesAniListYuriFilter
   };
 
   if (typeof module !== 'undefined' && module.exports) {

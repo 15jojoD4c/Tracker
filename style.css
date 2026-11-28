@@ -1122,7 +1122,6 @@ html[data-theme=white] .cloud-empty-notice p{color:#475569}
 @media(max-width:600px){
   html,body{overflow-x:hidden}
   #authScreen{margin:2vh 12px;padding:24px 16px}
-  #sizeSel{display:none}
   .nav-bar-wrap{display:none}
   .btn,.fb,.tb,.tab,select,input,.cat-dd-btn{min-height:38px}
   .row2{flex-direction:column}
@@ -1816,6 +1815,61 @@ html[data-theme=white] .data-sync-status.warn {
 html[data-theme=white] .data-sync-status.err {
   background: rgba(239, 68, 68, 0.12);
   color: #b91c1c;
+}
+
+/* Аккуратный спойлер «Диагностика для отладки» в окне «Данные и импорт» */
+.data-diag-spoiler {
+  margin-top: 6px;
+  border-top: 1px solid var(--bd);
+  padding-top: 10px;
+}
+
+.data-diag-spoiler > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--mu);
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+.data-diag-spoiler > summary::-webkit-details-marker {
+  display: none;
+}
+
+.data-diag-spoiler > summary::before {
+  content: "▸";
+  display: inline-block;
+  font-size: 11px;
+  transition: transform 0.18s ease;
+}
+
+.data-diag-spoiler[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.data-diag-spoiler > summary:hover {
+  color: var(--tx);
+}
+
+.data-diag-spoiler-body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--bd);
+  background: var(--inp);
+  animation: kirokuChipIn 0.16s ease-out both;
+}
+
+html[data-theme=white] .data-diag-spoiler > summary:hover {
+  color: #14161f;
 }
 
 @media (prefers-reduced-motion: reduce) {

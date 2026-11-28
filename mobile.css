@@ -93,10 +93,6 @@ header {
   min-height: 25px !important;
 }
 
-#sizeSel {
-  display: none !important;
-}
-
 .sync-lbl {
   display: none !important;
 }

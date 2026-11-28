@@ -23,12 +23,12 @@
 <link rel="icon" href="./favicon.ico" sizes="any">
 <!-- ВАЖНО: при обновлении версии кэша (?v=...) синхронно меняй и const APP_VER внизу index.html -->
 <style>html,body{background:#0a0b12;color:#f1f3f9;margin:0}html[data-theme=white],html[data-theme=white] body{background:#f4f6fb;color:#14161f}body.auth-checking > *{display:none!important}</style>
-<link rel="preload" href="./kiroku_engine.js?v=20261225" as="script">
-<link rel="preload" href="./app_core.js?v=20261225" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261225" as="script">
-<link rel="preload" href="./app.js?v=20261225" as="script">
-<link rel="stylesheet" href="./style.css?v=20261225">
-<link rel="stylesheet" href="./mobile.css?v=20261225" media="(max-width: 768px)">
+<link rel="preload" href="./kiroku_engine.js?v=20261226" as="script">
+<link rel="preload" href="./app_core.js?v=20261226" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261226" as="script">
+<link rel="preload" href="./app.js?v=20261226" as="script">
+<link rel="stylesheet" href="./style.css?v=20261226">
+<link rel="stylesheet" href="./mobile.css?v=20261226" media="(max-width: 768px)">
 </head>
 <body class="auth-checking">
 
@@ -60,12 +60,11 @@
 <div id="appScreen">
   <header>
     <div class="hdr-inner">
-      <div class="row"><span class="brand" aria-hidden="true">▶</span><span class="logo">Kirokucho</span><button id="aboutSiteBtn" class="hdr-info-btn" type="button" title="О сайте и связь с автором" aria-label="О сайте и связь с автором"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="16" x2="12" y2="11.5"/><circle cx="12" cy="8" r="0.8" fill="currentColor" stroke="none"/></svg></button><span id="syncState" class="sync">☁ Синхронизировано</span><span id="accountBadge" class="sync" style="display:none"></span></div>
+      <div class="row"><span class="brand" aria-hidden="true">▶</span><span class="logo">Kirokucho</span><span id="syncState" class="sync">☁ Синхронизировано</span><span id="accountBadge" class="sync" style="display:none"></span></div>
       <div class="row hdr-actions">
         <input type="file" id="universalImportFile" accept=".csv,.tsv,.txt,.json,.xml,.html,.htm,.xls" style="display:none" onchange="handleUniversalFileImport(event)">
         <input type="file" id="importFile" accept=".json" onchange="importData(event)">
         <input type="file" id="malXmlFile" accept=".xml,.json" onchange="importMalXml(event)">
-        <select id="sizeSel" title="Размер карточек"><option value="150">Карточки: мелкие</option><option value="190">Карточки: средние</option><option value="240">Карточки: крупные</option></select>
         <button class="btn" id="openModalBtn" type="button" aria-label="Добавить тайтл"><span class="add-btn-plus">+</span><span class="add-btn-lbl"> Добавить</span></button>
         <div class="acc">
           <button class="av" id="accBtn" title="Аккаунт и настройки" aria-haspopup="true"><img id="hdrAvatar" referrerpolicy="no-referrer" alt=""></button>
@@ -679,22 +678,29 @@
   <button class="btn btn-s" id="restoreSafetyBackupBtn" type="button" style="width:100%">🛟 Восстановить из локального кэша / страховочной копии</button>
   <button class="btn btn-s" id="cleanupAndEnrichBtn" type="button" style="width:100%">🧹 Навести порядок (дубликаты и обложки)</button>
 
-  <div class="fs">Облако и диагностика</div>
-  <div class="row2">
-    <button class="btn btn-s" id="manualCloudSyncBtn" type="button">⇄ Сверить с облаком</button>
-    <button class="btn btn-s" id="cloudDiagBtn" type="button">🩺 Проверка облака</button>
-  </div>
+  <div class="fs">Облако</div>
+  <button class="btn btn-s" id="manualCloudSyncBtn" type="button" style="width:100%">⇄ Сверить с облаком</button>
   <div id="cloudSyncStatusBox" class="data-sync-status" style="display:none" role="status" aria-live="polite"></div>
-  <div id="cloudDiagResultBox" style="display:none;margin-top:8px;max-height:260px;overflow-y:auto;background:rgba(0,0,0,.3);border:1px solid var(--bd);border-radius:12px;padding:10px"></div>
+
+  <details id="cloudDiagSpoiler" class="data-diag-spoiler">
+    <summary>Диагностика для отладки</summary>
+    <div class="data-diag-spoiler-body">
+      <div class="meta" style="margin:0;line-height:1.4">Нужна, только если возникли проблемы с синхронизацией или доступом к облаку.</div>
+      <button class="btn btn-s" id="cloudDiagBtn" type="button" style="width:100%">🩺 Проверка облака</button>
+      <div id="cloudDiagResultBox" style="display:none;margin-top:4px;max-height:260px;overflow-y:auto;background:rgba(0,0,0,.3);border:1px solid var(--bd);border-radius:12px;padding:10px"></div>
+    </div>
+  </details>
 </div></div>
 
-<!-- Модальное окно: Оформление, темы и цвета (сохранены id accSw, accTh, accReset) -->
+<!-- Модальное окно: Оформление, темы и цвета (сохранены id accSw, accTh, accReset, sizeSel) -->
 <div id="themeModal" class="modal"><div class="mc" style="max-width:480px">
   <div class="row" style="justify-content:space-between"><h2 style="margin:0">🎨 Оформление сайта</h2><button class="btn btn-s" id="closeThemeModalBtn" type="button">✕</button></div>
   <div class="fs">Цвет акцента</div>
   <div class="sw" id="accSw" title="Цвет оформления" style="padding:4px 0"></div>
   <div class="fs">Тема оформления</div>
   <div class="th" id="accTh" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+  <div class="fs">Размер карточек</div>
+  <select id="sizeSel" title="Размер карточек" style="width:100%"><option value="150">Мелкие карточки</option><option value="190">Средние карточки</option><option value="240">Крупные карточки</option></select>
   <div class="mb" style="justify-content:space-between;margin-top:12px">
     <button class="btn btn-s" id="accReset" type="button">↺ Сбросить оформление</button>
     <button class="btn" id="doneThemeModalBtn" type="button">Готово</button>
@@ -826,7 +832,7 @@ const importWithTimeout = (url, ms = 7000) => new Promise((resolve, reject) => {
 });
 
 // ВАЖНО: должна совпадать с параметром ?v=... в <head> выше
-const APP_VER = "20261225";
+const APP_VER = "20261226";
 const FIREBASE_SDK_URLS = [
   "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
   "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",

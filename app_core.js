@@ -1192,6 +1192,7 @@ let cloudQuotaBlockedUntil = 0;
 let _quotaToastShown = false;
 let _cloudBannerDismissedKey = '';
 let _activeCloudSessionUid = '';
+let _activatingCloudSessionUid = '';
 let _cloudSyncInFlight = null;
 let _colRevBumpTimer = 0;
 
@@ -1277,6 +1278,19 @@ function removePendingDeletes(docIds, forUid) {
   setPendingDeletes(getPendingDeletes(forUid).filter(id => !rm.has(String(id))), forUid);
 }
 
+async function hydratePendingDeletesFromIdb(forUid) {
+  const uid = forUid || (user && user.uid) || '';
+  if (!uid || uid === 'local_user') return [];
+  try {
+    const idbList = await idbVault.get(getPendingDeletesKey(uid));
+    if (Array.isArray(idbList) && idbList.length) {
+      const merged = setPendingDeletes([...getPendingDeletes(uid), ...idbList], uid);
+      return merged;
+    }
+  } catch (e) {}
+  return getPendingDeletes(uid);
+}
+
 function getCloudSyncMetaKey(forUid) {
   return 'cloudSyncMeta_' + (forUid || (user && user.uid) || 'anon');
 }
@@ -1353,11 +1367,25 @@ const updateAccountBadge = () => {
 };
 
 function getUnsyncedPendingCounts() {
+  const isCloud = Boolean(user && !user.isLocal);
   const dirtyItems = items.filter(x => x && x.dirty).length;
-  const pendingDeletes = (user && !user.isLocal) ? getPendingDeletes(user.uid).length : 0;
+  const pendingDeletes = isCloud ? getPendingDeletes(user.uid).length : 0;
   let dirtyProf = false;
-  try { dirtyProf = Boolean(user && !user.isLocal && localStorage.getItem('profDirty_' + user.uid) === '1'); } catch (e) {}
-  return { dirtyItems, pendingDeletes, dirtyProf, total: dirtyItems + pendingDeletes + (dirtyProf ? 1 : 0) };
+  let dirtyChunks = false;
+  try {
+    dirtyProf = Boolean(isCloud && localStorage.getItem('profDirty_' + user.uid) === '1');
+    dirtyChunks = Boolean(isCloud && localStorage.getItem('colChunksDirty_' + user.uid) === '1');
+  } catch (e) {}
+  const uiSyncPending = Boolean(isCloud && typeof hasPendingUiProfileSync === 'function' && hasPendingUiProfileSync());
+  const effDirtyProf = Boolean(dirtyProf || uiSyncPending);
+  const extraChunkMarker = (dirtyChunks && dirtyItems === 0 && pendingDeletes === 0) ? 1 : 0;
+  return {
+    dirtyItems,
+    pendingDeletes,
+    dirtyProf: effDirtyProf,
+    dirtyChunks,
+    total: dirtyItems + pendingDeletes + (effDirtyProf ? 1 : 0) + extraChunkMarker
+  };
 }
 
 function renderCloudStatusBanner() {
@@ -1381,7 +1409,7 @@ function renderCloudStatusBanner() {
 
   const isAuthOrInitialLoading = Boolean(
     !user.isLocal
-    && (isInitialCloudLoading || (!_authStateResolved && !window.__FIREBASE_OFFLINE_FALLBACK && navigator.onLine && !cloudAccessError && !isCloudQuotaBlocked() && !isInitialCloudSyncBlocked(user.uid)))
+    && (isInitialCloudLoading || ((!_authStateResolved || _activatingCloudSessionUid === user.uid) && !window.__FIREBASE_OFFLINE_FALLBACK && navigator.onLine && !cloudAccessError && !isCloudQuotaBlocked() && !isInitialCloudSyncBlocked(user.uid)))
   );
 
   if (user.isLocal) {
@@ -1528,7 +1556,7 @@ const setSync = () => {
     };
     const isAuthOrInitialLoading = Boolean(
       user && !user.isLocal
-      && (isInitialCloudLoading || (!_authStateResolved && !window.__FIREBASE_OFFLINE_FALLBACK && navigator.onLine && !cloudAccessError && !isCloudQuotaBlocked() && !isInitialCloudSyncBlocked(user.uid)))
+      && (isInitialCloudLoading || ((!_authStateResolved || _activatingCloudSessionUid === user.uid) && !window.__FIREBASE_OFFLINE_FALLBACK && navigator.onLine && !cloudAccessError && !isCloudQuotaBlocked() && !isInitialCloudSyncBlocked(user.uid)))
     );
     if (user && user.isLocal) {
       renderSyncLabel('sync warn clickable', '💻', 'Локально (только браузер)', 'Данные хранятся только в этом браузере. Нажми для подробностей');
@@ -1874,7 +1902,84 @@ const track = (p, timeoutMs = CLOUD_OP_TIMEOUT_MS) => {
     setSync();
   });
 };
-function triggerInitialCloudSyncResume(reason) {
+let _lastHiddenAt = 0;
+let _resumeReconcileInFlight = false;
+
+async function reconcileAndFlushCloudOnResume(effUid, sessionToken, reason, hiddenDurationMs = 0) {
+  if (_resumeReconcileInFlight) return;
+  if (!user || user.isLocal || !effUid || !navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK || isCloudQuotaBlocked() || !auth.currentUser) return;
+  if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
+
+  const pendingCounts = getUnsyncedPendingCounts();
+  const hasPendingChanges = pendingCounts.total > 0;
+  const plan = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.shouldReconcileBeforeCloudFlush === 'function')
+    ? KirokuEngine.shouldReconcileBeforeCloudFlush({
+        hasPendingChanges,
+        isOnline: navigator.onLine,
+        isCloudBlocked: Boolean(window.__FIREBASE_OFFLINE_FALLBACK || isCloudQuotaBlocked()),
+        reason,
+        hiddenDurationMs
+      })
+    : { action: hasPendingChanges ? 'reconcile_then_flush' : 'none' };
+
+  if (!plan || plan.action === 'none') return;
+
+  _resumeReconcileInFlight = true;
+  try {
+    if (cloudAccessError === 'timeout' || cloudAccessError === 'unavailable') {
+      await resetFirestoreNetworkTransport();
+      if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
+    }
+    if (!unsub && _activeCloudSessionUid === effUid) {
+      attachCloudProfileListener(effUid, sessionToken, isInitialCloudSyncDone(effUid));
+    }
+
+    if (cloudAccessError && typeof window.forceCloudSyncNow === 'function') {
+      await window.forceCloudSyncNow(false);
+      return;
+    }
+
+    if (plan.action === 'flush_only') {
+      await flushPendingCloudChanges(false);
+      return;
+    }
+
+    // Проверяем серверный colRev в prof_{uid} ДО отправки локальных чанков, чтобы не перезатереть правки с другого устройства!
+    let remoteNewerFromOtherDevice = false;
+    try {
+      const pSnap = await readDocResilient(doc(db, 'items', 'prof_' + effUid), true, CLOUD_READ_SDK_TIMEOUT_MS);
+      if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
+      if (pSnap && pSnap.exists() && !pSnap.metadata?.fromCache) {
+        clearCloudErrorState(effUid);
+        const pd = pSnap.data();
+        const localSyncMeta = getCloudSyncMeta(effUid);
+        const localRev = Number(localSyncMeta.colRev || prof.colRev || 0);
+        const remoteRev = Number(pd.colRev || 0);
+        const remoteWriter = String(pd.colChunkWriter || '');
+        applyServerProfileDocToLocal(effUid, pd, false);
+        if (remoteRev > localRev && remoteWriter !== SESSION_WRITER_ID) {
+          remoteNewerFromOtherDevice = true;
+        }
+      }
+    } catch (probeErr) {
+      // Если сервер недоступен при проверке — не рискуем затирать удалённую коллекцию вслепую
+      handleCloudError(probeErr, true);
+      return;
+    }
+
+    if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
+    if (remoteNewerFromOtherDevice) {
+      // syncItemsFromCloud сам объединит удалённые правки с локальными dirty/pendingDeletes и отправит результат в облако!
+      await syncItemsFromCloud(effUid, true);
+    } else if (plan.action === 'reconcile_then_flush') {
+      await flushPendingCloudChanges(false);
+    }
+  } finally {
+    _resumeReconcileInFlight = false;
+  }
+}
+
+function triggerInitialCloudSyncResume(reason, hiddenDurationMs = 0) {
   if (window.__FIREBASE_OFFLINE_FALLBACK) {
     if (reason === 'online' && typeof window.retryFirebaseBootstrap === 'function') {
       setTimeout(() => {
@@ -1902,40 +2007,34 @@ function triggerInitialCloudSyncResume(reason) {
     return;
   }
 
-  if (reason === 'online') {
-    setTimeout(async () => {
-      if (!user || user.isLocal || isCloudQuotaBlocked() || !auth.currentUser || sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
-      if (cloudAccessError === 'timeout' || cloudAccessError === 'unavailable') {
-        await resetFirestoreNetworkTransport();
-      }
-      if (!unsub && _activeCloudSessionUid === effUid) {
-        attachCloudProfileListener(effUid, sessionToken);
-      }
-      if (cloudAccessError && typeof window.forceCloudSyncNow === 'function') {
-        window.forceCloudSyncNow(false);
-      } else if (typeof flushPendingCloudChanges === 'function') {
-        flushPendingCloudChanges(false);
-      }
-    }, 600);
-  }
+  const delayMs = reason === 'online' ? 500 : 250;
+  setTimeout(() => {
+    reconcileAndFlushCloudOnResume(effUid, sessionToken, reason, hiddenDurationMs);
+  }, delayMs);
 }
 
 addEventListener('online', () => {
   setSync();
   if (user && !user.isLocal && items.length === 0) render();
-  triggerInitialCloudSyncResume('online');
+  triggerInitialCloudSyncResume('online', 0);
 });
 addEventListener('offline', () => {
   setSync();
   if (user && !user.isLocal && items.length === 0) render();
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    triggerInitialCloudSyncResume('visible');
+  if (document.visibilityState === 'hidden') {
+    _lastHiddenAt = Date.now();
+  } else if (document.visibilityState === 'visible') {
+    const hiddenMs = _lastHiddenAt > 0 ? Math.max(0, Date.now() - _lastHiddenAt) : 0;
+    _lastHiddenAt = 0;
+    triggerInitialCloudSyncResume('visible', hiddenMs);
   }
 });
 addEventListener('pageshow', () => {
-  triggerInitialCloudSyncResume('pageshow');
+  const hiddenMs = _lastHiddenAt > 0 ? Math.max(0, Date.now() - _lastHiddenAt) : 0;
+  _lastHiddenAt = 0;
+  triggerInitialCloudSyncResume('pageshow', hiddenMs);
 });
 
 // Гарантируем, что ID документа тайтла никогда не начинается с зарезервированных префиксов prof_, wall_, rec_, bans_, fr_, dm_
@@ -2156,11 +2255,18 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
     return false;
   }
 
+  const packSnapshot = itemsArr.slice();
+  const committedIds = new Set();
   const committedTsMap = new Map();
-  itemsArr.forEach(it => {
-    if (it && it.id != null) committedTsMap.set(String(it.id), Number(it.updatedAt || 0));
+  const committedPendingDeletes = getPendingDeletes(uid);
+  packSnapshot.forEach(it => {
+    if (it && it.id != null) {
+      const k = String(it.id);
+      committedIds.add(k);
+      committedTsMap.set(k, Number(it.updatedAt || 0));
+    }
   });
-  const chunks = KirokuEngine.packCollectionChunks(itemsArr);
+  const chunks = KirokuEngine.packCollectionChunks(packSnapshot);
   const prevCount = Math.max(0, Number(prof.colChunkCount || 0));
   const revVal = Date.now();
   try {
@@ -2196,7 +2302,7 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
       colChunkRev: revVal,
       colChunkWriter: SESSION_WRITER_ID,
       colRev: revVal,
-      colCount: itemsArr.length,
+      colCount: packSnapshot.length,
       schemaMigratedV4: true
     });
     const profMetaBytes = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.utf8ByteLength === 'function')
@@ -2268,11 +2374,11 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
     prof.colChunkRev = revVal;
     prof.colChunkWriter = SESSION_WRITER_ID;
     prof.colRev = revVal;
-    prof.colCount = itemsArr.length;
+    prof.colCount = packSnapshot.length;
     prof.schemaMigratedV4 = true;
     setCloudSyncMeta({
       colRev: revVal,
-      colCount: itemsArr.length,
+      colCount: packSnapshot.length,
       lastFullSyncAt: Date.now(),
       schemaMigratedV4: true
     }, uid);
@@ -2281,23 +2387,43 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
       try { localStorage.removeItem('profDirty_' + uid); } catch (e) {}
       _lastSavedProfJson = JSON.stringify({ ...effectiveExtraProf, lastVisit: 0, colRev: 0, colCount: 0 });
     }
+    if (committedPendingDeletes.length) {
+      removePendingDeletes(committedPendingDeletes, uid);
+    }
     let hasStillDirty = false;
-    itemsArr.forEach(it => {
-      if (!it || !it.dirty) return;
-      const committedTs = committedTsMap.get(String(it.id));
-      const canClear = (typeof KirokuEngine !== 'undefined' && KirokuEngine.shouldClearDirtyAfterCommit)
-        ? KirokuEngine.shouldClearDirtyAfterCommit(it.updatedAt, committedTs)
-        : Number(it.updatedAt || 0) === Number(committedTs || 0);
-      if (canClear) delete it.dirty;
-      else hasStillDirty = true;
-    });
+    const clearDirtyForList = targetList => {
+      targetList.forEach(it => {
+        if (!it || !it.dirty) return;
+        const committedTs = committedTsMap.get(String(it.id));
+        const canClear = (typeof KirokuEngine !== 'undefined' && KirokuEngine.shouldClearDirtyAfterCommit)
+          ? KirokuEngine.shouldClearDirtyAfterCommit(it.updatedAt, committedTs)
+          : Number(it.updatedAt || 0) === Number(committedTs || 0);
+        if (canClear) delete it.dirty;
+        else hasStillDirty = true;
+      });
+    };
+    clearDirtyForList(packSnapshot);
+    if (items !== packSnapshot) clearDirtyForList(items);
+
+    const livePendingDeletesNow = getPendingDeletes(uid);
+    const hasMidFlightMutations = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.hasUncommittedCollectionMutations === 'function')
+      ? KirokuEngine.hasUncommittedCollectionMutations({
+          committedIds,
+          committedTsMap,
+          liveItems: items,
+          livePendingDeletes: livePendingDeletesNow,
+          committedPendingDeletes
+        })
+      : (hasStillDirty || livePendingDeletesNow.length > 0);
+    if (hasMidFlightMutations) hasStillDirty = true;
+
     if (hasStillDirty) {
       try { localStorage.setItem('colChunksDirty_' + uid, '1'); } catch (e) {}
     } else {
       try { localStorage.removeItem('colChunksDirty_' + uid); } catch (e) {}
     }
     profSaveLocal(true);
-    flushLocalItemsNow(itemsArr.length === 0 && explicitEmptyAllowed);
+    flushLocalItemsNow(items.length === 0 && explicitEmptyAllowed);
     setSync();
     if (hasStillDirty && !isCloudWriteBlocked()) {
       setTimeout(() => {
@@ -2327,12 +2453,14 @@ async function loadCollectionChunksFromCloud(uid, chunkCount, forceServer = fals
   const prefetched = opts.prefetchedChunks instanceof Map ? opts.prefetchedChunks : null;
   const readOpts = { fastRest: Boolean(opts.fastRest), token: opts.token || '' };
   const fetchAll = async (useServer, allowPrefetched) => {
+    let usedPrefetched = false;
     const snaps = await Promise.all(
       Array.from({ length: cnt }, (_, idx) => {
         const docId = `prof_col_${uid}_${idx}`;
         if (allowPrefetched && prefetched && prefetched.has(docId)) {
           const cachedSnap = prefetched.get(docId);
           if (cachedSnap && cachedSnap.exists() && (!useServer || !cachedSnap.metadata?.fromCache)) {
+            usedPrefetched = true;
             return Promise.resolve(cachedSnap);
           }
         }
@@ -2343,13 +2471,27 @@ async function loadCollectionChunksFromCloud(uid, chunkCount, forceServer = fals
     const anyFromCache = snaps.some(s => Boolean(s?.metadata?.fromCache));
     const check = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.validateLoadedChunks === 'function')
       ? KirokuEngine.validateLoadedChunks(docs, cnt)
-      : { valid: docs.length === cnt, missingIndices: [] };
-    return { docs, anyFromCache, valid: check.valid };
+      : { valid: docs.length === cnt, missingIndices: [], revMismatch: false };
+    return { docs, anyFromCache, usedPrefetched, valid: check.valid, revMismatch: Boolean(check.revMismatch) };
   };
 
   let res = await fetchAll(Boolean(forceServer), true);
-  if ((!res.valid || (forceServer && res.anyFromCache)) && !forceServer && navigator.onLine) {
-    // Если кэш/обычный getDoc вернул неполный набор чанков — дочитываем строго с сервера
+  const retryPlan = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.shouldRetryChunkLoadFromServer === 'function')
+    ? KirokuEngine.shouldRetryChunkLoadFromServer({
+        valid: res.valid,
+        anyFromCache: res.anyFromCache,
+        usedPrefetched: res.usedPrefetched,
+        revMismatch: res.revMismatch,
+        isOnline: navigator.onLine,
+        alreadyRetried: false
+      })
+    : { shouldRetry: (!res.valid || res.anyFromCache) && navigator.onLine, delayMs: res.revMismatch ? 450 : 0 };
+
+  if (retryPlan.shouldRetry) {
+    if (retryPlan.delayMs > 0) {
+      await new Promise(r => setTimeout(r, retryPlan.delayMs));
+    }
+    // Если кэш/предзагрузка/гонка записи вернули неполный или рассогласованный набор чанков — дочитываем строго с сервера
     res = await fetchAll(true, false);
   }
   if (!res.valid || !res.docs.length) return null;
@@ -2518,11 +2660,17 @@ const cloudSave = it => {
   }
   if (isCloudWriteBlocked()) {
     it.dirty = true;
+    if (isChunkStorageEnabled()) {
+      try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
+    }
     saveLocalItems();
     setSync();
     return Promise.resolve();
   }
   it.dirty = true;
+  if (isChunkStorageEnabled()) {
+    try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
+  }
   saveLocalItems();
 
   // Компактное чанковое сохранение: вместо 1 записи на каждый тайтл и шторма чтений — 1 сжатая запись с дебаунсом 1.8 сек
@@ -2911,6 +3059,14 @@ async function syncItemsFromCloud(effUid, force = false, syncOpts = {}) {
         }
         if (!snapFromCache) clearCloudErrorState(effUid);
 
+        // Если прямой запрос prof_{uid} ранее не прошёл, восстанавливаем профиль прямо из ответа userId==effUid
+        const recoveredProfDoc = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.extractProfileDocFromCloudDocs === 'function')
+          ? KirokuEngine.extractProfileDocFromCloudDocs(docsList, effUid)
+          : null;
+        if (recoveredProfDoc && (!_cloudProfLoaded || (!snapFromCache && Number(recoveredProfDoc.colRev || 0) > Number(prof.colRev || 0)))) {
+          applyServerProfileDocToLocal(effUid, recoveredProfDoc, snapFromCache);
+        }
+
         // Если в ответе userId==effUid уже есть чанки prof_col_*, распаковываем их только если набор чанков полный!
         const discoveredChunks = docsList
           .filter(d => d.id.startsWith(`prof_col_${effUid}_`) || Boolean(d.data()?.isColChunk))
@@ -2947,6 +3103,9 @@ async function syncItemsFromCloud(effUid, force = false, syncOpts = {}) {
             : unpackedFromFallback;
           ownList = deduplicateListByIdAndCleanupCloud(filteredFromFallback, false);
           loadedFromChunks = true;
+          prof.colStorageV2 = true;
+          prof.colChunkCount = Math.max(Number(prof.colChunkCount || 0), expectedChunks);
+          profSaveLocal(true);
         } else if (extractedLegacyDocs.length > 0) {
           ownList = extractedLegacyDocs;
         } else if (prof.colStorageV2 && Number(prof.colChunkCount || 0) > 0 && isChunkStorageEnabled()) {
@@ -2989,16 +3148,28 @@ async function syncItemsFromCloud(effUid, force = false, syncOpts = {}) {
         try { localStorage.setItem('cloudHadSynced_' + effUid, '1'); } catch (e) {}
       }
 
-      // Объединяем несинхронизированные локальные правки (dirty: true), чтобы они не потерялись при загрузке с сервера
+      // Умное объединение несинхронизированных локальных правок (dirty: true) с облаком по updatedAt и дополняющим полям
       const dirtyLocalItems = items.filter(x => x && x.dirty);
-      dirtyLocalItems.forEach(dIt => {
-        const oIdx = ownList.findIndex(o => String(o.id) === String(dIt.id));
-        if (oIdx > -1) {
-          if ((dIt.updatedAt || 0) >= (ownList[oIdx].updatedAt || 0)) ownList[oIdx] = dIt;
+      let dirtyMergedNeedsPush = dirtyLocalItems.length;
+      if (dirtyLocalItems.length) {
+        if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.mergeCloudListWithDirtyLocal === 'function') {
+          const mergeRes = KirokuEngine.mergeCloudListWithDirtyLocal(ownList, items);
+          ownList = mergeRes.items.map(fix);
+          dirtyMergedNeedsPush = mergeRes.dirtyStillPendingCount;
         } else {
-          ownList.push(dIt);
+          dirtyLocalItems.forEach(dIt => {
+            const oIdx = ownList.findIndex(o => String(o.id) === String(dIt.id));
+            if (oIdx > -1) {
+              if ((dIt.updatedAt || 0) >= (ownList[oIdx].updatedAt || 0)) ownList[oIdx] = dIt;
+            } else {
+              ownList.push(dIt);
+            }
+          });
         }
-      });
+        if (dirtyMergedNeedsPush > 0 && isChunkStorageEnabled()) {
+          try { localStorage.setItem('colChunksDirty_' + effUid, '1'); } catch (e) {}
+        }
+      }
 
       // Сохраняем локально загруженные base64-обложки, если облачный документ пришёл без постера и не новее локального
       if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.preserveLocalUploadedPostersOnCloudMerge === 'function' && items.length > 0) {
@@ -3047,7 +3218,7 @@ async function syncItemsFromCloud(effUid, force = false, syncOpts = {}) {
         const extraProfPayload = hasDirtyProf ? buildCleanProfPayloadForCloud(effUid, false) : null;
         const packedOk = await runSerializedChunkWrite(effUid, items, { silent: true, extraProfPayload }).catch(() => false);
         if (packedOk && pendingDeletesArr.length) removePendingDeletes(pendingDeletesArr, effUid);
-      } else if (dirtyLocalItems.length || pendingDeletesArr.length || hasDirtyChunks || hasDirtyProf) {
+      } else if (dirtyMergedNeedsPush > 0 || pendingDeletesArr.length || hasDirtyChunks || hasDirtyProf) {
         await flushPendingCloudChanges(false);
       }
 
@@ -3290,6 +3461,7 @@ async function hydrateLocalSessionView(uObj) {
     $('profName').textContent = prof.name || defaultName;
     $('avatar').src = prof.avatar || uObj.photoURL || FALL;
 
+    await hydratePendingDeletesFromIdb(effUid);
     let cachedLocal = await loadLocalItemsAsync(effUid);
     if (!cachedLocal.length && !isExplicitEmptyDeletePending(effUid)) {
       const sb = await idbVault.get('safetyBackup_' + effUid);
@@ -3368,6 +3540,8 @@ function applyServerProfileDocToLocal(effUid, pd, isFromCache = false) {
   profSaveLocal(true);
   if (restoredVisuals && !isCloudWriteBlocked() && !isFromCache) profCloud();
   profPaint();
+  if (typeof refreshLists === 'function') refreshLists();
+  if (typeof renderMyListsFolderBlock === 'function') renderMyListsFolderBlock();
 }
 
 async function forcePullProfileAndCollectionFromServer(effUid, sessionToken) {
@@ -3429,8 +3603,9 @@ async function forcePullProfileAndCollectionFromServer(effUid, sessionToken) {
   const syncedOk = await syncItemsFromCloud(effUid, true, { prefetchedChunks, token: cachedToken, fastRest: isColdEmpty });
   if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return false;
   if (!syncedOk || !isInitialCloudSyncDone(effUid) || isInitialCloudSyncBlocked(effUid)) return false;
+  const profConfirmedFromServer = Boolean(serverProfReadOk || (_cloudProfLoaded && !cloudAccessError));
   // Если после ответа с сервера коллекция пуста, но профиль не прочитался с сервера или ожидает документы — не подтверждаем пустую коллекцию!
-  if (items.length === 0 && (!serverProfReadOk || Number(prof.colCount || 0) > 0 || Number(prof.colChunkCount || 0) > 0)) {
+  if (items.length === 0 && (!profConfirmedFromServer || Number(prof.colCount || 0) > 0 || Number(prof.colChunkCount || 0) > 0)) {
     if (_initialCloudSyncDoneUid === effUid) _initialCloudSyncDoneUid = '';
     markInitialCloudSyncBlocked(effUid);
     return false;
@@ -3740,7 +3915,15 @@ function attachCloudProfileListener(effUid, sessionToken, alreadyForceSynced = f
 async function activateCloudUserSession(uObj) {
   const effUid = uObj?.uid;
   if (!effUid) return;
-  if (_activeCloudSessionUid === effUid && unsub) {
+  const reuseActive = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.shouldReuseActiveCloudSession === 'function')
+    ? KirokuEngine.shouldReuseActiveCloudSession({
+        activeUid: _activeCloudSessionUid,
+        activatingUid: _activatingCloudSessionUid,
+        incomingUid: effUid,
+        hasListener: Boolean(unsub)
+      })
+    : (_activeCloudSessionUid === effUid && (Boolean(unsub) || _activatingCloudSessionUid === effUid));
+  if (reuseActive) {
     user = uObj;
     setSync();
     return;
@@ -3748,6 +3931,7 @@ async function activateCloudUserSession(uObj) {
   const myToken = ++_cloudSessionToken;
   if (unsub) { unsub(); unsub = null; }
   _activeCloudSessionUid = effUid;
+  _activatingCloudSessionUid = effUid;
   if (typeof resetSessionMemoryState === 'function') resetSessionMemoryState();
   _cloudProfLoaded = false;
 
@@ -3760,41 +3944,59 @@ async function activateCloudUserSession(uObj) {
   } catch (e) {}
   profTried = false;
 
-  await hydrateLocalSessionView(uObj);
-  // Защита от гонки и утечки слушателей после async-разрыва hydrateLocalSessionView
-  if (myToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
+  try {
+    // На чистом старте заранее ставим спокойное состояние загрузки до hydrateLocalSessionView, чтобы не мигал ложный красный экран ошибки
+    if (navigator.onLine && !window.__FIREBASE_OFFLINE_FALLBACK && !isCloudQuotaBlocked()) {
+      isInitialCloudLoading = true;
+    }
 
-  // При активном кулдауне квоты Firebase НЕ открываем onSnapshot и не делаем облачных чтений — остаёмся на локальном кэше и ждём окончания паузы
-  if (isCloudQuotaBlocked()) {
-    markInitialCloudSyncBlocked(effUid);
-    scheduleInitialCloudLoadRetry(effUid, myToken);
-    setSync();
-    if (items.length === 0) render();
-    return;
-  }
-
-  if (window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine) {
-    markInitialCloudSyncBlocked(effUid);
-    setSync();
-    if (items.length === 0) render();
-    return;
-  }
-
-  let initialForceSynced = false;
-  if (items.length === 0 && navigator.onLine) {
-    _initialCloudRetryCount = 0;
-    _cloudEmptyNoticeDismissed = false;
-    initialForceSynced = await runInitialCloudSyncAttempt(effUid, myToken, { showLoadingIfEmpty: true });
+    await hydrateLocalSessionView(uObj);
+    // Защита от гонки и утечки слушателей после async-разрыва hydrateLocalSessionView
     if (myToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
-  }
 
-  if (!unsub) {
-    attachCloudProfileListener(effUid, myToken, initialForceSynced);
-  }
+    if (items.length > 0 && isInitialCloudLoading) {
+      isInitialCloudLoading = false;
+      setSync();
+    }
 
-  // Даже если локальная копия не пустая, страхуем первичную синхронизацию фоновым повтором на случай подвисшего onSnapshot на мобильном
-  if (needsInitialCloudSync(effUid) && !_initialCloudRetryTimer && !_initialCloudAttemptInFlight) {
-    scheduleInitialCloudLoadRetry(effUid, myToken);
+    // При активном кулдауне квоты Firebase НЕ открываем onSnapshot и не делаем облачных чтений — остаёмся на локальном кэше и ждём окончания паузы
+    if (isCloudQuotaBlocked()) {
+      isInitialCloudLoading = false;
+      markInitialCloudSyncBlocked(effUid);
+      scheduleInitialCloudLoadRetry(effUid, myToken);
+      setSync();
+      if (items.length === 0) render();
+      return;
+    }
+
+    if (window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine) {
+      isInitialCloudLoading = false;
+      markInitialCloudSyncBlocked(effUid);
+      setSync();
+      if (items.length === 0) render();
+      return;
+    }
+
+    let initialForceSynced = false;
+    if (items.length === 0 && navigator.onLine) {
+      _initialCloudRetryCount = 0;
+      _cloudEmptyNoticeDismissed = false;
+      initialForceSynced = await runInitialCloudSyncAttempt(effUid, myToken, { showLoadingIfEmpty: true });
+      if (myToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
+    }
+
+    if (!unsub) {
+      attachCloudProfileListener(effUid, myToken, initialForceSynced);
+    }
+
+    // Даже если локальная копия не пустая, страхуем первичную синхронизацию фоновым повтором на случай подвисшего onSnapshot на мобильном
+    if (needsInitialCloudSync(effUid) && !_initialCloudRetryTimer && !_initialCloudAttemptInFlight) {
+      scheduleInitialCloudLoadRetry(effUid, myToken);
+    }
+  } finally {
+    if (myToken === _cloudSessionToken && _activatingCloudSessionUid === effUid) {
+      _activatingCloudSessionUid = '';
+    }
   }
 }
 
@@ -3909,6 +4111,7 @@ $('logoutBtn').onclick = async () => {
   _cloudSessionToken++;
   if (unsub) { unsub(); unsub = null; }
   _activeCloudSessionUid = '';
+  _activatingCloudSessionUid = '';
   _hydratedLocalUid = '';
   _hydrateLocalPromise = null;
   clearCloudErrorState();
@@ -3962,6 +4165,7 @@ window.startApp = function startApp() {
     _cloudSessionToken++;
     if (unsub) { unsub(); unsub = null; }
     _activeCloudSessionUid = '';
+    _activatingCloudSessionUid = '';
     _hydratedLocalUid = '';
     _hydrateLocalPromise = null;
     resetSessionMemoryState();
@@ -5068,9 +5272,13 @@ function render(appendMore = false) {
   const moreBtn = $('colLoadMoreBtn');
   if (moreBtn) moreBtn.style.display = 'none';
 
-  if (!loaded) return grid.append(el('div', 'msg', 'Загружаем...'));
+  if (!loaded) {
+    if ($('countInfo')) $('countInfo').textContent = '';
+    return grid.append(el('div', 'msg', 'Загружаем...'));
+  }
   if (!visItems.length) {
     lastList = [];
+    if ($('countInfo')) $('countInfo').textContent = '';
     renderChips();
     renderStatusAndCategoryBanner();
     const isCloudUser = Boolean(user && !user.isLocal);
@@ -5080,6 +5288,7 @@ function render(appendMore = false) {
           isCloudUser,
           loaded,
           authReady: _authStateResolved,
+          isSessionActivating: Boolean(isCloudUser && _activatingCloudSessionUid === user.uid),
           isInitialCloudLoading,
           initialCloudSyncDone: isCloudUser ? isInitialCloudSyncDone(user.uid) : true,
           initialCloudSyncBlocked: isCloudUser ? isInitialCloudSyncBlocked(user.uid) : false,
@@ -6235,7 +6444,24 @@ const ACC = [['#8b5cf6', '#c084fc'], ['#e0245e', '#ff86ad'], ['#0d7d73', '#5eead
 const accIdx = () => { try { return +localStorage.getItem('acc') || 0; } catch (e) { return 0; } };
 const hexL = h => { const n = parseInt(h.slice(1), 16); const c = [n >> 16, (n >> 8) & 255, n & 255].map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
 const mixW = (h, k) => { const n = parseInt(h.slice(1), 16); return '#' + [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.round(v + (255 - v) * k).toString(16).padStart(2, '0')).join(''); };
-let uiT = 0; const uiSync = () => { clearTimeout(uiT); uiT = setTimeout(profCloud, 1500); };
+let uiT = 0;
+const hasPendingUiProfileSync = () => Boolean(uiT);
+const flushPendingUiProfileSync = () => {
+  if (!uiT) return Promise.resolve(true);
+  clearTimeout(uiT);
+  uiT = 0;
+  return profCloud(false);
+};
+const uiSync = () => {
+  if (user && !user.isLocal) {
+    try { localStorage.setItem('profDirty_' + user.uid, '1'); } catch (e) {}
+  }
+  clearTimeout(uiT);
+  uiT = setTimeout(() => {
+    uiT = 0;
+    profCloud(false);
+  }, 1500);
+};
 
 function setTheme(t, quiet) {
   document.documentElement.dataset.theme = t;

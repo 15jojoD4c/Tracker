@@ -973,34 +973,120 @@
     return { counts, reviewCount, total: list.length };
   }
 
-  // Проверка целостности загруженных облачных чанков (не допускаем тихую потерю части коллекции при неполном чтении)
+  // Проверка целостности загруженных облачных чанков (не допускаем тихую потерю части коллекции при неполном чтении, битом JSON или смешении ревизий)
   function validateLoadedChunks(chunkDocs, expectedCount) {
     const expected = Math.max(0, Number(expectedCount || 0));
     const list = (Array.isArray(chunkDocs) ? chunkDocs : []).filter(Boolean);
     if (expected === 0) {
-      return { valid: true, missingIndices: [], expectedCount: 0, loadedCount: list.length };
+      return {
+        valid: true,
+        missingIndices: [],
+        corruptedIndices: [],
+        revMismatch: false,
+        expectedCount: 0,
+        loadedCount: list.length
+      };
     }
     const present = new Set();
+    const corruptedIndices = [];
+    const distinctRevs = new Set();
     let inferredTotal = expected;
     for (const ch of list) {
       const idx = Number(ch.chunkIdx);
-      const hasPayload = typeof ch.payloadJson === 'string' || Array.isArray(ch.items);
-      if (Number.isInteger(idx) && idx >= 0 && hasPayload) {
-        present.add(idx);
-      }
       const chTotal = Number(ch.chunkTotal || 0);
       if (chTotal > inferredTotal) inferredTotal = chTotal;
+      if (!Number.isInteger(idx) || idx < 0) continue;
+
+      let payloadOk = false;
+      if (typeof ch.payloadJson === 'string') {
+        try {
+          const parsed = JSON.parse(ch.payloadJson);
+          payloadOk = Array.isArray(parsed);
+        } catch (e) {
+          payloadOk = false;
+        }
+      } else if (Array.isArray(ch.items)) {
+        payloadOk = true;
+      }
+
+      if (payloadOk) {
+        present.add(idx);
+        const rev = Number(ch.chunkRev || 0);
+        if (Number.isFinite(rev) && rev > 0) distinctRevs.add(rev);
+      } else {
+        corruptedIndices.push(idx);
+      }
     }
     const missingIndices = [];
     for (let idx = 0; idx < inferredTotal; idx++) {
       if (!present.has(idx)) missingIndices.push(idx);
     }
+    const revMismatch = inferredTotal > 1 && distinctRevs.size > 1;
     return {
-      valid: missingIndices.length === 0 && present.size >= inferredTotal,
+      valid: missingIndices.length === 0 && corruptedIndices.length === 0 && !revMismatch && present.size >= inferredTotal,
       missingIndices,
+      corruptedIndices,
+      revMismatch,
       expectedCount: inferredTotal,
       loadedCount: present.size
     };
+  }
+
+  function shouldRetryChunkLoadFromServer(opts) {
+    const {
+      valid = false,
+      anyFromCache = false,
+      usedPrefetched = false,
+      revMismatch = false,
+      isOnline = true,
+      alreadyRetried = false
+    } = opts || {};
+    if (!isOnline || alreadyRetried) return { shouldRetry: false, delayMs: 0 };
+    if (valid && !anyFromCache) return { shouldRetry: false, delayMs: 0 };
+    if (usedPrefetched || anyFromCache) {
+      return { shouldRetry: true, delayMs: 0 };
+    }
+    if (revMismatch) {
+      return { shouldRetry: true, delayMs: 450 };
+    }
+    if (!valid) {
+      return { shouldRetry: true, delayMs: 250 };
+    }
+    return { shouldRetry: false, delayMs: 0 };
+  }
+
+  function shouldReuseActiveCloudSession(opts) {
+    const {
+      activeUid = '',
+      activatingUid = '',
+      incomingUid = '',
+      hasListener = false
+    } = opts || {};
+    const inc = String(incomingUid || '').trim();
+    if (!inc) return false;
+    const act = String(activeUid || '').trim();
+    const inFlight = String(activatingUid || '').trim();
+    if (act !== inc) return false;
+    return Boolean(hasListener || inFlight === inc);
+  }
+
+  function extractProfileDocFromCloudDocs(docsList, uid) {
+    const cleanUid = String(uid || '').trim();
+    if (!cleanUid || !Array.isArray(docsList) || !docsList.length) return null;
+    const targetId = 'prof_' + cleanUid;
+    let fallbackProfileDoc = null;
+    for (const d of docsList) {
+      if (!d) continue;
+      const id = String(d.id || '');
+      const raw = typeof d.data === 'function' ? d.data() : d;
+      if (!raw || typeof raw !== 'object') continue;
+      if (raw.isColChunk || id.startsWith(`prof_col_${cleanUid}_`) || id === 'prof_rucache_' + cleanUid) continue;
+      if (id === targetId) return raw;
+      if (!fallbackProfileDoc && (raw.isProfile || raw.kind === 'profile') && (!raw.userId || String(raw.userId) === cleanUid)) {
+        fallbackProfileDoc = raw;
+      }
+    }
+    return fallbackProfileDoc;
   }
 
   // --- Умный трекер прогресса серий / глав ---
@@ -2904,6 +2990,7 @@
       isCloudUser = false,
       loaded = false,
       authReady = false,
+      isSessionActivating = false,
       isInitialCloudLoading = false,
       initialCloudSyncDone = false,
       initialCloudSyncBlocked = false,
@@ -2917,7 +3004,7 @@
     if (isInitialCloudLoading) return 'loading';
     if (isQuotaBlocked) return 'error_quota';
     if (isOfflineFallback || isOnline === false) return 'error_cloud';
-    if (!authReady && !hasCloudError && !initialCloudSyncBlocked) return 'loading';
+    if ((!authReady || isSessionActivating) && !hasCloudError && !initialCloudSyncBlocked) return 'loading';
     if (initialCloudSyncDone && !initialCloudSyncBlocked && !hasCloudError) return 'empty';
     return 'error_cloud';
   }
@@ -3579,6 +3666,238 @@
     };
   }
 
+  function mergeDirtyItemWithRemote(localItem, remoteItem) {
+    if (!localItem && !remoteItem) return { item: null, winner: 'remote', needsPush: false };
+    if (!remoteItem) {
+      return { item: { ...localItem, dirty: true }, winner: 'local', needsPush: true };
+    }
+    if (!localItem) {
+      const cleanRemote = { ...remoteItem };
+      delete cleanRemote.dirty;
+      return { item: cleanRemote, winner: 'remote', needsPush: false };
+    }
+
+    const localTs = Number(localItem.updatedAt || 0);
+    const remoteTs = Number(remoteItem.updatedAt || 0);
+    const metaScalarKeys = [
+      'poster', 'aniId', 'mal', 'shikiId', 'tmdb', 'imdbId', 'mdId',
+      'orig', 'ru', 'en', 'year', 'total', 'totalVol', 'desc', 'description',
+      'studio', 'author', 'country', 'format', 'runtime', 'episodeDuration'
+    ];
+    const metaArrayKeys = ['posterFallbacks', 'genres', 'seasons'];
+    const isEmptyVal = v => v === undefined || v === null || (typeof v === 'string' && !v.trim()) || v === 0;
+
+    const backfillCatalogMeta = (target, donor) => {
+      for (const k of metaScalarKeys) {
+        if (isEmptyVal(target[k]) && !isEmptyVal(donor[k])) {
+          target[k] = donor[k];
+        }
+      }
+      for (const k of metaArrayKeys) {
+        if ((!Array.isArray(target[k]) || target[k].length === 0) && Array.isArray(donor[k]) && donor[k].length > 0) {
+          target[k] = donor[k].slice();
+        }
+      }
+    };
+
+    if (localTs >= remoteTs) {
+      const merged = { ...localItem, dirty: true };
+      backfillCatalogMeta(merged, remoteItem);
+      return { item: merged, winner: 'local', needsPush: true };
+    }
+
+    // Удалённая версия новее по updatedAt: берём её базой, но не теряем дополняющие офлайн-поля (заметку, теги, подборки, оценку, критерии, обложку), если в облачной версии они пустые
+    const merged = { ...remoteItem };
+    delete merged.dirty;
+    let contributed = false;
+
+    const localPoster = String(localItem.poster || '').trim();
+    const remotePoster = String(merged.poster || '').trim();
+    if (!remotePoster && localPoster) {
+      merged.poster = localItem.poster;
+      contributed = true;
+    }
+    backfillCatalogMeta(merged, localItem);
+
+    if (!String(merged.note || '').trim() && String(localItem.note || '').trim()) {
+      merged.note = localItem.note;
+      contributed = true;
+    }
+    if (!(Number(merged.rating) > 0) && Number(localItem.rating) > 0) {
+      merged.rating = localItem.rating;
+      contributed = true;
+    }
+    if ((!Array.isArray(merged.tags) || merged.tags.length === 0) && Array.isArray(localItem.tags) && localItem.tags.length > 0) {
+      merged.tags = localItem.tags.slice();
+      contributed = true;
+    }
+    if ((!Array.isArray(merged.lists) || merged.lists.length === 0) && Array.isArray(localItem.lists) && localItem.lists.length > 0) {
+      merged.lists = localItem.lists.slice();
+      contributed = true;
+    }
+    const remoteHasCriteria = merged.criteria && typeof merged.criteria === 'object' && Object.keys(merged.criteria).length > 0;
+    const localHasCriteria = localItem.criteria && typeof localItem.criteria === 'object' && Object.keys(localItem.criteria).length > 0;
+    if (!remoteHasCriteria && localHasCriteria) {
+      merged.criteria = { ...localItem.criteria };
+      contributed = true;
+    }
+
+    if (contributed) {
+      merged.dirty = true;
+      merged.updatedAt = Math.max(remoteTs + 1, localTs);
+      return { item: merged, winner: 'merged', needsPush: true };
+    }
+    return { item: merged, winner: 'remote', needsPush: false };
+  }
+
+  function mergeCloudListWithDirtyLocal(remoteList, localList) {
+    const out = (Array.isArray(remoteList) ? remoteList : []).map(it => (it && typeof it === 'object' ? { ...it } : it));
+    const idxById = new Map();
+    out.forEach((it, idx) => {
+      if (it && it.id !== undefined && it.id !== null) idxById.set(String(it.id), idx);
+    });
+    const dirtyLocals = (Array.isArray(localList) ? localList : []).filter(x => x && x.dirty);
+    let dirtyStillPendingCount = 0;
+    let localWinsCount = 0;
+    let mergedCount = 0;
+    let remoteWinsCount = 0;
+    let addedLocalCount = 0;
+
+    for (const dIt of dirtyLocals) {
+      if (dIt.id === undefined || dIt.id === null) continue;
+      const key = String(dIt.id);
+      if (idxById.has(key)) {
+        const idx = idxById.get(key);
+        const res = mergeDirtyItemWithRemote(dIt, out[idx]);
+        if (res.item) out[idx] = res.item;
+        if (res.winner === 'local') localWinsCount++;
+        else if (res.winner === 'merged') mergedCount++;
+        else remoteWinsCount++;
+        if (res.needsPush) dirtyStillPendingCount++;
+      } else {
+        idxById.set(key, out.length);
+        out.push({ ...dIt, dirty: true });
+        addedLocalCount++;
+        dirtyStillPendingCount++;
+      }
+    }
+
+    return {
+      items: out,
+      dirtyStillPendingCount,
+      localWinsCount,
+      mergedCount,
+      remoteWinsCount,
+      addedLocalCount
+    };
+  }
+
+  function hasUncommittedCollectionMutations(opts) {
+    const {
+      committedIds = [],
+      committedTsMap = null,
+      liveItems = [],
+      livePendingDeletes = [],
+      committedPendingDeletes = []
+    } = opts || {};
+
+    const committedIdSet = committedIds instanceof Set
+      ? committedIds
+      : new Set((Array.isArray(committedIds) ? committedIds : []).map(String));
+    const committedDelSet = committedPendingDeletes instanceof Set
+      ? committedPendingDeletes
+      : new Set((Array.isArray(committedPendingDeletes) ? committedPendingDeletes : []).map(String));
+    const liveList = Array.isArray(liveItems) ? liveItems : [];
+    const liveIdSet = new Set();
+
+    for (const it of liveList) {
+      if (!it || it.id === undefined || it.id === null) continue;
+      const idStr = String(it.id);
+      liveIdSet.add(idStr);
+      if (!committedIdSet.has(idStr)) return true;
+      if (it.dirty) {
+        const committedTs = committedTsMap instanceof Map
+          ? committedTsMap.get(idStr)
+          : (committedTsMap && typeof committedTsMap === 'object' ? committedTsMap[idStr] : undefined);
+        if (!shouldClearDirtyAfterCommit(it.updatedAt, committedTs)) return true;
+      }
+    }
+    for (const cid of committedIdSet) {
+      if (!liveIdSet.has(cid)) return true;
+    }
+    for (const delId of (Array.isArray(livePendingDeletes) ? livePendingDeletes : [])) {
+      if (delId != null && !committedDelSet.has(String(delId))) return true;
+    }
+    return false;
+  }
+
+  function shouldReconcileBeforeCloudFlush(opts) {
+    const {
+      hasPendingChanges = false,
+      isOnline = true,
+      isCloudBlocked = false,
+      reason = 'online',
+      hiddenDurationMs = 0
+    } = opts || {};
+
+    if (!isOnline || isCloudBlocked) {
+      return { action: 'none' };
+    }
+    if (reason === 'online') {
+      return { action: hasPendingChanges ? 'reconcile_then_flush' : 'pull_if_remote_newer' };
+    }
+    if (reason === 'visible' || reason === 'pageshow') {
+      const dur = Math.max(0, Number(hiddenDurationMs || 0));
+      if (hasPendingChanges) {
+        return { action: dur >= 15000 ? 'reconcile_then_flush' : 'flush_only' };
+      }
+      if (dur >= 30000) {
+        return { action: 'pull_if_remote_newer' };
+      }
+      return { action: 'none' };
+    }
+    return { action: hasPendingChanges ? 'flush_only' : 'none' };
+  }
+
+  function computePageExitFlushPlan(opts) {
+    const {
+      isCloudUser = false,
+      isCloudBlocked = false,
+      isInitialSyncDone = false,
+      isInitialSyncBlocked = false,
+      chunkStorageEnabled = true,
+      hasPendingLocalItems = false,
+      hasPendingLocalProf = false,
+      hasChunkTimer = false,
+      hasDirtyItems = false,
+      hasPendingDeletes = false,
+      hasDirtyChunks = false,
+      hasDirtyProf = false,
+      hasUiSyncTimer = false,
+      hasLegacyTimers = false,
+      inFlightCloudOps = 0
+    } = opts || {};
+
+    const canCloudWrite = Boolean(isCloudUser && !isCloudBlocked && isInitialSyncDone && !isInitialSyncBlocked);
+    const hasCollectionPending = Boolean(hasChunkTimer || hasDirtyItems || hasPendingDeletes || hasDirtyChunks);
+    const hasProfPending = Boolean(hasDirtyProf || hasUiSyncTimer);
+    const flushChunksNow = Boolean(canCloudWrite && chunkStorageEnabled && hasCollectionPending);
+    const flushLegacyNow = Boolean(canCloudWrite && !chunkStorageEnabled && (hasLegacyTimers || hasDirtyItems || hasPendingDeletes));
+    const flushProfCloudNow = Boolean(canCloudWrite && hasProfPending && !flushChunksNow);
+
+    return {
+      flushLocalItems: Boolean(hasPendingLocalItems || hasDirtyItems),
+      flushLocalProf: Boolean(hasPendingLocalProf || hasUiSyncTimer),
+      markProfDirty: Boolean(isCloudUser && hasUiSyncTimer),
+      flushChunksNow,
+      flushLegacyNow,
+      flushProfCloudNow,
+      shouldWarnBeforeUnload: Boolean(
+        isCloudUser && (Number(inFlightCloudOps || 0) > 0 || hasCollectionPending || hasProfPending || hasLegacyTimers)
+      )
+    };
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -3709,7 +4028,15 @@
     getThemeDescriptionHint,
     formatLastActivityTimestampRu,
     getCollectionRenderBatchSize,
-    getCardImageLoadingStrategy
+    getCardImageLoadingStrategy,
+    shouldRetryChunkLoadFromServer,
+    shouldReuseActiveCloudSession,
+    extractProfileDocFromCloudDocs,
+    mergeDirtyItemWithRemote,
+    mergeCloudListWithDirtyLocal,
+    hasUncommittedCollectionMutations,
+    shouldReconcileBeforeCloudFlush,
+    computePageExitFlushPlan
   };
 
   if (typeof module !== 'undefined' && module.exports) {

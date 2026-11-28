@@ -101,6 +101,12 @@ async function batchSaveItems(listToSave, opts = {}) {
     return { synced: true, localSaved: true };
   }
 
+  // Write-ahead: сразу фиксируем грязный флаг и синхронно пишем локальный кэш ДО сетевого ожидания
+  if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
+    try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
+  }
+  if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
+
   if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
     try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
     setSync();
@@ -217,19 +223,25 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
       if (isNowEmpty && typeof setExplicitEmptyDeletePending === 'function') {
         setExplicitEmptyDeletePending(user.uid, true);
       }
-      if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
-        if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
+      // Write-ahead: записываем pendingDeletes и colChunksDirty ДО сетевого запроса, чтобы при мгновенном закрытии вкладки удалённый тайтл не воскрес!
+      if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
+      if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
         try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
+      }
+
+      if (typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()) {
         setSync();
       } else if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()) {
         try {
           const chunkWriter = typeof runSerializedChunkWrite === 'function' ? runSerializedChunkWrite : saveCollectionChunksToCloud;
           const ok = await chunkWriter(user.uid, items, { silent: true, explicitEmptyAllowed: isNowEmpty });
-          if (!ok) {
+          if (ok) {
+            if (typeof removePendingDeletes === 'function') removePendingDeletes(allDelIds, user.uid);
+          } else {
             if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
             try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e) {}
-            setSync();
           }
+          setSync();
         } catch (e) {
           if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
           try { localStorage.setItem('colChunksDirty_' + user.uid, '1'); } catch (e2) {}
@@ -242,11 +254,13 @@ async function batchDeleteItemsWithUndo(listToDelete, toastMsg = 'Удалено
             const b = writeBatch(db);
             chunk.forEach(dId => b.delete(doc(db, 'items', dId)));
             await track(b.commit());
+            if (typeof removePendingDeletes === 'function') removePendingDeletes(chunk, user.uid);
           }
           if (isNowEmpty && typeof setExplicitEmptyDeletePending === 'function') {
             setExplicitEmptyDeletePending(user.uid, false);
           }
           if (typeof scheduleColRevBump === 'function') scheduleColRevBump();
+          setSync();
         } catch (e) {
           if (typeof addPendingDeletes === 'function') addPendingDeletes(allDelIds, user.uid);
           if (typeof handleCloudError === 'function') handleCloudError(e, true);
@@ -5993,14 +6007,77 @@ document.addEventListener('error', e => {
   }
 }, true);
 
-window.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    if (typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled() && user && !user.isLocal && !(typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked())) {
-      const hasDirty = items.some(x => x && x.dirty);
-      if ((typeof _chunkSyncTimer !== 'undefined' && _chunkSyncTimer) || hasDirty) {
-        if (typeof scheduleChunkCloudSync === 'function') scheduleChunkCloudSync(true).catch(() => {});
-      }
+let _lastPageExitCloudFlushAt = 0;
+function buildCurrentExitFlushPlan() {
+  const isCloudUser = Boolean(user && !user.isLocal);
+  const uid = isCloudUser ? user.uid : '';
+  const pending = (typeof getUnsyncedPendingCounts === 'function')
+    ? getUnsyncedPendingCounts()
+    : { dirtyItems: items.filter(x => x && x.dirty).length, pendingDeletes: 0, dirtyProf: false, dirtyChunks: false, total: 0 };
+  const input = {
+    isCloudUser,
+    isCloudBlocked: Boolean(typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked()),
+    isInitialSyncDone: Boolean(isCloudUser && typeof isInitialCloudSyncDone === 'function' && isInitialCloudSyncDone(uid)),
+    isInitialSyncBlocked: Boolean(isCloudUser && typeof isInitialCloudSyncBlocked === 'function' && isInitialCloudSyncBlocked(uid)),
+    chunkStorageEnabled: Boolean(typeof isChunkStorageEnabled === 'function' && isChunkStorageEnabled()),
+    hasPendingLocalItems: Boolean(typeof hasPendingLocalItemsSave === 'function' ? hasPendingLocalItemsSave() : Boolean(typeof _saveLocalItemsTimer !== 'undefined' && _saveLocalItemsTimer)),
+    hasPendingLocalProf: Boolean(typeof _profLocalTimer !== 'undefined' && _profLocalTimer),
+    hasChunkTimer: Boolean(typeof _chunkSyncTimer !== 'undefined' && _chunkSyncTimer),
+    hasDirtyItems: pending.dirtyItems > 0,
+    hasPendingDeletes: pending.pendingDeletes > 0,
+    hasDirtyChunks: Boolean(pending.dirtyChunks),
+    hasDirtyProf: Boolean(pending.dirtyProf),
+    hasUiSyncTimer: Boolean(typeof hasPendingUiProfileSync === 'function' && hasPendingUiProfileSync()),
+    hasLegacyTimers: Boolean(typeof _cloudSaveTimers !== 'undefined' && _cloudSaveTimers.size > 0),
+    inFlightCloudOps: Number(typeof pend !== 'undefined' ? pend : 0)
+  };
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.computePageExitFlushPlan === 'function') {
+    return KirokuEngine.computePageExitFlushPlan(input);
+  }
+  const canCloud = input.isCloudUser && !input.isCloudBlocked && input.isInitialSyncDone && !input.isInitialSyncBlocked;
+  const hasCol = input.hasChunkTimer || input.hasDirtyItems || input.hasPendingDeletes || input.hasDirtyChunks;
+  return {
+    flushLocalItems: input.hasPendingLocalItems || input.hasDirtyItems,
+    flushLocalProf: input.hasPendingLocalProf || input.hasUiSyncTimer,
+    markProfDirty: input.isCloudUser && input.hasUiSyncTimer,
+    flushChunksNow: canCloud && input.chunkStorageEnabled && hasCol,
+    flushLegacyNow: canCloud && !input.chunkStorageEnabled && (input.hasLegacyTimers || input.hasDirtyItems || input.hasPendingDeletes),
+    flushProfCloudNow: canCloud && (input.hasDirtyProf || input.hasUiSyncTimer) && !(input.chunkStorageEnabled && hasCol),
+    shouldWarnBeforeUnload: input.isCloudUser && (input.inFlightCloudOps > 0 || hasCol || input.hasDirtyProf || input.hasUiSyncTimer || input.hasLegacyTimers)
+  };
+}
+
+function flushOnPageExit(reason = 'hidden') {
+  const plan = buildCurrentExitFlushPlan();
+  if (plan.markProfDirty && user && !user.isLocal) {
+    try { localStorage.setItem('profDirty_' + user.uid, '1'); } catch (e) {}
+  }
+  // 1. Всегда сначала синхронно сохраняем локальные коллекции и профиль (переживает мгновенное закрытие вкладки на ПК и мобильном!)
+  if (plan.flushLocalItems && typeof flushLocalItemsNow === 'function') {
+    flushLocalItemsNow(false);
+  }
+  if (plan.flushLocalProf && typeof profSaveLocal === 'function') {
+    profSaveLocal(true);
+  }
+
+  // 2. Дедуплицируем сетевую отправку, когда браузер подряд стреляет visibilitychange(hidden) + pagehide
+  const now = Date.now();
+  if (now - _lastPageExitCloudFlushAt < 400) return;
+
+  let dispatchedCloud = false;
+  if (plan.flushChunksNow) {
+    dispatchedCloud = true;
+    if (typeof _chunkSyncTimer !== 'undefined' && _chunkSyncTimer) {
+      clearTimeout(_chunkSyncTimer);
+      _chunkSyncTimer = 0;
     }
+    if (typeof flushPendingCloudChanges === 'function') {
+      flushPendingCloudChanges(false).catch(() => {});
+    } else if (typeof scheduleChunkCloudSync === 'function') {
+      scheduleChunkCloudSync(true).catch(() => {});
+    }
+  } else if (plan.flushLegacyNow) {
+    dispatchedCloud = true;
     if (_cloudSaveTimers.size) {
       const pendingFlush = [];
       _cloudSaveTimers.forEach((entry, docId) => {
@@ -6013,15 +6090,11 @@ window.addEventListener('visibilitychange', () => {
         entry.resolve();
       });
       _cloudSaveTimers.clear();
-
-      if (pendingFlush.length && user && !user.isLocal && !(typeof isCloudWriteBlocked === 'function' && isCloudWriteBlocked())) {
+      if (pendingFlush.length && user && !user.isLocal) {
+        const committedTs = new Map(pendingFlush.map(it => [String(it.id), Number(it.updatedAt || 0)]));
         const flushBatches = (typeof KirokuEngine !== 'undefined' && KirokuEngine.splitOperationsIntoBatches)
           ? KirokuEngine.splitOperationsIntoBatches(pendingFlush, 350)
-          : (() => {
-              const res = [];
-              for (let i = 0; i < pendingFlush.length; i += 350) res.push(pendingFlush.slice(i, i + 350));
-              return res;
-            })();
+          : [pendingFlush];
         (async () => {
           try {
             for (const slice of flushBatches) {
@@ -6031,7 +6104,13 @@ window.addEventListener('visibilitychange', () => {
                 b.set(doc(db, 'items', docId), payload);
               });
               await track(b.commit());
-              slice.forEach(it => { delete it.dirty; });
+              slice.forEach(it => {
+                const ts = committedTs.get(String(it.id));
+                const canClear = (typeof KirokuEngine !== 'undefined' && KirokuEngine.shouldClearDirtyAfterCommit)
+                  ? KirokuEngine.shouldClearDirtyAfterCommit(it.updatedAt, ts)
+                  : Number(it.updatedAt || 0) === Number(ts || 0);
+                if (canClear) delete it.dirty;
+              });
             }
             if (typeof flushLocalItemsNow === 'function') flushLocalItemsNow(false);
           } catch (err) {
@@ -6040,24 +6119,45 @@ window.addEventListener('visibilitychange', () => {
         })();
       }
     }
-    if (typeof flushLocalItemsNow === 'function' && (typeof hasPendingLocalItemsSave === 'function' ? hasPendingLocalItemsSave() : Boolean(_saveLocalItemsTimer))) {
-      flushLocalItemsNow(false);
+    if (typeof flushPendingCloudChanges === 'function') {
+      flushPendingCloudChanges(false).catch(() => {});
     }
-    if (typeof profSaveLocal === 'function' && (typeof _profLocalTimer !== 'undefined' && _profLocalTimer)) {
-      profSaveLocal(true);
+  }
+
+  if (plan.flushProfCloudNow) {
+    dispatchedCloud = true;
+    if (typeof flushPendingUiProfileSync === 'function' && typeof hasPendingUiProfileSync === 'function' && hasPendingUiProfileSync()) {
+      flushPendingUiProfileSync().catch(() => {});
+    } else if (typeof profCloud === 'function') {
+      profCloud(false).catch(() => {});
     }
+  }
+  if (dispatchedCloud) _lastPageExitCloudFlushAt = now;
+}
+
+window.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    flushOnPageExit('visibilitychange');
   }
 });
 
+window.addEventListener('pagehide', () => {
+  flushOnPageExit('pagehide');
+});
+
 window.addEventListener('beforeunload', e => {
-  if (typeof flushLocalItemsNow === 'function' && (typeof hasPendingLocalItemsSave === 'function' ? hasPendingLocalItemsSave() : Boolean(_saveLocalItemsTimer))) {
+  const plan = buildCurrentExitFlushPlan();
+  if (plan.markProfDirty && user && !user.isLocal) {
+    try { localStorage.setItem('profDirty_' + user.uid, '1'); } catch (err) {}
+  }
+  if (plan.flushLocalItems && typeof flushLocalItemsNow === 'function') {
     flushLocalItemsNow(false);
   }
-  const pendingTotal = (typeof getUnsyncedPendingCounts === 'function') ? getUnsyncedPendingCounts().total : 0;
-  if (pend > 0 || pendingTotal > 0) {
-    if (typeof profSaveLocal === 'function' && (typeof _profLocalTimer !== 'undefined' && _profLocalTimer)) {
-      profSaveLocal(true);
-    }
+  if (plan.flushLocalProf && typeof profSaveLocal === 'function') {
+    profSaveLocal(true);
+  }
+  if (plan.shouldWarnBeforeUnload) {
+    flushOnPageExit('beforeunload');
     e.preventDefault();
     e.returnValue = '';
   }

@@ -708,6 +708,8 @@ test('validateLoadedChunks detects incomplete or missing cloud chunks so partial
   assert.deepEqual(KirokuEngine.validateLoadedChunks(fullChunks, 3), {
     valid: true,
     missingIndices: [],
+    corruptedIndices: [],
+    revMismatch: false,
     expectedCount: 3,
     loadedCount: 3
   });
@@ -2790,6 +2792,420 @@ test('getCollectionRenderBatchSize and getCardImageLoadingStrategy prioritize ab
     loading: 'lazy', decoding: 'async', fetchPriority: 'low', animateEntrance: false
   });
 });
+
+test('A1 clean-login chunk validation detects mixed chunkRev revisions and corrupted payloadJson while preserving legacy compatibility', () => {
+  // Consistent multi-chunk set with matching chunkRev passes
+  const okRes = KirokuEngine.validateLoadedChunks([
+    { chunkIdx: 0, chunkTotal: 2, chunkRev: 1700001000, payloadJson: '[{"id":1}]' },
+    { chunkIdx: 1, chunkTotal: 2, chunkRev: 1700001000, payloadJson: '[{"id":2}]' }
+  ], 2);
+  assert.equal(okRes.valid, true);
+  assert.equal(okRes.revMismatch, false);
+  assert.deepEqual(okRes.corruptedIndices, []);
+
+  // Legacy chunks without chunkRev still pass
+  const legacyOk = KirokuEngine.validateLoadedChunks([
+    { chunkIdx: 0, chunkTotal: 2, payloadJson: '[{"id":1}]' },
+    { chunkIdx: 1, chunkTotal: 2, payloadJson: '[{"id":2}]' }
+  ], 2);
+  assert.equal(legacyOk.valid, true);
+  assert.equal(legacyOk.revMismatch, false);
+
+  // Mixed chunkRev across chunks (e.g. prefetched chunk 0 from old write + fresh chunk 1 from new write) MUST fail
+  const revConflict = KirokuEngine.validateLoadedChunks([
+    { chunkIdx: 0, chunkTotal: 2, chunkRev: 1700001000, payloadJson: '[{"id":1}]' },
+    { chunkIdx: 1, chunkTotal: 2, chunkRev: 1700002500, payloadJson: '[{"id":2}]' }
+  ], 2);
+  assert.equal(revConflict.valid, false);
+  assert.equal(revConflict.revMismatch, true);
+
+  // Corrupted/truncated JSON payload MUST fail and record corrupted index
+  const brokenJson = KirokuEngine.validateLoadedChunks([
+    { chunkIdx: 0, chunkTotal: 2, chunkRev: 1700001000, payloadJson: '[{"id":1' },
+    { chunkIdx: 1, chunkTotal: 2, chunkRev: 1700001000, payloadJson: '[{"id":2}]' }
+  ], 2);
+  assert.equal(brokenJson.valid, false);
+  assert.deepEqual(brokenJson.corruptedIndices, [0]);
+  assert.deepEqual(brokenJson.missingIndices, [0]);
+});
+
+test('A1 shouldRetryChunkLoadFromServer retries cleanly on prefetched mismatch, cache reads, or concurrent write revMismatch', () => {
+  // Valid fresh server result -> no retry
+  assert.deepEqual(
+    KirokuEngine.shouldRetryChunkLoadFromServer({ valid: true, anyFromCache: false, usedPrefetched: true, revMismatch: false, isOnline: true, alreadyRetried: false }),
+    { shouldRetry: false, delayMs: 0 }
+  );
+  // Stale prefetched chunk caused mismatch -> immediate fresh retry without prefetch
+  assert.deepEqual(
+    KirokuEngine.shouldRetryChunkLoadFromServer({ valid: false, anyFromCache: false, usedPrefetched: true, revMismatch: true, isOnline: true, alreadyRetried: false }),
+    { shouldRetry: true, delayMs: 0 }
+  );
+  // Direct server read hit concurrent multi-chunk write -> brief 450ms backoff retry
+  assert.deepEqual(
+    KirokuEngine.shouldRetryChunkLoadFromServer({ valid: false, anyFromCache: false, usedPrefetched: false, revMismatch: true, isOnline: true, alreadyRetried: false }),
+    { shouldRetry: true, delayMs: 450 }
+  );
+  // Cached partial snapshot -> immediate server retry
+  assert.deepEqual(
+    KirokuEngine.shouldRetryChunkLoadFromServer({ valid: true, anyFromCache: true, usedPrefetched: false, revMismatch: false, isOnline: true, alreadyRetried: false }),
+    { shouldRetry: true, delayMs: 0 }
+  );
+  // Never retry offline or after alreadyRetried
+  assert.equal(
+    KirokuEngine.shouldRetryChunkLoadFromServer({ valid: false, anyFromCache: true, isOnline: false, alreadyRetried: false }).shouldRetry,
+    false
+  );
+  assert.equal(
+    KirokuEngine.shouldRetryChunkLoadFromServer({ valid: false, anyFromCache: false, isOnline: true, alreadyRetried: true }).shouldRetry,
+    false
+  );
+});
+
+test('A1 shouldReuseActiveCloudSession prevents duplicate onAuthStateChanged from aborting in-flight cold-start login', () => {
+  // Same UID still activating before onSnapshot listener attaches -> reuse, do NOT reset session
+  assert.equal(
+    KirokuEngine.shouldReuseActiveCloudSession({ activeUid: 'u1', activatingUid: 'u1', incomingUid: 'u1', hasListener: false }),
+    true
+  );
+  // Same UID with active listener -> reuse
+  assert.equal(
+    KirokuEngine.shouldReuseActiveCloudSession({ activeUid: 'u1', activatingUid: '', incomingUid: 'u1', hasListener: true }),
+    true
+  );
+  // Different UID -> must start a fresh session
+  assert.equal(
+    KirokuEngine.shouldReuseActiveCloudSession({ activeUid: 'u1', activatingUid: 'u1', incomingUid: 'u2', hasListener: false }),
+    false
+  );
+  // Same UID with no listener and not activating (e.g. previous error/detach) -> allow fresh activation
+  assert.equal(
+    KirokuEngine.shouldReuseActiveCloudSession({ activeUid: 'u1', activatingUid: '', incomingUid: 'u1', hasListener: false }),
+    false
+  );
+});
+
+test('A1 resolveEmptyCollectionUiState stays in calm loading state during clean-login activation instead of flashing cloud error', () => {
+  // Fresh browser after cache clear: auth resolved, hydrate finished with 0 local items, session activation still in progress
+  assert.equal(
+    KirokuEngine.resolveEmptyCollectionUiState({
+      isCloudUser: true,
+      loaded: true,
+      authReady: true,
+      isSessionActivating: true,
+      isInitialCloudLoading: false,
+      initialCloudSyncDone: false,
+      initialCloudSyncBlocked: false,
+      isQuotaBlocked: false,
+      hasCloudError: false,
+      isOnline: true,
+      isOfflineFallback: false
+    }),
+    'loading'
+  );
+  // Once activation finished without sync confirmation and without error -> error_cloud with retry CTA
+  assert.equal(
+    KirokuEngine.resolveEmptyCollectionUiState({
+      isCloudUser: true,
+      loaded: true,
+      authReady: true,
+      isSessionActivating: false,
+      isInitialCloudLoading: false,
+      initialCloudSyncDone: false,
+      initialCloudSyncBlocked: true,
+      isQuotaBlocked: false,
+      hasCloudError: false,
+      isOnline: true,
+      isOfflineFallback: false
+    }),
+    'error_cloud'
+  );
+});
+
+test('A1 extractProfileDocFromCloudDocs recovers prof_{uid} from fallback userId query while ignoring chunks and ruCache', () => {
+  const docs = [
+    { id: 'prof_col_u42_0', data: () => ({ isProfile: true, isColChunk: true, userId: 'u42', chunkIdx: 0, payloadJson: '[]' }) },
+    { id: 'prof_rucache_u42', data: () => ({ isProfile: true, userId: 'u42', map: {} }) },
+    { id: 'u42_101', data: () => ({ kind: 'title', userId: 'u42', title: 'Test Anime' }) },
+    { id: 'prof_u42', data: () => ({ isProfile: true, kind: 'profile', userId: 'u42', name: 'Ilmir', theme: 'mocha', customLists: ['Топ'] }) }
+  ];
+  const recovered = KirokuEngine.extractProfileDocFromCloudDocs(docs, 'u42');
+  assert.ok(recovered);
+  assert.equal(recovered.name, 'Ilmir');
+  assert.equal(recovered.theme, 'mocha');
+  assert.deepEqual(recovered.customLists, ['Топ']);
+
+  // Returns null if only chunks & titles exist
+  const noProf = KirokuEngine.extractProfileDocFromCloudDocs(docs.slice(0, 3), 'u42');
+  assert.equal(noProf, null);
+});
+
+test('A2 mergeDirtyItemWithRemote respects newer updatedAt while preserving non-conflicting offline fields and catalog metadata', () => {
+  // 1. Local edit is newer -> local explicit edits (including cleared note) win, while missing catalog metadata is backfilled from remote
+  const localNewer = {
+    id: 10,
+    title: 'Frieren',
+    ep: 20,
+    note: '',
+    rating: 9.5,
+    updatedAt: 2000,
+    dirty: true
+  };
+  const remoteOlder = {
+    id: 10,
+    title: 'Frieren',
+    ep: 18,
+    note: 'Old note to remove',
+    rating: 9,
+    aniId: 154587,
+    poster: 'https://img.example/frieren.jpg',
+    genres: ['Фэнтези'],
+    updatedAt: 1000
+  };
+  const r1 = KirokuEngine.mergeDirtyItemWithRemote(localNewer, remoteOlder);
+  assert.equal(r1.winner, 'local');
+  assert.equal(r1.needsPush, true);
+  assert.equal(r1.item.ep, 20);
+  assert.equal(r1.item.note, '');
+  assert.equal(r1.item.aniId, 154587);
+  assert.equal(r1.item.poster, 'https://img.example/frieren.jpg');
+  assert.deepEqual(r1.item.genres, ['Фэнтези']);
+  assert.equal(r1.item.dirty, true);
+
+  // 2. Remote episode bump is newer, while phone offline added a note, custom list, tags, and rating that remote did not have -> merged & queued for push!
+  const phoneOffline = {
+    id: 11,
+    title: 'Dune',
+    ep: 1,
+    status: 'Смотрю/Читаю',
+    note: 'Отличный саундтрек!',
+    rating: 9.2,
+    tags: ['Sci-Fi'],
+    lists: ['Киберпанк'],
+    criteria: { plot: 9 },
+    updatedAt: 1500,
+    dirty: true
+  };
+  const pcNewer = {
+    id: 11,
+    title: 'Dune',
+    ep: 2,
+    status: 'Посмотрел',
+    note: '',
+    rating: 0,
+    tags: [],
+    lists: [],
+    updatedAt: 3000
+  };
+  const r2 = KirokuEngine.mergeDirtyItemWithRemote(phoneOffline, pcNewer);
+  assert.equal(r2.winner, 'merged');
+  assert.equal(r2.needsPush, true);
+  assert.equal(r2.item.ep, 2);
+  assert.equal(r2.item.status, 'Посмотрел');
+  assert.equal(r2.item.note, 'Отличный саундтрек!');
+  assert.equal(r2.item.rating, 9.2);
+  assert.deepEqual(r2.item.tags, ['Sci-Fi']);
+  assert.deepEqual(r2.item.lists, ['Киберпанк']);
+  assert.deepEqual(r2.item.criteria, { plot: 9 });
+  assert.equal(r2.item.dirty, true);
+  assert.ok(r2.item.updatedAt > 3000);
+
+  // 3. Remote is strictly newer and already has all fields -> remote wins cleanly without unnecessary re-push
+  const staleLocal = { id: 12, title: 'Akira', ep: 1, note: 'Old', rating: 8, updatedAt: 1000, dirty: true };
+  const freshRemote = { id: 12, title: 'Akira', ep: 1, note: 'Newer PC note', rating: 9.5, updatedAt: 4000 };
+  const r3 = KirokuEngine.mergeDirtyItemWithRemote(staleLocal, freshRemote);
+  assert.equal(r3.winner, 'remote');
+  assert.equal(r3.needsPush, false);
+  assert.equal(r3.item.note, 'Newer PC note');
+  assert.equal(r3.item.rating, 9.5);
+  assert.equal(r3.item.dirty, undefined);
+});
+
+test('A2 mergeCloudListWithDirtyLocal preserves offline additions, newer local edits, and complementary merges alongside remote items', () => {
+  const remote = [
+    { id: 1, title: 'Item 1', ep: 5, note: '', updatedAt: 2000 },
+    { id: 2, title: 'Item 2', ep: 10, note: 'PC note', rating: 9, updatedAt: 5000 },
+    { id: 3, title: 'Added on PC', ep: 1, updatedAt: 6000 }
+  ];
+  const local = [
+    { id: 1, title: 'Item 1', ep: 4, note: 'Phone note', updatedAt: 1500, dirty: true },
+    { id: 2, title: 'Item 2', ep: 8, note: 'Stale phone note', rating: 7, updatedAt: 1000, dirty: true },
+    { id: 4, title: 'Added Offline on Phone', ep: 1, updatedAt: 1800, dirty: true }
+  ];
+  const res = KirokuEngine.mergeCloudListWithDirtyLocal(remote, local);
+  assert.equal(res.items.length, 4);
+  assert.equal(res.mergedCount, 1);
+  assert.equal(res.remoteWinsCount, 1);
+  assert.equal(res.addedLocalCount, 1);
+  assert.equal(res.dirtyStillPendingCount, 2); // item 1 (merged) + item 4 (added offline)
+  const item1 = res.items.find((x: any) => x.id === 1);
+  assert.equal(item1.ep, 5);
+  assert.equal(item1.note, 'Phone note');
+  assert.equal(item1.dirty, true);
+  const item2 = res.items.find((x: any) => x.id === 2);
+  assert.equal(item2.note, 'PC note');
+  assert.equal(item2.dirty, undefined);
+  assert.ok(res.items.some((x: any) => x.id === 3));
+  assert.ok(res.items.some((x: any) => x.id === 4 && x.dirty === true));
+});
+
+test('A2 hasUncommittedCollectionMutations detects mid-flight edits, additions, deletions, and new pendingDeletes', () => {
+  const committedIds = new Set(['1', '2']);
+  const committedTsMap = new Map([['1', 1000], ['2', 2000]]);
+
+  // Clean commit with no mid-flight changes
+  assert.equal(
+    KirokuEngine.hasUncommittedCollectionMutations({
+      committedIds,
+      committedTsMap,
+      liveItems: [{ id: 1, updatedAt: 1000 }, { id: 2, updatedAt: 2000 }],
+      livePendingDeletes: [],
+      committedPendingDeletes: []
+    }),
+    false
+  );
+  // Item edited again mid-flight (newer updatedAt + dirty)
+  assert.equal(
+    KirokuEngine.hasUncommittedCollectionMutations({
+      committedIds,
+      committedTsMap,
+      liveItems: [{ id: 1, updatedAt: 1500, dirty: true }, { id: 2, updatedAt: 2000 }],
+      livePendingDeletes: [],
+      committedPendingDeletes: []
+    }),
+    true
+  );
+  // New item added mid-flight
+  assert.equal(
+    KirokuEngine.hasUncommittedCollectionMutations({
+      committedIds,
+      committedTsMap,
+      liveItems: [{ id: 1, updatedAt: 1000 }, { id: 2, updatedAt: 2000 }, { id: 3, updatedAt: 2500, dirty: true }],
+      livePendingDeletes: [],
+      committedPendingDeletes: []
+    }),
+    true
+  );
+  // Item deleted mid-flight
+  assert.equal(
+    KirokuEngine.hasUncommittedCollectionMutations({
+      committedIds,
+      committedTsMap,
+      liveItems: [{ id: 1, updatedAt: 1000 }],
+      livePendingDeletes: ['u1_2'],
+      committedPendingDeletes: []
+    }),
+    true
+  );
+});
+
+test('A2 shouldReconcileBeforeCloudFlush checks remote colRev before flushing after offline or long background sleep', () => {
+  // Reconnect with pending offline edits -> must reconcile with server FIRST so another device is not overwritten
+  assert.deepEqual(
+    KirokuEngine.shouldReconcileBeforeCloudFlush({ hasPendingChanges: true, isOnline: true, isCloudBlocked: false, reason: 'online', hiddenDurationMs: 0 }),
+    { action: 'reconcile_then_flush' }
+  );
+  // Reconnect with no local changes -> check if another device updated colRev while offline
+  assert.deepEqual(
+    KirokuEngine.shouldReconcileBeforeCloudFlush({ hasPendingChanges: false, isOnline: true, isCloudBlocked: false, reason: 'online', hiddenDurationMs: 0 }),
+    { action: 'pull_if_remote_newer' }
+  );
+  // Quick tab switch (<15s) with pending changes -> flush directly
+  assert.deepEqual(
+    KirokuEngine.shouldReconcileBeforeCloudFlush({ hasPendingChanges: true, isOnline: true, isCloudBlocked: false, reason: 'visible', hiddenDurationMs: 3000 }),
+    { action: 'flush_only' }
+  );
+  // Long background sleep (>=15s) with pending changes -> reconcile first!
+  assert.deepEqual(
+    KirokuEngine.shouldReconcileBeforeCloudFlush({ hasPendingChanges: true, isOnline: true, isCloudBlocked: false, reason: 'visible', hiddenDurationMs: 20000 }),
+    { action: 'reconcile_then_flush' }
+  );
+  // Long background sleep (>=30s) with no pending changes -> probe remote colRev
+  assert.deepEqual(
+    KirokuEngine.shouldReconcileBeforeCloudFlush({ hasPendingChanges: false, isOnline: true, isCloudBlocked: false, reason: 'pageshow', hiddenDurationMs: 45000 }),
+    { action: 'pull_if_remote_newer' }
+  );
+  // Offline -> do nothing
+  assert.deepEqual(
+    KirokuEngine.shouldReconcileBeforeCloudFlush({ hasPendingChanges: true, isOnline: false, isCloudBlocked: false, reason: 'visible', hiddenDurationMs: 60000 }),
+    { action: 'none' }
+  );
+});
+
+test('A2 computePageExitFlushPlan coordinates synchronous local save and cloud flush across visibilitychange, pagehide, and beforeunload', () => {
+  // Pending debounced UI theme edit + pending delete in V2 chunk mode -> flushes local + atomic chunk batch (including prof), warns on beforeunload
+  const p1 = KirokuEngine.computePageExitFlushPlan({
+    isCloudUser: true,
+    isCloudBlocked: false,
+    isInitialSyncDone: true,
+    isInitialSyncBlocked: false,
+    chunkStorageEnabled: true,
+    hasPendingLocalItems: true,
+    hasPendingLocalProf: true,
+    hasChunkTimer: false,
+    hasDirtyItems: false,
+    hasPendingDeletes: true,
+    hasDirtyChunks: true,
+    hasDirtyProf: false,
+    hasUiSyncTimer: true,
+    hasLegacyTimers: false,
+    inFlightCloudOps: 0
+  });
+  assert.equal(p1.flushLocalItems, true);
+  assert.equal(p1.flushLocalProf, true);
+  assert.equal(p1.markProfDirty, true);
+  assert.equal(p1.flushChunksNow, true);
+  assert.equal(p1.flushProfCloudNow, false); // folded into chunk flush via extraProfPayload
+  assert.equal(p1.shouldWarnBeforeUnload, true);
+
+  // Only debounced theme change (uiSyncTimer) -> flushes profCloud immediately!
+  const p2 = KirokuEngine.computePageExitFlushPlan({
+    isCloudUser: true,
+    isCloudBlocked: false,
+    isInitialSyncDone: true,
+    isInitialSyncBlocked: false,
+    chunkStorageEnabled: true,
+    hasPendingLocalItems: false,
+    hasPendingLocalProf: false,
+    hasChunkTimer: false,
+    hasDirtyItems: false,
+    hasPendingDeletes: false,
+    hasDirtyChunks: false,
+    hasDirtyProf: false,
+    hasUiSyncTimer: true,
+    hasLegacyTimers: false,
+    inFlightCloudOps: 0
+  });
+  assert.equal(p2.flushChunksNow, false);
+  assert.equal(p2.flushProfCloudNow, true);
+  assert.equal(p2.markProfDirty, true);
+  assert.equal(p2.shouldWarnBeforeUnload, true);
+
+  // Offline / blocked cloud -> still flushes localStorage & marks profDirty, does NOT dispatch cloud writes
+  const p3 = KirokuEngine.computePageExitFlushPlan({
+    isCloudUser: true,
+    isCloudBlocked: true,
+    isInitialSyncDone: true,
+    isInitialSyncBlocked: false,
+    chunkStorageEnabled: true,
+    hasPendingLocalItems: true,
+    hasPendingLocalProf: true,
+    hasChunkTimer: true,
+    hasDirtyItems: true,
+    hasPendingDeletes: false,
+    hasDirtyChunks: true,
+    hasDirtyProf: false,
+    hasUiSyncTimer: true,
+    hasLegacyTimers: false,
+    inFlightCloudOps: 0
+  });
+  assert.equal(p3.flushLocalItems, true);
+  assert.equal(p3.flushLocalProf, true);
+  assert.equal(p3.markProfDirty, true);
+  assert.equal(p3.flushChunksNow, false);
+  assert.equal(p3.flushProfCloudNow, false);
+});
+
+
 
 
 

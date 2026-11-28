@@ -1872,6 +1872,132 @@ html[data-theme=white] .data-diag-spoiler > summary:hover {
   color: #14161f;
 }
 
+/* === Скелетоны загрузки с фиксированной геометрией (Идея №2) === */
+.sk-box,
+.sk-line,
+.sk-poster,
+.tp-sk-chip {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.04) 75%);
+  background-size: 200% 100%;
+  animation: shim 1.25s ease-in-out infinite;
+}
+
+html[data-theme=white] .sk-box,
+html[data-theme=white] .sk-line,
+html[data-theme=white] .sk-poster,
+html[data-theme=white] .tp-sk-chip,
+html[data-theme=white] .sk {
+  background: linear-gradient(90deg, #e7ebf2 25%, #f3f5fa 50%, #e7ebf2 75%);
+  background-size: 200% 100%;
+}
+
+.card.sk-card {
+  pointer-events: none;
+  cursor: default;
+  animation: none !important;
+}
+
+.card.sk-card .sk-poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--rad);
+  border: 1px solid var(--bd);
+}
+
+.card.sk-card .ci {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 8px;
+}
+
+.sk-line {
+  height: 11px;
+  border-radius: 6px;
+}
+
+.sk-line.h-lg { height: 14px; }
+.sk-line.h-sm { height: 9px; }
+.sk-line.w96 { width: 96%; }
+.sk-line.w90 { width: 90%; }
+.sk-line.w85 { width: 85%; }
+.sk-line.w75 { width: 75%; }
+.sk-line.w65 { width: 65%; }
+.sk-line.w55 { width: 55%; }
+.sk-line.w40 { width: 40%; }
+
+.cg-hero-card.cg-hero-sk {
+  pointer-events: none;
+  cursor: default;
+}
+
+.cg-hero-card.cg-hero-sk::after {
+  display: none;
+}
+
+.cg-hero-sk-poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--rad-sm);
+}
+
+.cg-hero-sk-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.tp-sk-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 76px;
+  justify-content: center;
+}
+
+.j-char-card.tp-sk-char {
+  pointer-events: none;
+  cursor: default;
+  gap: 6px;
+}
+
+.tp-rel-card.tp-sk-rel {
+  pointer-events: none;
+  cursor: default;
+  min-height: 80px;
+}
+
+.tp-sk-rel-img {
+  width: 44px;
+  height: 62px;
+  border-radius: var(--rad-sm);
+  flex-shrink: 0;
+}
+
+.tp-sk-rel-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.tp-sk-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
+}
+
+.tp-sk-chip {
+  display: inline-block;
+  height: 26px;
+  border-radius: 999px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .view-enter,
   .grid .card,
@@ -1888,10 +2014,121 @@ html[data-theme=white] .data-diag-spoiler > summary:hover {
   .modal.open .mc,
   .btn-spin-ic,
   .sync.sync-spinning .sync-ic,
-  .data-sync-status {
+  .data-sync-status,
+  .sk,
+  .sk-box,
+  .sk-line,
+  .sk-poster,
+  .tp-sk-chip {
     animation: none !important;
     transition: none !important;
   }
 }
+
+/* Короткие подсказки под сложными настройками профиля и оформления */
+.fld-hint {
+  font-size: 12px;
+  line-height: 1.42;
+  color: var(--mu);
+  margin: 2px 0 0;
+  opacity: .92;
+  flex-shrink: 0;
+}
+.fld-hint.warn {
+  color: #fbbf24;
+  opacity: 1;
+}
+.pf-toggle-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  min-height: 44px;
+  height: auto;
+  flex: 0 0 auto;
+  border-radius: var(--rad-sm);
+  border: 1px solid var(--bd);
+  background: var(--inp);
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.pf-toggle-box:hover {
+  border-color: rgba(255,255,255,.22);
+}
+.pf-toggle-box input[type="checkbox"] {
+  margin: 2px 0 0;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  accent-color: var(--ac);
+  cursor: pointer;
+}
+.pf-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.pf-toggle-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+html[data-theme=white] .fld-hint {
+  color: #525969;
+  opacity: 1;
+}
+html[data-theme=white] .fld-hint.warn {
+  color: #b45309;
+}
+html[data-theme=white] .pf-toggle-box {
+  background: #f6f7fb;
+  border-color: rgba(0,0,0,.1);
+}
+html[data-theme=white] .pf-toggle-box:hover {
+  border-color: rgba(0,0,0,.22);
+}
+
+/* Возвращённый переключатель карточек в шапке и даты последнего бэкапа / сверки */
+.hdr-mob-size-btn {
+  display: none;
+}
+header #sizeSel {
+  padding: 7px 10px;
+  font-size: 13px;
+  height: 36px;
+}
+.data-btn-meta {
+  font-size: 12px;
+  line-height: 1.38;
+  color: var(--mu);
+  margin: -6px 2px 2px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+html[data-theme=white] .data-btn-meta {
+  color: #525969;
+}
+
+/* Оптимизация прокрутки большой коллекции (500+ тайтлов): пропускаем layout/paint карточек вне экрана */
+.grid > .card:not(.sk-card) {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 360px;
+}
+.grid.list > .card:not(.sk-card) {
+  contain-intrinsic-block-size: auto 116px;
+}
+.grid > .card:hover,
+.grid > .card:focus-within,
+.grid > .card.sel,
+.grid > .card.qa-hover-lock {
+  content-visibility: visible;
+}
+.grid .card.card-no-anim {
+  animation: none !important;
+}
+
+
+
 
 

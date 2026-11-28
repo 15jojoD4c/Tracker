@@ -118,6 +118,23 @@ header {
   flex-shrink: 0;
 }
 
+header #sizeSel {
+  display: none !important;
+}
+
+.hdr-mob-size-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px !important;
+  height: 30px !important;
+  padding: 0 8px !important;
+  font-size: 12px !important;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .av {
   width: 30px !important;
   height: 30px !important;
@@ -2152,4 +2169,21 @@ html[data-grid-size="sm"] .grid:not(.list) .card-ep-finish-btn {
     animation: none !important;
   }
 }
+
+/* Точные размеры off-screen карточек на телефоне для плавной прокрутки 500+ тайтлов без скачков скроллбара */
+.grid:not(.list) > .card:not(.sk-card) {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 340px;
+}
+html[data-grid-size="sm"] .grid:not(.list) > .card:not(.sk-card) {
+  contain-intrinsic-block-size: auto 245px;
+}
+html[data-grid-size="lg"] .grid:not(.list) > .card:not(.sk-card) {
+  contain-intrinsic-block-size: auto 164px;
+}
+.grid.list > .card:not(.sk-card) {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 112px;
+}
+
 

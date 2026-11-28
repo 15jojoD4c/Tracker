@@ -3482,6 +3482,103 @@
     }
   }
 
+  function getProfileCardStyleHint(cardStyle) {
+    const key = String(cardStyle || '').trim();
+    if (key === 'sharp') {
+      return 'Убирает скругления у карточек и постеров — более строгая сетка.';
+    }
+    if (key === 'minimal') {
+      return 'Скрывает теги и заметки на карточках — остаются только постер, название и прогресс.';
+    }
+    return 'Скруглённые карточки со всеми тегами, жанрами и твоими заметками.';
+  }
+
+  function getProfileBgAllHint(bgAll, hasCoverOrGradient) {
+    const enabled = Boolean(bgAll);
+    const hasBg = Boolean(hasCoverOrGradient);
+    if (enabled && !hasBg) {
+      return {
+        text: 'Обложка или градиент пока не выбраны — выбери их выше, иначе фон сайта останется стандартным.',
+        warn: true
+      };
+    }
+    if (enabled && hasBg) {
+      return {
+        text: 'Выбранная обложка или градиент растянутся на задний план всех страниц с мягким затемнением.',
+        warn: false
+      };
+    }
+    return {
+      text: 'Если включить, выбранная выше обложка или градиент станут мягко затемнённым фоном на всех страницах.',
+      warn: false
+    };
+  }
+
+  function getThemeDescriptionHint(themeKey) {
+    const key = String(themeKey || '').trim();
+    switch (key) {
+      case 'black':
+        return 'Глубокий чёрный фон для OLED-экранов и максимального контраста. Сохраняется в аккаунте.';
+      case 'white':
+        return 'Светлая тема для дневного чтения и яркого освещения. Сохраняется в аккаунте.';
+      case 'neon':
+        return 'Тёмно-фиолетовая палитра с яркими акцентами. Сохраняется в аккаунте.';
+      case 'mocha':
+        return 'Тёплая кофейная тёмная тема с мягким контрастом для глаз. Сохраняется в аккаунте.';
+      default:
+        return 'Тёмная тема с мягкой глубиной и полупрозрачными панелями. Сохраняется в аккаунте.';
+    }
+  }
+
+  function formatLastActivityTimestampRu(tsMs, nowMs = Date.now(), emptyFallback = 'ещё не выполнялась') {
+    const ts = Number(tsMs || 0);
+    if (!Number.isFinite(ts) || ts <= 0) return String(emptyFallback || 'ещё не было');
+    const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+    const diff = now - ts;
+    if (diff >= 0 && diff < 60000) return 'только что';
+
+    const d = new Date(ts);
+    const n = new Date(now);
+    const pad2 = x => String(x).padStart(2, '0');
+    const timePart = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+
+    const startOfDay = dt => new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+    const dayDiff = Math.round((startOfDay(n) - startOfDay(d)) / 86400000);
+    if (dayDiff === 0) return `сегодня в ${timePart}`;
+    if (dayDiff === 1) return `вчера в ${timePart}`;
+    return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()} в ${timePart}`;
+  }
+
+  function getCollectionRenderBatchSize(viewportWidth = 1280) {
+    const w = Number(viewportWidth);
+    if (Number.isFinite(w) && w > 0 && w <= 768) return 48;
+    return 60;
+  }
+
+  function getCardImageLoadingStrategy(cardIndex = 0, opts = {}) {
+    const idx = Math.max(0, Math.floor(Number(cardIndex) || 0));
+    const isAppend = Boolean(opts && opts.isAppend);
+    const isMobile = Boolean(opts && opts.isMobile);
+    const eagerCount = Number.isFinite(Number(opts && opts.eagerCount))
+      ? Math.max(0, Math.floor(Number(opts.eagerCount)))
+      : (isMobile ? 4 : 6);
+    if (isAppend) {
+      return {
+        loading: 'lazy',
+        decoding: 'async',
+        fetchPriority: 'low',
+        animateEntrance: false
+      };
+    }
+    const isEager = idx < eagerCount;
+    return {
+      loading: isEager ? 'eager' : 'lazy',
+      decoding: 'async',
+      fetchPriority: idx < 2 ? 'high' : (isEager ? 'auto' : 'low'),
+      animateEntrance: idx < 12
+    };
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -3606,7 +3703,13 @@
     decodeFirestoreRestQueryResponse,
     buildSpeculativeColdStartDocIds,
     runHedgedCloudRead,
-    getDataModalActionDialogConfig
+    getDataModalActionDialogConfig,
+    getProfileCardStyleHint,
+    getProfileBgAllHint,
+    getThemeDescriptionHint,
+    formatLastActivityTimestampRu,
+    getCollectionRenderBatchSize,
+    getCardImageLoadingStrategy
   };
 
   if (typeof module !== 'undefined' && module.exports) {

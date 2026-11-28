@@ -33,9 +33,35 @@ function setDataSyncStatusBox(kind, text, spinning = false) {
   }
 }
 
+function refreshDataModalTimestamps() {
+  const fmt = (ts, fallback) => {
+    if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.formatLastActivityTimestampRu === 'function') {
+      return KirokuEngine.formatLastActivityTimestampRu(ts, Date.now(), fallback);
+    }
+    return ts ? new Date(ts).toLocaleString('ru-RU') : fallback;
+  };
+  const backupEl = $('dataLastBackupMeta');
+  if (backupEl) {
+    let backupTs = 0;
+    try { backupTs = Number(localStorage.getItem('lastBackup') || 0) || 0; } catch (e) {}
+    backupEl.textContent = 'Последний бэкап: ' + fmt(backupTs, 'ещё не скачивался');
+  }
+  const syncEl = $('dataLastCloudSyncMeta');
+  if (syncEl) {
+    if (!user || user.isLocal) {
+      syncEl.textContent = 'Последняя сверка: локальный режим (облако не подключено)';
+    } else {
+      const syncTs = typeof window.getLastCloudSyncTimestamp === 'function' ? window.getLastCloudSyncTimestamp(user.uid) : 0;
+      syncEl.textContent = 'Последняя сверка: ' + fmt(syncTs, 'ещё не выполнялась');
+    }
+  }
+}
+window.refreshDataModalTimestamps = refreshDataModalTimestamps;
+
 function openDataManagementModal() {
   $('accMenu')?.classList.remove('open');
   $('hybMorePop')?.classList.remove('open');
+  refreshDataModalTimestamps();
   $('dataModal').style.display = 'flex';
 }
 if ($('accDataBtn')) $('accDataBtn').onclick = openDataManagementModal;
@@ -282,6 +308,7 @@ window.exportData = () => {
   const a = document.createElement('a'), u = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'}));
   a.href = u; a.download = `Kirokucho_FullBackup_${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(u);
   try { localStorage.setItem('lastBackup', String(Date.now())); } catch (e) {}
+  refreshDataModalTimestamps();
   toast('Резервная копия (.json) скачана ✓');
 };
 
@@ -3257,7 +3284,22 @@ class CharacterSeiyuuManager {
   }
   static async render(box, item) {
     if (!box || !item) return { items: [] };
-    box.style.display = 'block'; box.replaceChildren(el('div', 'meta', 'Загрузка персонажей…'));
+    box.style.display = 'block';
+    const skHdr = el('div', 'jutsu-hdr');
+    const skTitle = el('div', 'jutsu-hdr-title');
+    skTitle.style.width = '220px';
+    const skSub = el('div', 'sk-line h-sm w65');
+    skSub.style.marginTop = '6px';
+    skTitle.append(el('div', 'sk-line h-lg w85'), skSub);
+    skHdr.append(skTitle);
+    const skTrack = el('div', 'jutsu-track');
+    skTrack.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < 6; i++) {
+      const c = el('div', 'j-char-card tp-sk-char');
+      c.append(el('div', 'j-char-art sk-box'), el('div', 'sk-line w85'), el('div', 'sk-line h-sm w55'));
+      skTrack.append(c);
+    }
+    box.replaceChildren(skHdr, skTrack);
     try {
       const data = await this.fetchChars(item);
       if (!data.items.length) { box.style.display = 'none'; return data; }
@@ -3680,8 +3722,18 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
 
   const descSec = el('div', 'tp-desc-sec tp-tab-panel tp-about-panel');
   const descHdr = el('h3', null, '📖 Описание и синопсис'); descHdr.style.margin = '22px 0 8px';
-  const descBody = el('div', 'tp-desc-body', initialDesc || (isManualFp ? 'Описание отсутствует.' : 'Загружаю описание…'));
+  const descBody = el('div', 'tp-desc-body');
   descBody.style.cssText = 'background:rgba(0,0,0,.25);padding:14px;border-radius:12px;line-height:1.6;white-space:pre-wrap';
+  if (initialDesc) {
+    descBody.textContent = initialDesc;
+  } else if (isManualFp) {
+    descBody.textContent = 'Описание отсутствует.';
+  } else {
+    const skLines = el('div', 'tp-sk-lines');
+    skLines.setAttribute('aria-hidden', 'true');
+    skLines.append(el('div', 'sk-line w96'), el('div', 'sk-line w90'), el('div', 'sk-line w65'));
+    descBody.append(skLines);
+  }
   const descToggleBtn = el('button', 'tp-desc-toggle-btn', 'Показать полностью ▾');
   descToggleBtn.type = 'button';
   descToggleBtn.style.display = 'none';
@@ -3699,7 +3751,7 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
     descSec.dataset.expanded = exp ? '0' : '1';
     descToggleBtn.textContent = exp ? 'Показать полностью ▾' : 'Свернуть ▴';
   };
-  syncDescCollapsible(descBody.textContent);
+  syncDescCollapsible(initialDesc || '');
   descSec.append(descHdr, descBody, descToggleBtn);
 
   const mediaPanel = el('div', 'tp-tab-panel tp-media-panel');
@@ -3718,9 +3770,19 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
   charsPanel.append(charsSec, charsEmptyHint);
 
   const franchisePanel = el('div', 'tp-tab-panel tp-franchise-panel');
-  const franchiseSec = el('div'); franchiseSec.style.marginTop = '20px'; franchiseSec.style.display = 'none';
+  const franchiseSec = el('div'); franchiseSec.style.marginTop = '20px'; franchiseSec.style.display = isManualFp ? 'none' : 'block';
   const franchiseHdr = el('h3', null, '🌳 Франшиза и порядок просмотра'); franchiseHdr.style.margin = '0 0 8px';
   const relGrid = el('div', 'tp-rel-grid');
+  if (!isManualFp) {
+    for (let i = 0; i < 3; i++) {
+      const skRel = el('div', 'tp-rel-card tp-sk-rel');
+      skRel.setAttribute('aria-hidden', 'true');
+      const skInf = el('div', 'tp-sk-rel-info');
+      skInf.append(el('div', 'sk-line h-sm w40'), el('div', 'sk-line w85'), el('div', 'sk-line h-sm w65'));
+      skRel.append(el('div', 'tp-sk-rel-img sk-box'), skInf);
+      relGrid.append(skRel);
+    }
+  }
   franchiseSec.append(franchiseHdr, relGrid);
   const franchiseEmptyHint = el('div', 'tp-mob-empty', 'Связанных сезонов, сиквелов или адаптаций не найдено.');
   franchiseEmptyHint.style.display = 'none';
@@ -4097,7 +4159,11 @@ async function openFullTitlePage(itemObj, fromHistory = false, opts = {}) {
 
   // Дерево просмотра франшизы с пронумерованным маршрутом, отметками «✓ В коллекции» и поддержкой TMDB коллекций / сезонов
   const relEdges = mediaMeta?.relations?.edges || [];
+  relGrid.replaceChildren();
   franchisePanel.dataset.hasContent = relEdges.length > 0 ? '1' : '0';
+  if (!relEdges.length) {
+    franchiseSec.style.display = 'none';
+  }
   if (relEdges.length) {
     const isTvSeasonsList = Boolean(mediaMeta?.franchiseIsTvSeasons);
     if (isTvSeasonsList) {
@@ -4274,7 +4340,7 @@ async function openCatalogByCreator(kindType, nameStr, itemCat, fromHistory = fa
       : { g: typeof cg !== 'undefined' ? cg.g : 'Аниме', q: '', tags: [], creator: window._cgCurrentCreator };
     pushAppHistoryState({ tab: 'catalog', fullPage: false, catalogSnap: snap }, false);
   }
-  cgGrid.replaceChildren(...Array.from({ length: 8 }, () => el('div', 'sk')));
+  cgGrid.replaceChildren(...Array.from({ length: 8 }, () => (typeof window.createCatalogCardSkeleton === 'function' ? window.createCatalogCardSkeleton() : el('div', 'sk'))));
   $('cgMore').style.display = 'none';
   if ($('cgHeroWrap')) $('cgHeroWrap').style.display = 'none';
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -5220,6 +5286,7 @@ if ($('manualCloudSyncBtn')) {
       }
       if (synced) {
         if (btn) btn.textContent = '✓ Сверено';
+        refreshDataModalTimestamps();
         setDataSyncStatusBox('ok', `✓ Коллекция сверена с облаком (${items.length} шт.) · ${timeStr}`);
         _manualSyncBtnResetTimer = setTimeout(() => {
           if (btn && !btn.classList.contains('is-busy')) btn.textContent = '⇄ Сверить с облаком';

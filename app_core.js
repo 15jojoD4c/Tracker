@@ -325,6 +325,7 @@ function applyPosterImg(imgEl, rawPosterUrl, itemRef) {
   delete imgEl.dataset.posterTmdbTried;
   delete imgEl.dataset.posterFailed;
   imgEl.referrerPolicy = 'no-referrer';
+  imgEl.decoding = 'async';
   imgEl.onload = () => {
     imgEl.classList.add('ld');
     if (Number(imgEl.dataset.posterStep || 0) > 0 && imgEl.src) {
@@ -2048,10 +2049,22 @@ function requestPersistentStorageSafe() {
     }
   } catch (e) {}
 }
+function recordLastCloudSyncTimestamp(uid, ts = Date.now()) {
+  if (!uid) return;
+  try { localStorage.setItem('lastCloudSync_' + uid, String(Number(ts) || Date.now())); } catch (e) {}
+  if (typeof window.refreshDataModalTimestamps === 'function') window.refreshDataModalTimestamps();
+}
+function getLastCloudSyncTimestamp(uid) {
+  if (!uid) return 0;
+  try { return Number(localStorage.getItem('lastCloudSync_' + uid) || 0) || 0; } catch (e) { return 0; }
+}
+window.recordLastCloudSyncTimestamp = recordLastCloudSyncTimestamp;
+window.getLastCloudSyncTimestamp = getLastCloudSyncTimestamp;
 function markInitialCloudSyncDone(uid) {
   if (!uid) return;
   _initialCloudSyncDoneUid = uid;
   if (_initialCloudSyncBlockedUid === uid) _initialCloudSyncBlockedUid = '';
+  recordLastCloudSyncTimestamp(uid);
   if (_activeCloudSessionUid === uid) {
     stopInitialCloudSyncRetries();
   }
@@ -2808,6 +2821,7 @@ async function flushPendingCloudChanges(showToast = false) {
       scheduleColRevBump();
     }
     try { localStorage.removeItem('colChunksDirty_' + uid); } catch (e) {}
+    recordLastCloudSyncTimestamp(uid);
     setSync();
     if (showToast) toast('Отложенные локальные изменения отправлены в облако ✓');
     return true;
@@ -3201,6 +3215,7 @@ window.forceCloudSyncNow = async function forceCloudSyncNow(manual = true) {
       }
       if (serverConfirmed) {
         stopInitialCloudSyncRetries();
+        recordLastCloudSyncTimestamp(effUid);
         const pendingLeft = getUnsyncedPendingCounts();
         let dirtyChunksLeft = false;
         try { dirtyChunksLeft = localStorage.getItem('colChunksDirty_' + effUid) === '1'; } catch (e) {}
@@ -4813,17 +4828,31 @@ function renderEpisodeProgressControl(containerEl, item, onAfterChange = null) {
   containerEl.append(titleWrap, ctrl);
 }
 
-// Ленивая пагинация для мгновенной работы при 1000+ тайтлах (Часть 4 п.5)
-const RENDER_PAGE_SIZE = 60;
-let currentRenderLimit = RENDER_PAGE_SIZE;
+// Ленивая пагинация для мгновенной работы при 500–1000+ тайтлах
+function getActiveRenderPageSize() {
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.getCollectionRenderBatchSize === 'function') {
+    return KirokuEngine.getCollectionRenderBatchSize(window.innerWidth);
+  }
+  return window.innerWidth <= 768 ? 48 : 60;
+}
+let currentRenderLimit = getActiveRenderPageSize();
 
-function createCollectionCardNode(i) {
+function createCollectionCardNode(i, renderMeta = null) {
   const stLabel = getStatusLabelForCategory(i.status, i.category);
   const card = el('div', 'card'), pc = el('div', 'pc'), img = el('img'), stEl = el('div', 'status', stLabel);
   card.dataset.id = String(i.id);
   card._item = i;
   stEl.dataset.s = i.status;
-  img.loading = 'lazy';
+  const imgStrategy = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.getCardImageLoadingStrategy === 'function')
+    ? KirokuEngine.getCardImageLoadingStrategy(renderMeta?.index || 0, {
+        isAppend: Boolean(renderMeta?.isAppend),
+        isMobile: Boolean(renderMeta?.isMobile)
+      })
+    : { loading: 'lazy', decoding: 'async', fetchPriority: 'auto', animateEntrance: !renderMeta?.isAppend };
+  img.loading = imgStrategy.loading;
+  img.decoding = imgStrategy.decoding;
+  if ('fetchPriority' in img) img.fetchPriority = imgStrategy.fetchPriority;
+  if (!imgStrategy.animateEntrance) card.classList.add('card-no-anim');
   applyPosterImg(img, i.poster, i);
   const ov = el('div', 'ov'); ov.append(el('p', null, i.description || 'Описание отсутствует.'));
   pc.append(img, ov, stEl);
@@ -5016,8 +5045,9 @@ function updateSingleItemCardInDOM(itemId) {
 
 function render(appendMore = false) {
   const isAppend = appendMore === true;
+  const pageSize = getActiveRenderPageSize();
   if (!isAppend) {
-    currentRenderLimit = RENDER_PAGE_SIZE;
+    currentRenderLimit = pageSize;
     grid.replaceChildren();
   }
   grid.className = 'grid' + (view === 'list' ? ' list' : '');
@@ -5158,12 +5188,13 @@ function render(appendMore = false) {
     return grid.append(emptyBox);
   }
 
-  const startIdx = isAppend ? Math.max(0, currentRenderLimit - RENDER_PAGE_SIZE) : 0;
+  const startIdx = isAppend ? Math.max(0, currentRenderLimit - pageSize) : 0;
   const slice = list.slice(startIdx, currentRenderLimit);
+  const isMobileVp = window.innerWidth <= 768;
   const frag = document.createDocumentFragment();
   slice.forEach((i, idx) => {
-    const node = createCollectionCardNode(i);
-    node.style.setProperty('--card-i', String(idx));
+    const node = createCollectionCardNode(i, { index: idx, isAppend, isMobile: isMobileVp });
+    if (!isAppend && idx < 12) node.style.setProperty('--card-i', String(idx));
     frag.append(node);
   });
   grid.append(frag);
@@ -5171,7 +5202,7 @@ function render(appendMore = false) {
   if (moreBtn) {
     if (list.length > currentRenderLimit) {
       moreBtn.style.display = 'inline-flex';
-      moreBtn.textContent = `Показать ещё (${Math.min(RENDER_PAGE_SIZE, list.length - currentRenderLimit)} из ${list.length - currentRenderLimit} оставшихся)`;
+      moreBtn.textContent = `Показать ещё (${Math.min(pageSize, list.length - currentRenderLimit)} из ${list.length - currentRenderLimit} оставшихся)`;
     } else {
       moreBtn.style.display = 'none';
     }
@@ -5180,16 +5211,16 @@ function render(appendMore = false) {
 
 if ($('colLoadMoreBtn')) {
   $('colLoadMoreBtn').onclick = () => {
-    currentRenderLimit += RENDER_PAGE_SIZE;
+    currentRenderLimit += getActiveRenderPageSize();
     render(true);
   };
   if ('IntersectionObserver' in window) {
     const io = new IntersectionObserver(entries => {
       if (entries[0]?.isIntersecting && lastList.length > currentRenderLimit) {
-        currentRenderLimit += RENDER_PAGE_SIZE;
+        currentRenderLimit += getActiveRenderPageSize();
         render(true);
       }
-    }, { rootMargin: '320px' });
+    }, { rootMargin: '600px 0px' });
     io.observe($('colLoadMoreBtn'));
   }
 }
@@ -5361,7 +5392,7 @@ const setSize = (v, showHint = false) => {
   const meta = typeof KirokuEngine !== 'undefined'
     ? KirokuEngine.getGridSizeMobileMeta(numV)
     : { shortLabel: sizeKey === 'sm' ? '⊞ 3' : sizeKey === 'lg' ? '⊞ 1' : '⊞ 2', fullLabel: sizeKey === 'sm' ? 'Мелкие (3 в ряд)' : sizeKey === 'lg' ? 'Крупные (1 в ряд)' : 'Средние (2 в ряд)' };
-  ['cgMobSizeBtn', 'colMobSizeBtn'].forEach(id => {
+  ['hdrMobSizeBtn', 'cgMobSizeBtn', 'colMobSizeBtn'].forEach(id => {
     const btn = $(id);
     if (btn) {
       btn.textContent = meta.shortLabel;
@@ -5375,7 +5406,7 @@ const setSize = (v, showHint = false) => {
 $('sizeSel').value = localStorage.getItem('cw') || '190';
 setSize($('sizeSel').value || '190', false);
 $('sizeSel').onchange = e => setSize(e.target.value, false);
-['cgMobSizeBtn', 'colMobSizeBtn'].forEach(id => {
+['hdrMobSizeBtn', 'cgMobSizeBtn', 'colMobSizeBtn'].forEach(id => {
   const btn = $(id);
   if (btn) {
     btn.onclick = () => {
@@ -6215,6 +6246,9 @@ function setTheme(t, quiet) {
     metaTheme.setAttribute('content', themeColors[t] || '#0f1115');
   }
   [...$('accTh').children].forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  if ($('accThHint') && window.KirokuEngine?.getThemeDescriptionHint) {
+    $('accThHint').textContent = window.KirokuEngine.getThemeDescriptionHint(t);
+  }
   if (!quiet) { prof.theme = t; profSaveLocal(); uiSync(); }
 }
 THEMES.forEach(([t, n]) => { const b = el('button', null, n); b.type = 'button'; b.dataset.t = t; b.onclick = e => { e.stopPropagation(); setTheme(t); }; $('accTh').append(b); });
@@ -6409,9 +6443,25 @@ function openImageCropperModal(file, targetW, targetH, quality = 0.78, titleText
     fr.readAsDataURL(file);
   });
 }
+function pfSyncHints() {
+  if (!pf) return;
+  const eng = window.KirokuEngine;
+  const styleHintEl = $('pfCardStyleHint');
+  if (styleHintEl && eng?.getProfileCardStyleHint) {
+    styleHintEl.textContent = eng.getProfileCardStyleHint($('pfCardStyle')?.value || '');
+  }
+  const bgHintEl = $('pfBgAllHint');
+  if (bgHintEl && eng?.getProfileBgAllHint) {
+    const hasBg = Boolean(pf.cover || pf.coverColor);
+    const info = eng.getProfileBgAllHint(Boolean($('pfBgAll')?.checked), hasBg);
+    bgHintEl.textContent = info.text;
+    bgHintEl.classList.toggle('warn', Boolean(info.warn));
+  }
+}
 function pfDraw() {
   $('pfAv').src = pf.avatar || (user && user.photoURL) || FALL;
   [...$('pfGrad').children].forEach((b, k) => b.classList.toggle('on', pf.coverColor === k + 1 && !pf.cover));
+  pfSyncHints();
 }
 function renderAuthProvidersInProfileModal() {
   const box = $('pfAuthProvidersBox');
@@ -6582,6 +6632,8 @@ $('pfFile').onchange = async () => {
 $('pfAvDel').onclick = () => { pf.avatar = ''; pfDraw(); };
 $('pfCvDel').onclick = () => { pf.cover = ''; pf.coverColor = 0; pfDraw(); };
 $('pfCancel').onclick = () => hideModalElement('profModal');
+if ($('pfBgAll')) $('pfBgAll').onchange = pfSyncHints;
+if ($('pfCardStyle')) $('pfCardStyle').onchange = pfSyncHints;
 $('pfCustomColor').oninput = () => { pf.customColor = $('pfCustomColor').value; };
 $('pfColReset').onclick = () => { pf.customColor = ''; $('pfCustomColor').value = ACC[0][0]; };
 

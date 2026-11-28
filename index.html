@@ -23,12 +23,12 @@
 <link rel="icon" href="./favicon.ico" sizes="any">
 <!-- ВАЖНО: при обновлении версии кэша (?v=...) синхронно меняй и const APP_VER внизу index.html -->
 <style>html,body{background:#0a0b12;color:#f1f3f9;margin:0}html[data-theme=white],html[data-theme=white] body{background:#f4f6fb;color:#14161f}body.auth-checking > *{display:none!important}</style>
-<link rel="preload" href="./kiroku_engine.js?v=20261226" as="script">
-<link rel="preload" href="./app_core.js?v=20261226" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261226" as="script">
-<link rel="preload" href="./app.js?v=20261226" as="script">
-<link rel="stylesheet" href="./style.css?v=20261226">
-<link rel="stylesheet" href="./mobile.css?v=20261226" media="(max-width: 768px)">
+<link rel="preload" href="./kiroku_engine.js?v=20261230" as="script">
+<link rel="preload" href="./app_core.js?v=20261230" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261230" as="script">
+<link rel="preload" href="./app.js?v=20261230" as="script">
+<link rel="stylesheet" href="./style.css?v=20261230">
+<link rel="stylesheet" href="./mobile.css?v=20261230" media="(max-width: 768px)">
 </head>
 <body class="auth-checking">
 
@@ -60,11 +60,13 @@
 <div id="appScreen">
   <header>
     <div class="hdr-inner">
-      <div class="row"><span class="brand" aria-hidden="true">▶</span><span class="logo">Kirokucho</span><span id="syncState" class="sync">☁ Синхронизировано</span><span id="accountBadge" class="sync" style="display:none"></span></div>
+      <div class="row"><span class="brand" aria-hidden="true">▶</span><span class="logo">Kirokucho</span><button class="hdr-info-btn" id="aboutSiteBtn" type="button" title="О сайте и обратная связь" aria-label="О сайте и обратная связь"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></button><span id="syncState" class="sync">☁ Синхронизировано</span><span id="accountBadge" class="sync" style="display:none"></span></div>
       <div class="row hdr-actions">
         <input type="file" id="universalImportFile" accept=".csv,.tsv,.txt,.json,.xml,.html,.htm,.xls" style="display:none" onchange="handleUniversalFileImport(event)">
         <input type="file" id="importFile" accept=".json" onchange="importData(event)">
         <input type="file" id="malXmlFile" accept=".xml,.json" onchange="importMalXml(event)">
+        <select id="sizeSel" title="Размер карточек" aria-label="Размер карточек"><option value="150">Мелкие карточки</option><option value="190">Средние карточки</option><option value="240">Крупные карточки</option></select>
+        <button class="btn btn-s hdr-mob-size-btn" id="hdrMobSizeBtn" type="button" title="Размер карточек на экране" aria-label="Размер карточек">⊞ 2</button>
         <button class="btn" id="openModalBtn" type="button" aria-label="Добавить тайтл"><span class="add-btn-plus">+</span><span class="add-btn-lbl"> Добавить</span></button>
         <div class="acc">
           <button class="av" id="accBtn" title="Аккаунт и настройки" aria-haspopup="true"><img id="hdrAvatar" referrerpolicy="no-referrer" alt=""></button>
@@ -611,22 +613,42 @@
     <div class="fs" style="margin-top:2px">Способы входа в этот аккаунт</div>
     <div id="pfAuthProvidersBox" style="display:flex;flex-direction:column;gap:8px"></div>
   </div>
-  <div class="fld"><label>Публичный никнейм</label><input id="pfName" maxlength="40" placeholder="Твой никнейм"></div>
-  <div class="row2">
-    <div class="fld"><label>Настоящее имя (по желанию)</label><input id="pfRealName" maxlength="40" placeholder="Напр.: Павел"></div>
-    <div class="fld"><label>День рождения (по желанию)</label><input id="pfBday" maxlength="20" placeholder="Напр.: 06.09.2007"></div>
+  <div class="fld">
+    <label for="pfName">Публичный никнейм</label>
+    <input id="pfName" maxlength="40" placeholder="Твой никнейм" aria-describedby="pfNameHint">
+    <div class="fld-hint" id="pfNameHint">Отображается в шапке профиля и рядом с твоими комментариями в каталоге.</div>
   </div>
-  <div class="fld"><label>О себе</label><textarea id="pfBio" maxlength="300" placeholder="Пара слов о себе: любимые жанры, девиз, что смотришь сейчас…"></textarea></div>
+  <div class="row2">
+    <div class="fld"><label for="pfRealName">Настоящее имя (по желанию)</label><input id="pfRealName" maxlength="40" placeholder="Напр.: Павел"></div>
+    <div class="fld"><label for="pfBday">День рождения (по желанию)</label><input id="pfBday" maxlength="20" placeholder="Напр.: 06.09.2007"></div>
+  </div>
+  <div class="fld"><label for="pfBio">О себе</label><textarea id="pfBio" maxlength="300" placeholder="Пара слов о себе: любимые жанры, девиз, что смотришь сейчас…"></textarea></div>
   <div class="fs">Аватар</div>
   <div class="row"><img id="pfAv" class="pfav" referrerpolicy="no-referrer" alt=""><button class="btn btn-s" id="pfAvBtn" type="button">Выбрать фото</button><button class="btn btn-s" id="pfAvDel" type="button">Убрать</button></div>
+  <div class="fld-hint" style="margin-top:-6px">После выбора фото откроется кадрирование. Картинка сжимается автоматически и сохраняется в профиле.</div>
   <div class="fs">Обложка профиля (1920 × 320 px)</div>
   <div class="row"><button class="btn btn-s" id="pfCvBtn" type="button">Загрузить обложку</button><button class="btn btn-s" id="pfCvDel" type="button">Убрать</button></div>
   <div class="row" id="pfGrad"></div>
-  <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:14px"><input type="checkbox" id="pfBgAll"> Использовать этот фон на всём сайте</label>
+  <div class="fld-hint" style="margin-top:-6px">Загрузи свою картинку или выбери градиент выше — обложка отображается в шапке профиля.</div>
+  <label class="pf-toggle-box" for="pfBgAll">
+    <input type="checkbox" id="pfBgAll" aria-describedby="pfBgAllHint">
+    <span class="pf-toggle-copy">
+      <span class="pf-toggle-title">Использовать этот фон на всём сайте</span>
+      <span class="fld-hint" id="pfBgAllHint">Если включить, выбранная выше обложка или градиент станут мягко затемнённым фоном на всех страницах.</span>
+    </span>
+  </label>
   <div class="fs">Стиль и оформление</div>
   <div class="row2">
-    <div class="fld"><label>Вид карточек</label><select id="pfCardStyle"><option value="">Стандартный</option><option value="sharp">Строгие углы</option><option value="minimal">Минимализм (без подписей)</option></select></div>
-    <div class="fld"><label>Свой цвет акцента</label><div class="row" style="flex-wrap:nowrap"><input type="color" id="pfCustomColor" value="#8b5cf6" style="height:40px;padding:4px;cursor:pointer;flex:1"><button class="btn btn-s" id="pfColReset" type="button">Сбросить</button></div></div>
+    <div class="fld">
+      <label for="pfCardStyle">Вид карточек</label>
+      <select id="pfCardStyle" aria-describedby="pfCardStyleHint"><option value="">Стандартный</option><option value="sharp">Строгие углы</option><option value="minimal">Минимализм (без подписей)</option></select>
+      <div class="fld-hint" id="pfCardStyleHint">Скруглённые карточки со всеми тегами, жанрами и твоими заметками.</div>
+    </div>
+    <div class="fld">
+      <label for="pfCustomColor">Свой цвет акцента</label>
+      <div class="row" style="flex-wrap:nowrap"><input type="color" id="pfCustomColor" value="#8b5cf6" aria-describedby="pfCustomColorHint" style="height:40px;padding:4px;cursor:pointer;flex:1"><button class="btn btn-s" id="pfColReset" type="button">Сбросить</button></div>
+      <div class="fld-hint" id="pfCustomColorHint">Перекрашивает кнопки и активные вкладки поверх палитры из «Оформления». «Сбросить» вернёт стандартный цвет.</div>
+    </div>
   </div>
 
   <div class="fs" style="color:#fda4af">⚠ Управление аккаунтом</div>
@@ -675,11 +697,13 @@
 
   <div class="fs">Резервная копия и порядок в коллекции</div>
   <button class="btn btn-s" id="exportDataBtn" type="button" style="width:100%">⬇ Скачать бэкап (.json)</button>
+  <div id="dataLastBackupMeta" class="data-btn-meta">Последний бэкап: ещё не скачивался</div>
   <button class="btn btn-s" id="restoreSafetyBackupBtn" type="button" style="width:100%">🛟 Восстановить из локального кэша / страховочной копии</button>
   <button class="btn btn-s" id="cleanupAndEnrichBtn" type="button" style="width:100%">🧹 Навести порядок (дубликаты и обложки)</button>
 
   <div class="fs">Облако</div>
   <button class="btn btn-s" id="manualCloudSyncBtn" type="button" style="width:100%">⇄ Сверить с облаком</button>
+  <div id="dataLastCloudSyncMeta" class="data-btn-meta">Последняя сверка: ещё не выполнялась</div>
   <div id="cloudSyncStatusBox" class="data-sync-status" style="display:none" role="status" aria-live="polite"></div>
 
   <details id="cloudDiagSpoiler" class="data-diag-spoiler">
@@ -692,15 +716,15 @@
   </details>
 </div></div>
 
-<!-- Модальное окно: Оформление, темы и цвета (сохранены id accSw, accTh, accReset, sizeSel) -->
+<!-- Модальное окно: Оформление, темы и цвета (сохранены id accSw, accTh, accReset) -->
 <div id="themeModal" class="modal"><div class="mc" style="max-width:480px">
   <div class="row" style="justify-content:space-between"><h2 style="margin:0">🎨 Оформление сайта</h2><button class="btn btn-s" id="closeThemeModalBtn" type="button">✕</button></div>
   <div class="fs">Цвет акцента</div>
   <div class="sw" id="accSw" title="Цвет оформления" style="padding:4px 0"></div>
+  <div class="fld-hint" style="margin-top:-6px">Меняет цвет кнопок и выделений. Выбор готового цвета сбрасывает свой оттенок из настроек профиля.</div>
   <div class="fs">Тема оформления</div>
   <div class="th" id="accTh" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-  <div class="fs">Размер карточек</div>
-  <select id="sizeSel" title="Размер карточек" style="width:100%"><option value="150">Мелкие карточки</option><option value="190">Средние карточки</option><option value="240">Крупные карточки</option></select>
+  <div class="fld-hint" id="accThHint" style="margin-top:-6px">Тёмная тема с мягкой глубиной и полупрозрачными панелями. Сохраняется в аккаунте.</div>
   <div class="mb" style="justify-content:space-between;margin-top:12px">
     <button class="btn btn-s" id="accReset" type="button">↺ Сбросить оформление</button>
     <button class="btn" id="doneThemeModalBtn" type="button">Готово</button>
@@ -832,7 +856,7 @@ const importWithTimeout = (url, ms = 7000) => new Promise((resolve, reject) => {
 });
 
 // ВАЖНО: должна совпадать с параметром ?v=... в <head> выше
-const APP_VER = "20261226";
+const APP_VER = "20261230";
 const FIREBASE_SDK_URLS = [
   "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
   "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",

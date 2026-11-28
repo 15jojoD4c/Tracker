@@ -2722,5 +2722,77 @@ test('getDataModalActionDialogConfig returns clear Russian explanations for ever
   }
 });
 
+test('getProfileCardStyleHint, getProfileBgAllHint, and getThemeDescriptionHint return accurate Russian hints for every state', () => {
+  assert.match(KirokuEngine.getProfileCardStyleHint(''), /Скруглённые карточки/);
+  assert.match(KirokuEngine.getProfileCardStyleHint('sharp'), /скругления/i);
+  assert.match(KirokuEngine.getProfileCardStyleHint('minimal'), /Скрывает теги и заметки/);
+
+  const bgWarn = KirokuEngine.getProfileBgAllHint(true, false);
+  assert.equal(bgWarn.warn, true);
+  assert.match(bgWarn.text, /не выбраны/i);
+
+  const bgActive = KirokuEngine.getProfileBgAllHint(true, true);
+  assert.equal(bgActive.warn, false);
+  assert.match(bgActive.text, /растянутся на задний план/i);
+
+  const bgOff = KirokuEngine.getProfileBgAllHint(false, false);
+  assert.equal(bgOff.warn, false);
+  assert.match(bgOff.text, /Если включить/i);
+
+  assert.match(KirokuEngine.getThemeDescriptionHint(''), /Тёмная тема/);
+  assert.match(KirokuEngine.getThemeDescriptionHint('black'), /OLED/);
+  assert.match(KirokuEngine.getThemeDescriptionHint('white'), /Светлая тема/);
+  assert.match(KirokuEngine.getThemeDescriptionHint('neon'), /фиолетовая/i);
+  assert.match(KirokuEngine.getThemeDescriptionHint('mocha'), /кофейная/i);
+});
+
+test('formatLastActivityTimestampRu formats empty, just-now, today, yesterday, and older dates cleanly in Russian', () => {
+  const now = new Date(2026, 10, 28, 14, 30, 0).getTime(); // 28.11.2026 14:30
+  assert.equal(KirokuEngine.formatLastActivityTimestampRu(0, now, 'ещё не скачивался'), 'ещё не скачивался');
+  assert.equal(KirokuEngine.formatLastActivityTimestampRu(null, now, 'ещё не выполнялась'), 'ещё не выполнялась');
+  assert.equal(KirokuEngine.formatLastActivityTimestampRu(now - 15000, now), 'только что');
+
+  const todayMorning = new Date(2026, 10, 28, 9, 5, 0).getTime();
+  assert.equal(KirokuEngine.formatLastActivityTimestampRu(todayMorning, now), 'сегодня в 09:05');
+
+  const yesterdayEve = new Date(2026, 10, 27, 21, 40, 0).getTime();
+  assert.equal(KirokuEngine.formatLastActivityTimestampRu(yesterdayEve, now), 'вчера в 21:40');
+
+  const older = new Date(2026, 9, 5, 8, 7, 0).getTime(); // 05.10.2026 08:07
+  assert.equal(KirokuEngine.formatLastActivityTimestampRu(older, now), '05.10.2026 в 08:07');
+});
+
+test('getCollectionRenderBatchSize and getCardImageLoadingStrategy prioritize above-the-fold posters and keep appended batches lightweight', () => {
+  assert.equal(KirokuEngine.getCollectionRenderBatchSize(390), 48);
+  assert.equal(KirokuEngine.getCollectionRenderBatchSize(768), 48);
+  assert.equal(KirokuEngine.getCollectionRenderBatchSize(1440), 60);
+
+  // Mobile initial render: first 4 eager, first 2 high priority, >= 4 lazy+low, >= 12 no entrance animation
+  assert.deepEqual(KirokuEngine.getCardImageLoadingStrategy(0, { isMobile: true }), {
+    loading: 'eager', decoding: 'async', fetchPriority: 'high', animateEntrance: true
+  });
+  assert.deepEqual(KirokuEngine.getCardImageLoadingStrategy(3, { isMobile: true }), {
+    loading: 'eager', decoding: 'async', fetchPriority: 'auto', animateEntrance: true
+  });
+  assert.deepEqual(KirokuEngine.getCardImageLoadingStrategy(4, { isMobile: true }), {
+    loading: 'lazy', decoding: 'async', fetchPriority: 'low', animateEntrance: true
+  });
+  assert.deepEqual(KirokuEngine.getCardImageLoadingStrategy(15, { isMobile: true }), {
+    loading: 'lazy', decoding: 'async', fetchPriority: 'low', animateEntrance: false
+  });
+
+  // Desktop initial render: first 6 eager
+  assert.equal(KirokuEngine.getCardImageLoadingStrategy(5, { isMobile: false }).loading, 'eager');
+  assert.equal(KirokuEngine.getCardImageLoadingStrategy(6, { isMobile: false }).loading, 'lazy');
+
+  // Infinite-scroll appended batch: always lazy, low priority, no entrance animation
+  assert.deepEqual(KirokuEngine.getCardImageLoadingStrategy(0, { isAppend: true, isMobile: true }), {
+    loading: 'lazy', decoding: 'async', fetchPriority: 'low', animateEntrance: false
+  });
+});
+
+
+
+
 
 

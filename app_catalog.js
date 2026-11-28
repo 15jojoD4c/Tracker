@@ -4561,6 +4561,44 @@ function cgMarks() {
   });
 }
 
+function createCatalogCardSkeleton() {
+  const card = el('div', 'card sk-card');
+  card.setAttribute('aria-hidden', 'true');
+  const poster = el('div', 'sk-poster');
+  const info = el('div', 'ci');
+  info.append(el('div', 'sk-line w85'), el('div', 'sk-line h-sm w55'));
+  card.append(poster, info);
+  return card;
+}
+window.createCatalogCardSkeleton = createCatalogCardSkeleton;
+
+function renderCatalogHeroSkeleton() {
+  const wrap = $('cgHeroWrap'), track = $('cgHeroTrack'), titleEl = $('cgHeroTitle');
+  if (!wrap || !track) return;
+  if (cg.q) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'block';
+  if (titleEl) {
+    titleEl.textContent = `Рекомендуем сегодня · ${cg.g === "Кино и сериалы" ? "Фильмы и сериалы" : cg.g}`;
+  }
+  track.replaceChildren(...Array.from({ length: 4 }, () => {
+    const card = el('div', 'cg-hero-card cg-hero-sk');
+    card.setAttribute('aria-hidden', 'true');
+    const poster = el('div', 'cg-hero-sk-poster sk-box');
+    const info = el('div', 'cg-hero-sk-info');
+    info.append(
+      el('div', 'sk-line h-sm w40'),
+      el('div', 'sk-line h-lg w90'),
+      el('div', 'sk-line w65'),
+      el('div', 'sk-line h-sm w75')
+    );
+    card.append(poster, info);
+    return card;
+  }));
+}
+
 // Отрисовка верхнего слайдера «🔥 Рекомендуем сегодня» (Часть 1)
 function renderCatalogHeroSlider(itemsList) {
   const wrap = $('cgHeroWrap'), track = $('cgHeroTrack'), titleEl = $('cgHeroTitle');
@@ -4613,9 +4651,17 @@ if ($('cgHeroNextBtn')) $('cgHeroNextBtn').onclick = () => $('cgHeroTrack')?.scr
 // Карточка каталога с плашками «ОНГОИНГ» / «АНОНС» и полной строкой метаданных под постером (Часть 1)
 function cgCard(r, idx = 0) {
   const card = el('div', 'card'), pc = el('div', 'pc'), img = el('img'), ov = el('div', 'ov'), add = el('button', 'qa');
-  card.style.setProperty('--card-i', String(Number.isFinite(idx) ? idx : 0));
+  const cardPos = cgGrid.children.length;
+  const imgStrategy = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.getCardImageLoadingStrategy === 'function')
+    ? KirokuEngine.getCardImageLoadingStrategy(cardPos, { isAppend: cardPos >= 24, isMobile: window.innerWidth <= 768 })
+    : { loading: 'lazy', decoding: 'async', fetchPriority: 'auto', animateEntrance: cardPos < 12 };
+  if (imgStrategy.animateEntrance) card.style.setProperty('--card-i', String(Number.isFinite(idx) ? idx : cardPos));
+  else card.classList.add('card-no-anim');
   add.type = 'button';
-  card._r = r; img.loading = 'lazy';
+  card._r = r;
+  img.loading = imgStrategy.loading;
+  img.decoding = imgStrategy.decoding;
+  if ('fetchPriority' in img) img.fetchPriority = imgStrategy.fetchPriority;
   applyPosterImg(img, r.poster, r);
   ov.append(el('p', null, r.desc || 'Описание отсутствует.')); add.title = 'Выбрать статус и добавить';
   add.addEventListener('mouseenter', () => {
@@ -4679,7 +4725,8 @@ async function cgLoad(reset) {
     cg.page = 1;
     cgSeenKeys.clear();
     cgSeenItems = [];
-    cgGrid.replaceChildren(...Array.from({length: 12}, () => el('div', 'sk')));
+    renderCatalogHeroSkeleton();
+    cgGrid.replaceChildren(...Array.from({length: 12}, () => createCatalogCardSkeleton()));
     $('cgMore').style.display = 'none';
     renderCatalogCreatorMatches([]);
     if (cg.q && cg.q.length >= 2) {
@@ -5257,7 +5304,14 @@ function rndTagChips(r) {
 // Загрузка похожих тайтлов ТОЛЬКО по нажатию кнопки «🔗 Похожие» с сохранением кэша simPreviewCache (Этап 3 п.6)
 async function loadSimilarTitlesIntoBox(r, targetBox) {
   if (!targetBox || !r) return;
-  targetBox.replaceChildren(el('span', 'meta', '⏳ Загружаю похожие произведения…'));
+  const skRow = el('div', 'tp-sk-chip-row');
+  skRow.setAttribute('aria-hidden', 'true');
+  [84, 114, 96, 76, 108].forEach(w => {
+    const c = el('span', 'tp-sk-chip');
+    c.style.width = w + 'px';
+    skRow.append(c);
+  });
+  targetBox.replaceChildren(skRow);
   const cacheKey = `${r.category}_${r.aniId || r.mal || r.tmdb || r.title}`;
   try {
     let list = simPreviewCache.get(cacheKey);

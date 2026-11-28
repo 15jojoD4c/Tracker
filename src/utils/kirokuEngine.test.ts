@@ -3205,10 +3205,199 @@ test('A2 computePageExitFlushPlan coordinates synchronous local save and cloud f
   assert.equal(p3.flushProfCloudNow, false);
 });
 
+test('A3: extractNormalizedProfileSettings normalizes all cloud profile appearance & layout settings', () => {
+  const full = KirokuEngine.extractNormalizedProfileSettings({
+    theme: 'MOCHA',
+    acc: 3,
+    customColor: '#10b981',
+    cardStyle: 'sharp',
+    cardView: 'list',
+    cardSize: 240,
+    bgAll: true,
+    coverColor: 4
+  });
+  assert.equal(full.hasTheme, true);
+  assert.equal(full.theme, 'mocha');
+  assert.equal(full.hasAcc, true);
+  assert.equal(full.acc, 3);
+  assert.equal(full.customColor, '#10b981');
+  assert.equal(full.cardStyle, 'sharp');
+  assert.equal(full.hasCardView, true);
+  assert.equal(full.cardView, 'list');
+  assert.equal(full.hasCardSize, true);
+  assert.equal(full.cardSize, 240);
+  assert.equal(full.bgAll, true);
+  assert.equal(full.coverColor, 4);
 
+  // Invalid / legacy profile falls back safely without inventing cardView/cardSize
+  const legacy = KirokuEngine.extractNormalizedProfileSettings({
+    theme: 'unknown_theme',
+    acc: 99,
+    customColor: 'not-a-hex',
+    cardStyle: 'weird',
+    cardView: 'carousel',
+    coverColor: 99
+  });
+  assert.equal(legacy.hasTheme, true);
+  assert.equal(legacy.theme, '');
+  assert.equal(legacy.acc, 4);
+  assert.equal(legacy.customColor, '');
+  assert.equal(legacy.cardStyle, '');
+  assert.equal(legacy.hasCardView, false);
+  assert.equal(legacy.cardView, null);
+  assert.equal(legacy.hasCardSize, false);
+  assert.equal(legacy.cardSize, null);
+  assert.equal(legacy.bgAll, false);
+  assert.equal(legacy.coverColor, 6);
+});
 
+test('A3: orderCustomListsForDisplay preserves user customLists order and appends item-only lists sorted', () => {
+  const ordered = KirokuEngine.orderCustomListsForDisplay(
+    ['Топ года', 'Андерграунд', 'Классика', 'топ года', 'Добавлено вручную'],
+    ['Японская волна', 'Андерграунд', 'Артхаус', '__sys_manual__'],
+    '__sys_manual__',
+    'Добавлено вручную'
+  );
+  assert.deepEqual(
+    ordered.map(([, name]: [string, string]) => name),
+    ['Топ года', 'Андерграунд', 'Классика', 'Артхаус', 'Японская волна']
+  );
+});
 
+test('A3: renameCustomListInOrder renames folder in-place without moving it to the end', () => {
+  const renamed = KirokuEngine.renameCustomListInOrder(
+    ['Топ года', 'Андерграунд', 'Классика'],
+    'Андерграунд',
+    'Инди-шедевры'
+  );
+  assert.deepEqual(renamed, ['Топ года', 'Инди-шедевры', 'Классика']);
 
+  // Deduplicates if renamed into an existing name (case-insensitive)
+  const mergedDup = KirokuEngine.renameCustomListInOrder(
+    ['Топ года', 'Андерграунд', 'Классика'],
+    'Андерграунд',
+    'классика'
+  );
+  assert.deepEqual(mergedDup, ['Топ года', 'классика']);
 
+  // Appends if oldName wasn't in customLists yet (item-only implicit folder)
+  const fromImplicit = KirokuEngine.renameCustomListInOrder(
+    ['Топ года'],
+    'Старая',
+    'Новая'
+  );
+  assert.deepEqual(fromImplicit, ['Топ года', 'Новая']);
+});
 
+test('A3: mergeProfileDocsForSync cleanly resets on clean pull and unions customLists/listMeta on dirty local edit', () => {
+  // 1) Clean local profile (hasLocalDirtyProf=false): remote wins & resets stale fields, restores missing visuals backup
+  const cleanRes = KirokuEngine.mergeProfileDocsForSync(
+    {
+      name: 'OldUser',
+      theme: 'mocha',
+      acc: 3,
+      cardView: 'list',
+      cardSize: 240,
+      cardStyle: 'sharp',
+      bgAll: true,
+      avatar: 'data:image/jpeg;base64,LOCALAV',
+      cover: ''
+    },
+    {
+      name: 'NewUser',
+      theme: '',
+      acc: 0,
+      cardView: 'grid',
+      cardSize: 190,
+      customLists: ['Избранное', 'На вечер'],
+      listMeta: { 'Избранное': { cn: 'красный', desc: 'Лучшее' } },
+      isProfile: true,
+      userId: 'u1'
+    },
+    { hasLocalDirtyProf: false }
+  );
+  assert.equal(cleanRes.profile.name, 'NewUser');
+  assert.equal(cleanRes.profile.theme, '');
+  assert.equal(cleanRes.profile.acc, 0);
+  assert.equal(cleanRes.profile.cardView, 'grid');
+  assert.equal(cleanRes.profile.cardSize, 190);
+  assert.equal(cleanRes.profile.cardStyle, undefined);
+  assert.equal(cleanRes.profile.bgAll, false);
+  assert.equal(cleanRes.profile.avatar, 'data:image/jpeg;base64,LOCALAV');
+  assert.equal(cleanRes.restoredVisuals, true);
 
+  // 2) Dirty local profile (Phone changed theme offline while PC added a new folder + listMeta + colRev)
+  const dirtyRes = KirokuEngine.mergeProfileDocsForSync(
+    {
+      name: 'PhoneName',
+      theme: 'neon',
+      cardView: 'list',
+      cardSize: 150,
+      customLists: ['Топ года', 'С телефона'],
+      listMeta: { 'С телефона': { cn: 'зелёный', desc: 'Офлайн' } },
+      colRev: 10
+    },
+    {
+      name: 'PcName',
+      theme: 'black',
+      customLists: ['Топ года', 'С компьютера'],
+      listMeta: {
+        'Топ года': { cn: 'синий', desc: 'ПК' },
+        'С компьютера': { cn: 'розовый', desc: 'Добавлено с ПК' }
+      },
+      manualFolderName: 'Мои ручные',
+      manualFolderMeta: { cn: 'оранжевый', desc: 'Ручные' },
+      colRev: 15,
+      colChunkCount: 2,
+      colStorageV2: true
+    },
+    { hasLocalDirtyProf: true }
+  );
+  assert.equal(dirtyRes.profile.theme, 'neon');
+  assert.equal(dirtyRes.profile.cardView, 'list');
+  assert.equal(dirtyRes.profile.cardSize, 150);
+  assert.equal(dirtyRes.profile.colRev, 15);
+  assert.equal(dirtyRes.profile.colChunkCount, 2);
+  assert.deepEqual(dirtyRes.profile.customLists, ['Топ года', 'С телефона', 'С компьютера']);
+  assert.equal(dirtyRes.profile.listMeta['С телефона'].cn, 'зелёный');
+  assert.equal(dirtyRes.profile.listMeta['С компьютера'].cn, 'розовый');
+  assert.equal(dirtyRes.profile.manualFolderName, 'Мои ручные');
+  assert.equal(dirtyRes.restoredVisuals, false);
+});
+
+test('A3: sanitizeProfilePayloadForFirestoreLimit strips oversized base64 cover first, then avatar if still over limit', () => {
+  const bigCover = 'data:image/jpeg;base64,' + 'A'.repeat(650000);
+  const bigAvatar = 'data:image/jpeg;base64,' + 'B'.repeat(320000);
+
+  // Combined > 900KB -> strips cover, keeps avatar & all settings
+  const res1 = KirokuEngine.sanitizeProfilePayloadForFirestoreLimit({
+    name: 'Test',
+    theme: 'mocha',
+    cardView: 'list',
+    cardSize: 240,
+    cover: bigCover,
+    avatar: bigAvatar
+  }, 900000);
+  assert.equal(res1.strippedCover, true);
+  assert.equal(res1.strippedAvatar, false);
+  assert.equal(res1.payload.cover, undefined);
+  assert.equal(res1.payload.avatar, bigAvatar);
+  assert.equal(res1.payload.theme, 'mocha');
+  assert.equal(res1.payload.cardView, 'list');
+  assert.ok(res1.byteLength < 900000);
+
+  // Both huge -> strips cover AND avatar so settings still sync
+  const hugeAvatar = 'data:image/jpeg;base64,' + 'C'.repeat(920000);
+  const res2 = KirokuEngine.sanitizeProfilePayloadForFirestoreLimit({
+    name: 'Test',
+    theme: 'neon',
+    cover: bigCover,
+    avatar: hugeAvatar
+  }, 900000);
+  assert.equal(res2.strippedCover, true);
+  assert.equal(res2.strippedAvatar, true);
+  assert.equal(res2.payload.cover, undefined);
+  assert.equal(res2.payload.avatar, undefined);
+  assert.equal(res2.payload.theme, 'neon');
+  assert.ok(res2.byteLength < 900000);
+});

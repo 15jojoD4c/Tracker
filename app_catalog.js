@@ -2382,7 +2382,12 @@ const handleCreateNewListPrompt = async () => {
     return toast(`Название «${name}» уже занято системной подборкой. Выбери другое.`, true);
   }
   prof.customLists = prof.customLists || [];
-  if (!prof.customLists.some(x => x.toLowerCase() === name.toLowerCase())) prof.customLists.push(name);
+  if (!prof.customLists.some(x => x.toLowerCase() === name.toLowerCase())) {
+    prof.customLists.push(name);
+    prof.listMeta = prof.listMeta || {};
+    const existingMetaKey = Object.keys(prof.listMeta).find(k => k.toLowerCase() === name.toLowerCase());
+    if (!existingMetaKey) prof.listMeta[name] = { desc: '', cn: '' };
+  }
   profCloud(); refreshLists(name.toLowerCase()); render();
   toast(`Подборка «${name}» создана!`);
 };

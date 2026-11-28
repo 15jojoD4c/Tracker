@@ -310,7 +310,13 @@ window.exportData = () => {
     exportedAt: new Date().toISOString(),
     profile: {
       name: prof.name, bio: prof.bio, mood: prof.mood, realName: prof.realName, bday: prof.bday,
-      cardStyle: prof.cardStyle, customColor: prof.customColor,
+      theme: prof.theme != null ? prof.theme : (document.documentElement.dataset.theme || ''),
+      acc: prof.acc != null ? Number(prof.acc) : accIdx(),
+      cardStyle: prof.cardStyle || '', customColor: prof.customColor || '',
+      cardView: prof.cardView || view,
+      cardSize: prof.cardSize != null ? Number(prof.cardSize) : Number(localStorage.getItem('cw') || 190),
+      coverColor: Number(prof.coverColor) || 0,
+      bgAll: !!prof.bgAll,
       showMyNotes: !!prof.showMyNotes,
       customLists: prof.customLists || [], listMeta: prof.listMeta || {},
       manualFolderName: prof.manualFolderName || '',
@@ -627,12 +633,33 @@ async function previewAndExecuteImport(rawCandidates, sourceName, fileFingerprin
   }
 
   if (profBackup) {
-    if (profBackup.customLists) prof.customLists = [...new Set([...(prof.customLists || []), ...profBackup.customLists])];
+    if (profBackup.customLists) {
+      const mergedLists = [];
+      const seen = new Set();
+      [...(prof.customLists || []), ...profBackup.customLists].forEach(n => {
+        const clean = String(n || '').trim();
+        if (!clean) return;
+        const low = clean.toLowerCase();
+        if (seen.has(low)) return;
+        seen.add(low);
+        mergedLists.push(clean);
+      });
+      prof.customLists = mergedLists;
+    }
     if (profBackup.listMeta) prof.listMeta = { ...(prof.listMeta || {}), ...profBackup.listMeta };
     if (profBackup.manualFolderName && !prof.manualFolderName) prof.manualFolderName = profBackup.manualFolderName;
     if (profBackup.manualFolderMeta && !prof.manualFolderMeta) prof.manualFolderMeta = profBackup.manualFolderMeta;
     if (profBackup.favChars && (!prof.favChars || !prof.favChars.length)) prof.favChars = profBackup.favChars;
     if (profBackup.equippedMedals && (!prof.equippedMedals || !prof.equippedMedals.length)) prof.equippedMedals = profBackup.equippedMedals;
+    if (profBackup.theme !== undefined && profBackup.theme !== null && prof.theme == null) prof.theme = profBackup.theme;
+    if (profBackup.acc !== undefined && profBackup.acc !== null && prof.acc == null) prof.acc = Number(profBackup.acc) || 0;
+    if (profBackup.customColor && !prof.customColor) prof.customColor = profBackup.customColor;
+    if (profBackup.cardStyle && !prof.cardStyle) prof.cardStyle = profBackup.cardStyle;
+    if ((profBackup.cardView === 'grid' || profBackup.cardView === 'list') && !prof.cardView) prof.cardView = profBackup.cardView;
+    if (profBackup.cardSize != null && Number.isFinite(Number(profBackup.cardSize)) && prof.cardSize == null) prof.cardSize = Number(profBackup.cardSize);
+    if (profBackup.coverColor && !prof.cover && !prof.coverColor) prof.coverColor = Number(profBackup.coverColor) || 0;
+    if (profBackup.bgAll !== undefined && prof.bgAll == null) prof.bgAll = Boolean(profBackup.bgAll);
+    profPaint();
     profCloud();
   }
 

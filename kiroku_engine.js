@@ -3898,6 +3898,259 @@
     };
   }
 
+  // --- A3: Надёжная синхронизация профиля, подборок и пользовательских настроек ---
+  const VALID_PROFILE_THEMES = new Set(['', 'black', 'white', 'neon', 'mocha']);
+  const VALID_CARD_STYLES = new Set(['', 'sharp', 'minimal']);
+  const VALID_CARD_VIEWS = new Set(['grid', 'list']);
+
+  function extractNormalizedProfileSettings(profObj) {
+    const p = (profObj && typeof profObj === 'object') ? profObj : {};
+
+    const hasTheme = p.theme !== undefined && p.theme !== null;
+    const rawTheme = hasTheme ? String(p.theme).trim().toLowerCase() : '';
+    const theme = VALID_PROFILE_THEMES.has(rawTheme) ? rawTheme : '';
+
+    const hasAcc = p.acc !== undefined && p.acc !== null && p.acc !== '';
+    const parsedAcc = Number(p.acc);
+    const acc = (hasAcc && Number.isFinite(parsedAcc))
+      ? Math.max(0, Math.min(4, Math.trunc(parsedAcc)))
+      : 0;
+
+    const rawColor = typeof p.customColor === 'string' ? p.customColor.trim() : '';
+    const customColor = /^#[0-9a-fA-F]{6}$/.test(rawColor) ? rawColor : '';
+
+    const rawCardStyle = typeof p.cardStyle === 'string' ? p.cardStyle.trim().toLowerCase() : '';
+    const cardStyle = VALID_CARD_STYLES.has(rawCardStyle) ? rawCardStyle : '';
+
+    const rawView = typeof p.cardView === 'string' ? p.cardView.trim().toLowerCase() : '';
+    const hasCardView = VALID_CARD_VIEWS.has(rawView);
+    const cardView = hasCardView ? rawView : null;
+
+    const hasCardSize = p.cardSize !== undefined && p.cardSize !== null && p.cardSize !== '' && Number.isFinite(Number(p.cardSize));
+    const cardSize = hasCardSize ? normalizeGridSize(Number(p.cardSize)) : null;
+
+    const parsedCoverColor = Number(p.coverColor);
+    const coverColor = Number.isFinite(parsedCoverColor)
+      ? Math.max(0, Math.min(6, Math.trunc(parsedCoverColor)))
+      : 0;
+
+    return {
+      hasTheme,
+      theme,
+      hasAcc,
+      acc,
+      customColor,
+      cardStyle,
+      hasCardView,
+      cardView,
+      hasCardSize,
+      cardSize,
+      bgAll: Boolean(p.bgAll),
+      coverColor
+    };
+  }
+
+  function orderCustomListsForDisplay(customLists, itemListNames, systemManualKey = SYSTEM_MANUAL_LIST_KEY, systemManualName = DEFAULT_MANUAL_LIST_NAME) {
+    const sysKeyLow = String(systemManualKey || SYSTEM_MANUAL_LIST_KEY).trim().toLowerCase();
+    const sysNameLow = String(systemManualName || DEFAULT_MANUAL_LIST_NAME).trim().toLowerCase();
+    const ordered = [];
+    const seen = new Set();
+
+    const tryPush = (raw, target) => {
+      const clean = String(raw || '').trim();
+      if (!clean) return;
+      const low = clean.toLowerCase();
+      if (low === sysKeyLow || (sysNameLow && low === sysNameLow)) return;
+      if (seen.has(low)) return;
+      seen.add(low);
+      target.push([low, clean]);
+    };
+
+    // 1. Сначала строго в пользовательском порядке из prof.customLists
+    (Array.isArray(customLists) ? customLists : []).forEach(name => tryPush(name, ordered));
+
+    // 2. Затем любые неявные подборки, встречающиеся только в тайтлах (в алфавитном порядке)
+    const extra = [];
+    (Array.isArray(itemListNames) ? itemListNames : []).forEach(name => tryPush(name, extra));
+    extra.sort((a, b) => a[1].localeCompare(b[1], 'ru'));
+
+    return ordered.concat(extra);
+  }
+
+  function renameCustomListInOrder(customLists, oldName, newName) {
+    const cleanOld = String(oldName || '').trim();
+    const cleanNew = String(newName || '').trim();
+    const list = Array.isArray(customLists) ? customLists : [];
+    if (!cleanNew) return list.slice();
+    const oldLow = cleanOld.toLowerCase();
+    const newLow = cleanNew.toLowerCase();
+
+    const out = [];
+    const seen = new Set();
+    let replaced = false;
+
+    for (const raw of list) {
+      const clean = String(raw || '').trim();
+      if (!clean) continue;
+      const low = clean.toLowerCase();
+      if (low === oldLow) {
+        if (!seen.has(newLow)) {
+          out.push(cleanNew);
+          seen.add(newLow);
+        }
+        replaced = true;
+      } else if (low === newLow) {
+        if (!seen.has(newLow)) {
+          out.push(cleanNew);
+          seen.add(newLow);
+        }
+        replaced = true;
+      } else if (!seen.has(low)) {
+        out.push(clean);
+        seen.add(low);
+      }
+    }
+
+    if (!replaced && !seen.has(newLow)) {
+      out.push(cleanNew);
+    }
+    return out;
+  }
+
+  function _mergeListMetaMaps(remoteMeta, localMeta) {
+    const out = {};
+    const keyByLower = new Map();
+    const applyMap = src => {
+      if (!src || typeof src !== 'object') return;
+      for (const [k, v] of Object.entries(src)) {
+        const cleanK = String(k || '').trim();
+        if (!cleanK || !v || typeof v !== 'object') continue;
+        const low = cleanK.toLowerCase();
+        const prevKey = keyByLower.get(low);
+        if (prevKey && prevKey !== cleanK) {
+          delete out[prevKey];
+        }
+        keyByLower.set(low, cleanK);
+        out[cleanK] = { ...(out[cleanK] || {}), ...v };
+      }
+    };
+    applyMap(remoteMeta);
+    applyMap(localMeta);
+    return out;
+  }
+
+  function _mergeCustomListsPreservingOrder(primaryLists, secondaryLists) {
+    const out = [];
+    const seen = new Set();
+    const pushArr = arr => {
+      if (!Array.isArray(arr)) return;
+      for (const raw of arr) {
+        const clean = String(raw || '').trim();
+        if (!clean) continue;
+        const low = clean.toLowerCase();
+        if (seen.has(low)) continue;
+        seen.add(low);
+        out.push(clean);
+      }
+    };
+    pushArr(primaryLists);
+    pushArr(secondaryLists);
+    return out;
+  }
+
+  function mergeProfileDocsForSync(localProf, remoteProf, opts = {}) {
+    const { hasLocalDirtyProf = false } = opts || {};
+    const loc = (localProf && typeof localProf === 'object') ? { ...localProf } : {};
+    const remRaw = (remoteProf && typeof remoteProf === 'object') ? remoteProf : {};
+    const {
+      isProfile: _ip,
+      kind: _k,
+      userId: _u,
+      _docId: _d,
+      statsSummary: _ss,
+      friends: _fr,
+      ...rem
+    } = remRaw;
+
+    const SYNC_META_KEYS = ['colStorageV2', 'colChunkCount', 'colChunkRev', 'colChunkWriter', 'colRev', 'colCount', 'schemaMigratedV4'];
+
+    if (hasLocalDirtyProf) {
+      const merged = { ...loc };
+      SYNC_META_KEYS.forEach(k => {
+        if (rem[k] !== undefined) merged[k] = rem[k];
+      });
+      if (Array.isArray(rem.customLists) && rem.customLists.length) {
+        merged.customLists = _mergeCustomListsPreservingOrder(loc.customLists, rem.customLists);
+      }
+      if (rem.listMeta && typeof rem.listMeta === 'object') {
+        merged.listMeta = _mergeListMetaMaps(rem.listMeta, loc.listMeta);
+      }
+      if (!merged.manualFolderName && rem.manualFolderName) {
+        merged.manualFolderName = rem.manualFolderName;
+      }
+      if (!merged.manualFolderMeta && rem.manualFolderMeta && typeof rem.manualFolderMeta === 'object') {
+        merged.manualFolderMeta = { ...rem.manualFolderMeta };
+      }
+      if (!merged.avatar && rem.avatar) merged.avatar = rem.avatar;
+      if (!merged.cover && !merged.coverColor && rem.cover) merged.cover = rem.cover;
+      if (!merged.cover && !merged.coverColor && rem.coverColor) merged.coverColor = rem.coverColor;
+      return { profile: merged, restoredVisuals: false };
+    }
+
+    // Чистый локальный профиль: серверная копия авторитетна, локальные устаревшие поля сбрасываем
+    const baseDefault = {
+      name: '',
+      bio: '',
+      mood: '',
+      realName: '',
+      bday: '',
+      avatar: '',
+      cover: '',
+      coverColor: 0,
+      bgAll: false
+    };
+    const merged = { ...baseDefault, ...rem };
+    let restoredVisuals = false;
+    if (!merged.avatar && loc.avatar) {
+      merged.avatar = loc.avatar;
+      restoredVisuals = true;
+    }
+    if (!merged.cover && loc.cover && !merged.coverColor) {
+      merged.cover = loc.cover;
+      restoredVisuals = true;
+    }
+    if (!merged.cover && !merged.coverColor && loc.coverColor) {
+      merged.coverColor = loc.coverColor;
+      restoredVisuals = true;
+    }
+    return { profile: merged, restoredVisuals };
+  }
+
+  function sanitizeProfilePayloadForFirestoreLimit(profPayload, maxBytes = 900000) {
+    const limit = Math.max(10000, Number(maxBytes) || 900000);
+    const out = (profPayload && typeof profPayload === 'object') ? { ...profPayload } : {};
+    let strippedCover = false;
+    let strippedAvatar = false;
+
+    const measure = obj => utf8ByteLength(JSON.stringify(obj));
+
+    if (typeof out.cover === 'string' && out.cover.startsWith('data:') && (out.cover.length > 750000 || measure(out) > limit)) {
+      delete out.cover;
+      strippedCover = true;
+    }
+    if (measure(out) > limit && typeof out.avatar === 'string' && out.avatar.startsWith('data:')) {
+      delete out.avatar;
+      strippedAvatar = true;
+    }
+
+    return {
+      payload: out,
+      strippedCover,
+      strippedAvatar,
+      byteLength: measure(out)
+    };
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -4036,7 +4289,12 @@
     mergeCloudListWithDirtyLocal,
     hasUncommittedCollectionMutations,
     shouldReconcileBeforeCloudFlush,
-    computePageExitFlushPlan
+    computePageExitFlushPlan,
+    extractNormalizedProfileSettings,
+    orderCustomListsForDisplay,
+    renameCustomListInOrder,
+    mergeProfileDocsForSync,
+    sanitizeProfilePayloadForFirestoreLimit
   };
 
   if (typeof module !== 'undefined' && module.exports) {

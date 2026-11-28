@@ -548,8 +548,14 @@ function syncListFilterActionButtons() {
 }
 
 function getAllUserCollectionNames() {
+  const sysName = getManualFolderName();
+  const itemLists = (items || []).flatMap(x => x.lists || []);
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.orderCustomListsForDisplay === 'function') {
+    return KirokuEngine.orderCustomListsForDisplay(prof.customLists || [], itemLists, SYSTEM_MANUAL_LIST_KEY, sysName)
+      .map(([, name]) => name);
+  }
   const seen = new Map();
-  const sysLow = getManualFolderName().toLowerCase();
+  const sysLow = sysName.toLowerCase();
   const add = raw => {
     const nm = String(raw || '').trim();
     if (!nm) return;
@@ -558,8 +564,8 @@ function getAllUserCollectionNames() {
     if (!seen.has(key)) seen.set(key, nm);
   };
   (prof.customLists || []).forEach(add);
-  (items || []).forEach(x => (x.lists || []).forEach(add));
-  return [...seen.values()].sort((a, b) => a.localeCompare(b, 'ru'));
+  itemLists.forEach(add);
+  return [...seen.values()];
 }
 
 async function openAddToCollectionModal(targetItem, onUpdated = null) {
@@ -2202,18 +2208,32 @@ function buildCleanProfPayloadForCloud(uid, allowCoverToast = true) {
     if (!safeProf.cover) delete safeProf.cover;
     if (!safeProf.coverColor) delete safeProf.coverColor;
   }
-  if (safeProf.cover && String(safeProf.cover).startsWith('data:') && String(safeProf.cover).length > 750000) {
-    delete safeProf.cover;
-    if (allowCoverToast) {
-      toast('Обложка слишком большая для облака (>750 КБ) и сохранена локально в IndexedDB. Выбери изображение меньшего размера.', true);
-    }
-  }
-  return stripUndefinedDeep({
+  const rawPayload = stripUndefinedDeep({
     ...safeProf,
     kind: 'profile',
     isProfile: true,
     userId: uid
   });
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.sanitizeProfilePayloadForFirestoreLimit === 'function') {
+    const guarded = KirokuEngine.sanitizeProfilePayloadForFirestoreLimit(rawPayload, 900000);
+    if (allowCoverToast) {
+      if (guarded.strippedCover && guarded.strippedAvatar) {
+        toast('Обложка и аватар слишком большие для облака и сохранены локально. Выбери изображения меньшего размера.', true);
+      } else if (guarded.strippedCover) {
+        toast('Обложка слишком большая для облака (>750 КБ) и сохранена локально в IndexedDB. Выбери изображение меньшего размера.', true);
+      } else if (guarded.strippedAvatar) {
+        toast('Аватар слишком большой для облака и сохранён локально в IndexedDB. Выбери изображение меньшего размера.', true);
+      }
+    }
+    return guarded.payload;
+  }
+  if (rawPayload.cover && String(rawPayload.cover).startsWith('data:') && String(rawPayload.cover).length > 750000) {
+    delete rawPayload.cover;
+    if (allowCoverToast) {
+      toast('Обложка слишком большая для облака (>750 КБ) и сохранена локально в IndexedDB. Выбери изображение меньшего размера.', true);
+    }
+  }
+  return rawPayload;
 }
 
 async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
@@ -3492,32 +3512,38 @@ async function hydrateLocalSessionView(uObj) {
 }
 
 function applyServerProfileDocToLocal(effUid, pd, isFromCache = false) {
-  const localAvatarBackup = prof.avatar || '';
-  const localCoverBackup = prof.cover || '';
-  const localCoverColBackup = prof.coverColor || 0;
-  const { isProfile, kind: _k, userId: _u, _docId, statsSummary, friends: _fr, ...rest } = pd;
   let hasLocalDirtyProf = false;
   try { hasLocalDirtyProf = localStorage.getItem('profDirty_' + effUid) === '1'; } catch (e) {}
 
-  if (hasLocalDirtyProf) {
-    // Сохраняем локальные несохранённые правки профиля — обновляем облачные метаданные (и подборки, если локально их нет)
-    ['colStorageV2', 'colChunkCount', 'colChunkRev', 'colChunkWriter', 'colRev', 'colCount', 'schemaMigratedV4'].forEach(k => {
-      if (rest[k] !== undefined) prof[k] = rest[k];
-    });
-    if ((!Array.isArray(prof.customLists) || !prof.customLists.length) && Array.isArray(rest.customLists) && rest.customLists.length) {
-      prof.customLists = rest.customLists;
-    }
-    if ((!prof.listMeta || !Object.keys(prof.listMeta).length) && rest.listMeta && typeof rest.listMeta === 'object') {
-      prof.listMeta = rest.listMeta;
-    }
-    if (!prof.manualFolderName && rest.manualFolderName) {
-      prof.manualFolderName = rest.manualFolderName;
-    }
-    if (!prof.manualFolderMeta && rest.manualFolderMeta && typeof rest.manualFolderMeta === 'object') {
-      prof.manualFolderMeta = rest.manualFolderMeta;
-    }
+  let restoredVisuals = false;
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.mergeProfileDocsForSync === 'function') {
+    const mergedRes = KirokuEngine.mergeProfileDocsForSync(prof, pd, { hasLocalDirtyProf });
+    Object.keys(prof).forEach(k => delete prof[k]);
+    Object.assign(prof, mergedRes.profile);
+    restoredVisuals = Boolean(mergedRes.restoredVisuals);
   } else {
-    Object.assign(prof, rest);
+    const localAvatarBackup = prof.avatar || '';
+    const localCoverBackup = prof.cover || '';
+    const localCoverColBackup = prof.coverColor || 0;
+    const { isProfile, kind: _k, userId: _u, _docId, statsSummary, friends: _fr, ...rest } = pd;
+    if (hasLocalDirtyProf) {
+      ['colStorageV2', 'colChunkCount', 'colChunkRev', 'colChunkWriter', 'colRev', 'colCount', 'schemaMigratedV4'].forEach(k => {
+        if (rest[k] !== undefined) prof[k] = rest[k];
+      });
+      if ((!Array.isArray(prof.customLists) || !prof.customLists.length) && Array.isArray(rest.customLists) && rest.customLists.length) {
+        prof.customLists = rest.customLists;
+      }
+      if ((!prof.listMeta || !Object.keys(prof.listMeta).length) && rest.listMeta && typeof rest.listMeta === 'object') {
+        prof.listMeta = rest.listMeta;
+      }
+      if (!prof.manualFolderName && rest.manualFolderName) prof.manualFolderName = rest.manualFolderName;
+      if (!prof.manualFolderMeta && rest.manualFolderMeta && typeof rest.manualFolderMeta === 'object') prof.manualFolderMeta = rest.manualFolderMeta;
+    } else {
+      Object.assign(prof, rest);
+      if (!prof.avatar && localAvatarBackup) { prof.avatar = localAvatarBackup; restoredVisuals = true; }
+      if (!prof.cover && localCoverBackup && !prof.coverColor) { prof.cover = localCoverBackup; restoredVisuals = true; }
+      if (!prof.cover && !prof.coverColor && localCoverColBackup) { prof.coverColor = localCoverColBackup; restoredVisuals = true; }
+    }
   }
 
   if (pd.schemaMigratedV4) {
@@ -3525,12 +3551,6 @@ function applyServerProfileDocToLocal(effUid, pd, isFromCache = false) {
     setCloudSyncMeta({ schemaMigratedV4: true }, effUid);
   }
 
-  let restoredVisuals = false;
-  if (!hasLocalDirtyProf) {
-    if (!prof.avatar && localAvatarBackup) { prof.avatar = localAvatarBackup; restoredVisuals = true; }
-    if (!prof.cover && localCoverBackup) { prof.cover = localCoverBackup; restoredVisuals = true; }
-    if (!prof.cover && !prof.coverColor && localCoverColBackup) { prof.coverColor = localCoverColBackup; restoredVisuals = true; }
-  }
   _cloudProfLoaded = true;
   if (!hasLocalDirtyProf) {
     const safeProfSnapshot = stripUndefinedDeep({ ...prof, kind: 'profile', isProfile: true, userId: effUid });
@@ -4506,22 +4526,31 @@ function refreshTags() {
 }
 
 function refreshLists(preferredVal = null) {
-  const sel = $('listFilter'); if (!sel) return; const old = preferredVal != null ? String(preferredVal) : sel.value, map = new Map();
+  const sel = $('listFilter'); if (!sel) return;
+  const old = preferredVal != null ? String(preferredVal) : sel.value;
   const sysName = getManualFolderName();
-  const sysLow = sysName.toLowerCase();
-  const addOpt = t => {
-    const clean = String(t || '').trim();
-    if (!clean) return;
-    const k = clean.toLowerCase();
-    if (k === SYSTEM_MANUAL_LIST_KEY || k === sysLow) return;
-    if (!map.has(k)) map.set(k, clean);
-  };
-  (prof.customLists || []).forEach(addOpt);
-  getVisibleItems().forEach(i => (i.lists || []).forEach(addOpt));
+  const itemLists = getVisibleItems().flatMap(i => i.lists || []);
+  const orderedEntries = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.orderCustomListsForDisplay === 'function')
+    ? KirokuEngine.orderCustomListsForDisplay(prof.customLists || [], itemLists, SYSTEM_MANUAL_LIST_KEY, sysName)
+    : (() => {
+        const map = new Map();
+        const sysLow = sysName.toLowerCase();
+        const addOpt = t => {
+          const clean = String(t || '').trim();
+          if (!clean) return;
+          const k = clean.toLowerCase();
+          if (k === SYSTEM_MANUAL_LIST_KEY || k === sysLow) return;
+          if (!map.has(k)) map.set(k, clean);
+        };
+        (prof.customLists || []).forEach(addOpt);
+        itemLists.forEach(addOpt);
+        return [...map.entries()];
+      })();
+  const keySet = new Set(orderedEntries.map(([k]) => k));
   sel.replaceChildren(new Option('📁 Все подборки', 'Все'));
   sel.add(new Option('🔒 ' + sysName, SYSTEM_MANUAL_LIST_KEY));
-  [...map].sort((a, b) => a[1].localeCompare(b[1], 'ru')).forEach(([k, v]) => sel.add(new Option('📁 ' + v, k)));
-  sel.value = (old === SYSTEM_MANUAL_LIST_KEY || map.has(old)) ? old : 'Все'; sel.style.display = '';
+  orderedEntries.forEach(([k, v]) => sel.add(new Option('📁 ' + v, k)));
+  sel.value = (old === SYSTEM_MANUAL_LIST_KEY || keySet.has(old)) ? old : 'Все'; sel.style.display = '';
   syncListFilterActionButtons();
   if (typeof renderMyListsFolderBlock === 'function') renderMyListsFolderBlock();
 }
@@ -5528,6 +5557,9 @@ document.querySelectorAll('#videoKindFilters .kb').forEach(b => b.onclick = () =
 $('viewBtn').onclick = () => {
   view = view === 'grid' ? 'list' : 'grid';
   try { localStorage.setItem('view', view); } catch (e) {}
+  prof.cardView = view;
+  profSaveLocal();
+  uiSync();
   render();
 };
 if ($('ongBtn')) {
@@ -5592,7 +5624,7 @@ if ($('colMoreResetBtn')) {
   };
 }
 $('xfBtn').onclick = () => { xf = null; render(); };
-const setSize = (v, showHint = false) => {
+const setSize = (v, showHint = false, persistToCloud = false) => {
   const numV = typeof KirokuEngine !== 'undefined' ? KirokuEngine.normalizeGridSize(v) : (Number(v) || 190);
   const sizeKey = numV <= 150 ? 'sm' : numV >= 240 ? 'lg' : 'md';
   document.documentElement.style.setProperty('--cw', numV + 'px');
@@ -5610,11 +5642,16 @@ const setSize = (v, showHint = false) => {
     }
   });
   try { localStorage.setItem('cw', String(numV)); } catch (e) {}
+  if (persistToCloud) {
+    prof.cardSize = numV;
+    profSaveLocal();
+    uiSync();
+  }
   if (showHint) toast('Карточки: ' + meta.fullLabel);
 };
 $('sizeSel').value = localStorage.getItem('cw') || '190';
-setSize($('sizeSel').value || '190', false);
-$('sizeSel').onchange = e => setSize(e.target.value, false);
+setSize($('sizeSel').value || '190', false, false);
+$('sizeSel').onchange = e => setSize(e.target.value, false, true);
 ['hdrMobSizeBtn', 'cgMobSizeBtn', 'colMobSizeBtn'].forEach(id => {
   const btn = $(id);
   if (btn) {
@@ -5623,7 +5660,7 @@ $('sizeSel').onchange = e => setSize(e.target.value, false);
       const next = typeof KirokuEngine !== 'undefined'
         ? KirokuEngine.getNextMobileGridSize(cur)
         : (cur === 190 ? 150 : cur === 150 ? 240 : 190);
-      setSize(next, true);
+      setSize(next, true, true);
     };
   }
 });
@@ -6502,14 +6539,62 @@ if ($('closeThemeModalBtn')) $('closeThemeModalBtn').onclick = () => hideModalEl
 if ($('doneThemeModalBtn')) $('doneThemeModalBtn').onclick = () => hideModalElement('themeModal');
 
 function profPaint() {
-  if (prof.theme != null && prof.theme !== (document.documentElement.dataset.theme || '')) setTheme(prof.theme, true);
-  if (prof.acc != null && prof.acc !== accIdx()) { try { localStorage.setItem('acc', prof.acc); } catch (e) {} }
+  const settings = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.extractNormalizedProfileSettings === 'function')
+    ? KirokuEngine.extractNormalizedProfileSettings(prof)
+    : {
+        hasTheme: prof.theme != null,
+        theme: prof.theme || '',
+        hasAcc: prof.acc != null,
+        acc: Number(prof.acc) || 0,
+        customColor: prof.customColor || '',
+        cardStyle: prof.cardStyle || '',
+        hasCardView: prof.cardView === 'grid' || prof.cardView === 'list',
+        cardView: (prof.cardView === 'grid' || prof.cardView === 'list') ? prof.cardView : null,
+        hasCardSize: prof.cardSize != null && Number.isFinite(Number(prof.cardSize)),
+        cardSize: prof.cardSize != null ? Number(prof.cardSize) : null,
+        bgAll: !!prof.bgAll,
+        coverColor: Number(prof.coverColor) || 0
+      };
+
+  const curTheme = document.documentElement.dataset.theme || '';
+  if (settings.hasTheme) {
+    if (settings.theme !== curTheme) setTheme(settings.theme, true);
+  } else if (_cloudProfLoaded && curTheme !== '') {
+    setTheme('', true);
+  }
+
+  if (settings.hasAcc) {
+    if (settings.acc !== accIdx()) {
+      try { localStorage.setItem('acc', String(settings.acc)); } catch (e) {}
+    }
+  } else if (_cloudProfLoaded && accIdx() !== 0) {
+    try { localStorage.setItem('acc', '0'); } catch (e) {}
+  }
   applyAccent();
+
+  if (settings.hasCardSize && typeof setSize === 'function') {
+    const curCw = Number(localStorage.getItem('cw') || $('sizeSel')?.value || 190);
+    if (curCw !== settings.cardSize || document.documentElement.style.getPropertyValue('--cw') !== settings.cardSize + 'px') {
+      setSize(settings.cardSize, false, false);
+    }
+  }
+
+  let viewChanged = false;
+  if (settings.hasCardView && settings.cardView) {
+    try { localStorage.setItem('view', settings.cardView); } catch (e) {}
+    if (view !== settings.cardView) {
+      view = settings.cardView;
+      viewChanged = true;
+    }
+    if (grid) grid.className = 'grid' + (view === 'list' ? ' list' : '');
+    if ($('viewBtn')) $('viewBtn').textContent = view === 'list' ? 'Вид: Список' : 'Вид: Сетка';
+  }
+
   const u = user || {};
   const fallbackName = u.displayName || (u.email ? u.email.split('@')[0] : 'Пользователь');
   const av = safePosterUrl(prof.avatar || u.photoURL || '') || FALL;
   const rawCover = prof.cover || '';
-  const bg = rawCover ? safeCssBgUrl(rawCover) : prof.coverColor ? GRAD[prof.coverColor - 1] : '';
+  const bg = rawCover ? safeCssBgUrl(rawCover) : settings.coverColor ? GRAD[settings.coverColor - 1] : '';
   $('avatar').src = av;
   $('hdrAvatar').src = av;
   $('profName').textContent = prof.name || prof.displayName || fallbackName;
@@ -6531,9 +6616,13 @@ function profPaint() {
   }
   if ($('quickCoverChangeBtn')) $('quickCoverChangeBtn').style.display = '';
   document.documentElement.style.setProperty('--bgimg', bg || 'none');
-  document.body.classList.toggle('bgimg', !!(prof.bgAll && bg));
+  document.body.classList.toggle('bgimg', !!(settings.bgAll && bg));
   document.body.classList.remove('cs-sharp', 'cs-minimal');
-  if (prof.cardStyle) document.body.classList.add('cs-' + prof.cardStyle);
+  if (settings.cardStyle) document.body.classList.add('cs-' + settings.cardStyle);
+
+  if (viewChanged && loaded && typeof render === 'function') {
+    render(false);
+  }
 }
 
 
@@ -6964,10 +7053,18 @@ async function listEdit(name) {
     toast(`Название «${nn}» занято системной подборкой. Выбери другое название.`, true);
     return;
   }
-  delete prof.listMeta[canonical];
-  prof.customLists = (prof.customLists || []).filter(x => x.toLowerCase() !== canonical.toLowerCase());
-  prof.customLists.push(nn);
-  prof.listMeta[nn] = {desc: res.desc, cn: res.cn};
+  const prevMetaKey = Object.keys(prof.listMeta).find(k => k.toLowerCase() === canonical.toLowerCase());
+  if (prevMetaKey) delete prof.listMeta[prevMetaKey];
+  prof.customLists = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.renameCustomListInOrder === 'function')
+    ? KirokuEngine.renameCustomListInOrder(prof.customLists || [], canonical, nn)
+    : (() => {
+        const cur = Array.isArray(prof.customLists) ? prof.customLists.slice() : [];
+        const idx = cur.findIndex(x => String(x || '').toLowerCase() === canonical.toLowerCase());
+        if (idx >= 0) cur[idx] = nn;
+        else cur.push(nn);
+        return cur;
+      })();
+  prof.listMeta[nn] = { desc: res.desc || '', cn: res.cn || '' };
   if (nn !== canonical && hit.length) {
     hit.forEach(i => {
       i.lists = (i.lists || []).filter(x => x.toLowerCase() !== canonical.toLowerCase());
@@ -6994,29 +7091,35 @@ function renderMyListsFolderBlock() {
   const sysCnt = visItems.filter(isManualItemEditable).length;
 
   const countsMap = new Map();
-  const displayMap = new Map();
-  (activeProf.customLists || []).forEach(n => {
-    const clean = String(n || '').trim();
-    if (!clean) return;
-    const k = clean.toLowerCase();
-    if (k === SYSTEM_MANUAL_LIST_KEY || k === sysLow) return;
-    if (!displayMap.has(k)) {
-      displayMap.set(k, clean);
-      countsMap.set(k, 0);
-    }
-  });
+  const itemListNames = [];
   visItems.forEach(i => {
     (i.lists || []).forEach(n => {
       const clean = String(n || '').trim();
       if (!clean) return;
       const k = clean.toLowerCase();
       if (k === SYSTEM_MANUAL_LIST_KEY || k === sysLow) return;
-      if (!displayMap.has(k)) displayMap.set(k, clean);
+      itemListNames.push(clean);
       countsMap.set(k, (countsMap.get(k) || 0) + 1);
     });
   });
 
-  const entries = [...displayMap.entries()].sort((a, b) => a[1].localeCompare(b[1], 'ru'));
+  const entries = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.orderCustomListsForDisplay === 'function')
+    ? KirokuEngine.orderCustomListsForDisplay(activeProf.customLists || [], itemListNames, SYSTEM_MANUAL_LIST_KEY, sysName)
+    : (() => {
+        const displayMap = new Map();
+        (activeProf.customLists || []).forEach(n => {
+          const clean = String(n || '').trim();
+          if (!clean) return;
+          const k = clean.toLowerCase();
+          if (k === SYSTEM_MANUAL_LIST_KEY || k === sysLow) return;
+          if (!displayMap.has(k)) displayMap.set(k, clean);
+        });
+        itemListNames.forEach(clean => {
+          const k = clean.toLowerCase();
+          if (!displayMap.has(k)) displayMap.set(k, clean);
+        });
+        return [...displayMap.entries()];
+      })();
   const totalFolders = entries.length + 1;
   const curFilter = ($('listFilter')?.value || 'Все').toLowerCase();
   if (metaEl) metaEl.textContent = `${totalFolders} ${pluralRu(totalFolders, 'папка', 'папки', 'папок')}`;
@@ -7062,11 +7165,15 @@ function renderMyListsFolderBlock() {
   sysPill.append(sysEdB);
   gridEl.append(sysPill);
 
-  // 2) Пользовательские подборки (с редактированием и удалением)
+  // 2) Пользовательские подборки (в сохранённом пользователем порядке, с редактированием и удалением)
+  const listMetaByLower = new Map();
+  Object.entries(activeProf.listMeta || {}).forEach(([k, v]) => {
+    if (k && v && typeof v === 'object') listMetaByLower.set(k.toLowerCase(), v);
+  });
   entries.forEach(([lowKey, dispName]) => {
     const cnt = countsMap.get(lowKey) || 0;
     const pill = el('div', 'folder-pill' + (curFilter === lowKey ? ' active' : ''));
-    const lm = (activeProf.listMeta || {})[dispName] || {};
+    const lm = (activeProf.listMeta || {})[dispName] || listMetaByLower.get(lowKey) || {};
     const dot = el('span');
     const colHex = (lm.cn && LCOL[lm.cn]) ? LCOL[lm.cn] : '#a855f7';
     dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${colHex};display:inline-block`;

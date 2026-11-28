@@ -1741,6 +1741,83 @@ html[data-theme=white] .cg-mode-sheet-item:hover{background:rgba(0,0,0,.05)}
   animation: kirokuModalIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Анимация сверки с облаком и статус-строка в окне «Данные и импорт» */
+@keyframes kirokuSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.btn-spin-ic,
+.sync.sync-spinning .sync-ic {
+  display: inline-block;
+  animation: kirokuSpin 0.85s linear infinite;
+}
+
+.btn-spin-ic {
+  margin-right: 5px;
+}
+
+.btn.is-busy {
+  opacity: 0.86;
+  cursor: progress;
+  pointer-events: none;
+}
+
+.data-sync-status {
+  margin-top: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.42;
+  border: 1px solid var(--bd);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--tx);
+  animation: kirokuChipIn 0.18s ease-out both;
+}
+
+.data-sync-status.busy {
+  border-color: rgba(129, 140, 248, 0.42);
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.data-sync-status.ok {
+  border-color: rgba(16, 185, 129, 0.42);
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+}
+
+.data-sync-status.warn {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+}
+
+.data-sync-status.err {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+}
+
+html[data-theme=white] .data-sync-status {
+  background: #f1f5f9;
+  color: #14161f;
+}
+
+html[data-theme=white] .data-sync-status.ok {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+html[data-theme=white] .data-sync-status.warn {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+
+html[data-theme=white] .data-sync-status.err {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .view-enter,
   .grid .card,
@@ -1754,7 +1831,10 @@ html[data-theme=white] .cg-mode-sheet-item:hover{background:rgba(0,0,0,.05)}
   #chips .chip,
   .cg-active-chips .chip,
   .toast,
-  .modal.open .mc {
+  .modal.open .mc,
+  .btn-spin-ic,
+  .sync.sync-spinning .sync-ic,
+  .data-sync-status {
     animation: none !important;
     transition: none !important;
   }

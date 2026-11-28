@@ -1,6 +1,38 @@
 // === ЧАСТЬ 3: Импорт/бэкапы, связывание с каталогом, Канбан, Персонажи, Полная страница, Битва тайтлов и Навигация (app.js) ===
 // ---------- Управление данными (💾), Пакетные операции, Поиск и объединение повторов (🧹), Связь с каталогом (🔗), Разобрать (📥) и Импорт (Бэкап, Кинопоиск, MAL/Shikimori/AniList) ----------
 
+function getDataActionDialogCfg(actionKey) {
+  const pending = (typeof getUnsyncedPendingCounts === 'function') ? getUnsyncedPendingCounts() : { total: 0 };
+  const ctx = {
+    itemCount: Array.isArray(items) ? items.length : 0,
+    pendingCount: Number(pending?.total || 0),
+    isLocal: Boolean(!user || user.isLocal),
+    isOnline: typeof navigator !== 'undefined' ? navigator.onLine !== false : true
+  };
+  if (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.getDataModalActionDialogConfig === 'function') {
+    return KirokuEngine.getDataModalActionDialogConfig(actionKey, ctx);
+  }
+  return { title: 'Подтверждение', message: 'Продолжить выполнение действия?', okLabel: 'Продолжить', danger: false, canProceed: true };
+}
+
+function setDataSyncStatusBox(kind, text, spinning = false) {
+  const box = $('cloudSyncStatusBox');
+  if (!box) return;
+  if (!text) {
+    box.style.display = 'none';
+    box.className = 'data-sync-status';
+    box.replaceChildren();
+    return;
+  }
+  box.style.display = 'block';
+  box.className = 'data-sync-status' + (kind ? ' ' + kind : '');
+  if (spinning) {
+    box.replaceChildren(el('span', 'btn-spin-ic', '⟳'), document.createTextNode(text));
+  } else {
+    box.textContent = text;
+  }
+}
+
 function openDataManagementModal() {
   $('accMenu')?.classList.remove('open');
   $('hybMorePop')?.classList.remove('open');
@@ -9,6 +41,14 @@ function openDataManagementModal() {
 if ($('accDataBtn')) $('accDataBtn').onclick = openDataManagementModal;
 if ($('profDataModalBtn')) $('profDataModalBtn').onclick = openDataManagementModal;
 if ($('closeDataModalBtn')) $('closeDataModalBtn').onclick = () => hideModalElement('dataModal');
+if ($('exportDataBtn')) {
+  $('exportDataBtn').onclick = () => {
+    const cfg = getDataActionDialogCfg('exportBackup');
+    uiActionConfirm(cfg, () => {
+      if (typeof window.exportData === 'function') window.exportData();
+    });
+  };
+}
 
 $('accReset').onclick = async () => {
   if (!(await uiConfirm('Сбросить оформление (цвет, тема, размер карточек, вид)? Коллекция не пострадает.', 'Сбросить'))) return;
@@ -242,6 +282,7 @@ window.exportData = () => {
   const a = document.createElement('a'), u = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'}));
   a.href = u; a.download = `Kirokucho_FullBackup_${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(u);
   try { localStorage.setItem('lastBackup', String(Date.now())); } catch (e) {}
+  toast('Резервная копия (.json) скачана ✓');
 };
 
 function getSavedImportMeta() {
@@ -1143,10 +1184,13 @@ try { runParserSelfTests(); } catch (e) {}
 
 if ($('universalImportBtn')) {
   $('universalImportBtn').onclick = () => {
-    if ($('universalImportFile')) {
-      $('universalImportFile').value = '';
-      $('universalImportFile').click();
-    }
+    const cfg = getDataActionDialogCfg('universalImport');
+    uiActionConfirm(cfg, () => {
+      if ($('universalImportFile')) {
+        $('universalImportFile').value = '';
+        $('universalImportFile').click();
+      }
+    });
   };
 }
 
@@ -2205,6 +2249,8 @@ async function startCatalogLinkingForList(targetList, manualTrigger = false) {
 
 if ($('cleanupAndEnrichBtn')) {
   $('cleanupAndEnrichBtn').onclick = async () => {
+    const ok = await uiActionConfirm(getDataActionDialogCfg('cleanupAndEnrich'));
+    if (!ok) return;
     await findAndMergeDuplicatesModal();
     const needLink = items.filter(i => (!hasExternalCatalogId(i) || !i.poster || (!num(i.eps) && !num(i.dur))));
     await startCatalogLinkingForList(needLink, true);
@@ -5123,11 +5169,70 @@ async function runCloudDiagnostics() {
   tbl.append(thead, tbody);
   box.replaceChildren(tbl);
 }
-if ($('cloudDiagBtn')) $('cloudDiagBtn').onclick = runCloudDiagnostics;
+let _manualSyncBtnResetTimer = 0;
+if ($('cloudDiagBtn')) {
+  $('cloudDiagBtn').onclick = async () => {
+    const btn = $('cloudDiagBtn');
+    if (btn && btn.classList.contains('is-busy')) return;
+    const ok = await uiActionConfirm(getDataActionDialogCfg('cloudDiag'));
+    if (!ok) return;
+    if (btn) {
+      btn.classList.add('is-busy');
+      btn.disabled = true;
+      btn.replaceChildren(el('span', 'btn-spin-ic', '⟳'), document.createTextNode('Проверяем…'));
+    }
+    try {
+      await runCloudDiagnostics();
+    } finally {
+      if (btn) {
+        btn.classList.remove('is-busy');
+        btn.disabled = false;
+        btn.textContent = '🩺 Проверка облака';
+      }
+    }
+  };
+}
 if ($('manualCloudSyncBtn')) {
   $('manualCloudSyncBtn').onclick = async () => {
-    if (typeof window.forceCloudSyncNow === 'function') {
-      await window.forceCloudSyncNow(true);
+    const btn = $('manualCloudSyncBtn');
+    if (btn && btn.classList.contains('is-busy')) return;
+    const ok = await uiActionConfirm(getDataActionDialogCfg('cloudSync'));
+    if (!ok) return;
+    clearTimeout(_manualSyncBtnResetTimer);
+    if (btn) {
+      btn.classList.add('is-busy');
+      btn.disabled = true;
+      btn.replaceChildren(el('span', 'btn-spin-ic', '⟳'), document.createTextNode('Сверяем…'));
+    }
+    setDataSyncStatusBox('busy', 'Сверяем коллекцию с облаком: загружаем свежие изменения и отправляем локальные правки…', true);
+    let synced = false;
+    try {
+      if (typeof window.forceCloudSyncNow === 'function') {
+        synced = Boolean(await window.forceCloudSyncNow(true));
+      }
+    } catch (e) {
+      synced = false;
+    } finally {
+      const timeStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      if (btn) {
+        btn.classList.remove('is-busy');
+        btn.disabled = false;
+      }
+      if (synced) {
+        if (btn) btn.textContent = '✓ Сверено';
+        setDataSyncStatusBox('ok', `✓ Коллекция сверена с облаком (${items.length} шт.) · ${timeStr}`);
+        _manualSyncBtnResetTimer = setTimeout(() => {
+          if (btn && !btn.classList.contains('is-busy')) btn.textContent = '⇄ Сверить с облаком';
+        }, 2600);
+      } else {
+        if (btn) btn.textContent = '⇄ Сверить с облаком';
+        const reason = !navigator.onLine
+          ? 'Нет подключения к сети — локальные правки сохранены на устройстве.'
+          : (cloudAccessError === 'resource-exhausted'
+              ? 'Исчерпан дневной лимит Firebase — попробуй позже, локальные данные в безопасности.'
+              : 'Не удалось полностью сверить с облаком — попробуем автоматически ещё раз.');
+        setDataSyncStatusBox('warn', `⚠ ${reason} (${timeStr})`);
+      }
     }
   };
 }
@@ -5143,8 +5248,8 @@ if ($('shikiImportBtn')) {
     hideModalElement('dataModal');
     let iNick, iPlatform;
     dlgOpen(() => {
-      $('dlgTitle').textContent = '⚡ Импорт из Shikimori / AniList / MyAnimeList';
-      $('dlgText').textContent = 'Введи свой никнейм для переноса аниме и манги (с предпросмотром, проверкой повторов и сохранением дат) или выбери XML/JSON-файл экспорта:';
+      $('dlgTitle').textContent = '🌐 Импорт по никнейму (AniList / Shikimori)';
+      $('dlgText').textContent = 'Что делает эта кнопка: загрузит твой список аниме и манги по никнейму в окно предпросмотра. Текущая коллекция не пострадает — перед добавлением можно проверить повторы и убрать лишнее.';
       const sel = el('select');
       sel.add(new Option('🅰 AniList — Аниме + Манга (по никнейму, работает без VPN)', 'anilist'));
       sel.add(new Option('🌸 Shikimori — Аниме + Манга (по никнейму, до 1000+ тайтлов)', 'shiki'));
@@ -5501,7 +5606,11 @@ function applyMainTabView(v, fromHistory = false, opts = {}) {
         cgMarks();
       }
     } else {
-      cgMarks();
+      if (!cgGrid.children.length && typeof cgLoad === 'function') {
+        cgLoad(true);
+      } else {
+        cgMarks();
+      }
     }
   }
 
@@ -5889,7 +5998,7 @@ window.addEventListener('beforeunload', e => {
 
 if ($('restoreSafetyBackupBtn')) {
   $('restoreSafetyBackupBtn').onclick = async () => {
-    if (!(await uiConfirm('Восстановить коллекцию из локальной страховочной копии браузера?\n\nЧто делает эта кнопка: загружает автоматически сохранённую резервную копию из памяти браузера (IndexedDB) в окно предпросмотра импорта и добавляет недостающие тайтлы без удаления текущих записей.', 'Подтвердить'))) return;
+    if (!(await uiActionConfirm(getDataActionDialogCfg('restoreSafetyBackup')))) return;
     const safetyKey = getUidStorageKey('safetyBackup');
     const localKey = getUidStorageKey('items');
     const pool = (await idbVault.get(safetyKey)) || (await idbVault.get(localKey)) || loadLocalItems();

@@ -2406,5 +2406,321 @@ test('buildCloudDiagnosticsProfileProbe contains strictly service fields without
   });
 });
 
+test('buildTmdbTransportCandidates builds RU-accessible mirror routes, respects sticky preference and skips blocked routes', () => {
+  const sample = 'https://api.themoviedb.org/3/trending/movie/week?api_key=abc&language=ru-RU&page=1';
+  assert.equal(
+    KirokuEngine.extractTmdbApiRelativePath(sample),
+    '/trending/movie/week?api_key=abc&language=ru-RU&page=1'
+  );
+
+  const def = KirokuEngine.buildTmdbTransportCandidates(sample);
+  assert.equal(def.length, 5);
+  assert.equal(def[0].id, 'direct');
+  assert.equal(def[1].id, 'cub_red');
+  assert.equal(def[1].url, 'https://apitmdb.cub.red/3/trending/movie/week?api_key=abc&language=ru-RU&page=1');
+
+  const now = 1000000;
+  const sticky = KirokuEngine.buildTmdbTransportCandidates(sample, {
+    preferredId: 'cub_black',
+    blockedUntil: { direct: now + 60000 },
+    nowMs: now
+  });
+  assert.equal(sticky[0].id, 'cub_black');
+  assert.equal(sticky.some((c: { id: string }) => c.id === 'direct'), false);
+  assert.equal(sticky.length, 4);
+
+  const allBlocked: Record<string, number> = {};
+  for (const r of KirokuEngine.TMDB_API_ROUTES) allBlocked[r.id] = now + 60000;
+  const retryPool = KirokuEngine.buildTmdbTransportCandidates(sample, {
+    blockedUntil: allBlocked,
+    nowMs: now
+  });
+  assert.equal(retryPool.length, 5);
+});
+
+test('validateTmdbApiPayload accepts valid TMDB responses and rejects proxy error envelopes', () => {
+  assert.deepEqual(KirokuEngine.validateTmdbApiPayload({ page: 1, results: [] }), { ok: true, isInvalidKey: false });
+  assert.deepEqual(KirokuEngine.validateTmdbApiPayload({ id: 27205, title: 'Начало' }), { ok: true, isInvalidKey: false });
+  assert.deepEqual(KirokuEngine.validateTmdbApiPayload({ movie_results: [], tv_results: [] }), { ok: true, isInvalidKey: false });
+
+  assert.deepEqual(
+    KirokuEngine.validateTmdbApiPayload({ success: false, status: 403, error: 'keyless_legacy_url' }),
+    { ok: false, isInvalidKey: false }
+  );
+  assert.deepEqual(
+    KirokuEngine.validateTmdbApiPayload({ error: 'A valid API key is required' }),
+    { ok: false, isInvalidKey: false }
+  );
+
+  assert.deepEqual(
+    KirokuEngine.validateTmdbApiPayload({ success: false, status_code: 7, status_message: 'Invalid API key' }),
+    { ok: false, isInvalidKey: true }
+  );
+});
+
+test('buildTmdbPosterMirrorUrls includes wsrv.nl, dedicated TMDB image mirrors, i0.wp.com, and promotes preferred host', () => {
+  const raw = 'https://image.tmdb.org/t/p/w342/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg';
+  const chain = KirokuEngine.buildTmdbPosterMirrorUrls(raw);
+  assert.equal(chain[0], 'https://wsrv.nl/?url=' + encodeURIComponent(raw));
+  assert.equal(chain[1], 'https://imagetmdb.com/t/p/w342/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg');
+  assert.ok(chain.includes('https://imagetmdb.cub.red/t/p/w342/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg'));
+  assert.ok(chain.includes('https://i0.wp.com/image.tmdb.org/t/p/w342/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg'));
+  assert.equal(chain[chain.length - 1], raw);
+
+  const promoted = KirokuEngine.buildTmdbPosterMirrorUrls(raw, 'imagetmdb.cub.red');
+  assert.equal(promoted[0], 'https://imagetmdb.cub.red/t/p/w342/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg');
+  assert.equal(new Set(promoted).size, promoted.length);
+
+  assert.deepEqual(KirokuEngine.buildTmdbPosterMirrorUrls('https://shikimori.one/system/animes/original/1.jpg'), []);
+});
+
+test('normalizeTvmazeShowsToCatalogItems and normalizeItunesRuMoviesToCatalogItems produce valid fallback video cards', () => {
+  const tvItems = KirokuEngine.normalizeTvmazeShowsToCatalogItems([
+    {
+      show: {
+        id: 169,
+        name: 'Breaking Bad',
+        status: 'Ended',
+        premiered: '2008-01-20',
+        rating: { average: 9.2 },
+        genres: ['Drama', 'Crime', 'Thriller'],
+        externals: { imdb: 'tt0903747' },
+        image: { medium: 'https://static.tvmaze.com/m.jpg', original: 'https://static.tvmaze.com/o.jpg' },
+        summary: '<p>A chemistry <b>teacher</b> turns to crime.</p>',
+        url: 'https://www.tvmaze.com/shows/169/breaking-bad'
+      }
+    }
+  ]);
+  assert.equal(tvItems.length, 1);
+  assert.equal(tvItems[0].category, 'Сериал');
+  assert.equal(tvItems[0].src, 'TVMaze');
+  assert.equal(tvItems[0].year, '2008');
+  assert.equal(tvItems[0].ext, '9.2');
+  assert.deepEqual(tvItems[0].tags, ['Драма', 'Криминал', 'Триллер']);
+  assert.equal(tvItems[0].desc, 'A chemistry teacher turns to crime.');
+
+  const movieFeed = {
+    feed: {
+      entry: [
+        {
+          'im:name': { label: 'Джентльмены' },
+          'im:releaseDate': { label: '2020-02-13T00:00:00-07:00' },
+          category: { attributes: { label: 'Триллеры' } },
+          'im:image': [{ label: 'https://is1-ssl.mzstatic.com/poster/115x170bb.png' }],
+          summary: { label: 'Криминальная комедия Гая Ричи.' },
+          link: [{ attributes: { href: 'https://itunes.apple.com/ru/movie/1' } }]
+        },
+        {
+          'im:name': { label: 'Старый фильм' },
+          'im:releaseDate': { label: '1995-05-01T00:00:00-07:00' },
+          category: { attributes: { label: 'Драмы' } },
+          'im:image': [{ label: 'https://is1-ssl.mzstatic.com/old/115x170bb.png' }],
+          summary: { label: 'Классика.' }
+        }
+      ]
+    }
+  };
+  const movies = KirokuEngine.normalizeItunesRuMoviesToCatalogItems(movieFeed, { query: 'джентль', yrFrom: 2019 });
+  assert.equal(movies.length, 1);
+  assert.equal(movies[0].category, 'Фильм');
+  assert.equal(movies[0].src, 'iTunes');
+  assert.equal(movies[0].year, '2020');
+  assert.equal(movies[0].poster, 'https://is1-ssl.mzstatic.com/poster/400x600bb.jpg');
+  assert.deepEqual(movies[0].tags, ['Триллер']);
+});
+
+test('decodeFirestoreRestQueryResponse and buildSpeculativeColdStartDocIds decode runQuery rows and plan parallel cold-start fetches', () => {
+  const rows = [
+    { readTime: '2026-11-28T00:00:00Z' },
+    {
+      document: {
+        name: 'projects/demo/databases/(default)/documents/items/12345',
+        fields: {
+          title: { stringValue: 'Наруто' },
+          userId: { stringValue: 'uid_abc' },
+          eps: { integerValue: '220' }
+        }
+      },
+      readTime: '2026-11-28T00:00:00Z'
+    },
+    {
+      document: {
+        name: 'projects/demo/databases/(default)/documents/items/prof_uid_abc',
+        fields: {
+          isProfile: { booleanValue: true },
+          name: { stringValue: 'Tester' }
+        }
+      }
+    }
+  ];
+
+  const decoded = KirokuEngine.decodeFirestoreRestQueryResponse(rows);
+  assert.equal(decoded.length, 2);
+  assert.equal(decoded[0].id, '12345');
+  assert.equal(decoded[0].exists(), true);
+  assert.equal(decoded[0].metadata.fromCache, false);
+  assert.deepEqual(decoded[0].data(), { title: 'Наруто', userId: 'uid_abc', eps: 220 });
+  assert.equal(decoded[1].id, 'prof_uid_abc');
+  assert.equal(decoded[1].data().isProfile, true);
+  assert.deepEqual(KirokuEngine.decodeFirestoreRestQueryResponse(null), []);
+
+  assert.deepEqual(KirokuEngine.buildSpeculativeColdStartDocIds('uid_abc'), {
+    profileDocId: 'prof_uid_abc',
+    chunkDocIds: ['prof_col_uid_abc_0']
+  });
+  assert.deepEqual(KirokuEngine.buildSpeculativeColdStartDocIds('uid_abc', 2), {
+    profileDocId: 'prof_uid_abc',
+    chunkDocIds: ['prof_col_uid_abc_0', 'prof_col_uid_abc_1']
+  });
+  assert.deepEqual(KirokuEngine.buildSpeculativeColdStartDocIds(''), {
+    profileDocId: '',
+    chunkDocIds: []
+  });
+});
+
+test('runHedgedCloudRead lets fast REST beat a stalled SDK WebChannel and propagates fatal quota/permission errors immediately', async () => {
+  // 1. Stalled SDK (2000ms) vs fast REST (15ms) with hedgeDelayMs: 25 -> REST wins fast (~40ms)
+  let sdkResolved = false;
+  const startedAt = Date.now();
+  const res1 = await KirokuEngine.runHedgedCloudRead(
+    () => new Promise(resolve => setTimeout(() => { sdkResolved = true; resolve({ src: 'sdk' }); }, 2000)),
+    () => new Promise(resolve => setTimeout(() => resolve({ src: 'rest', ok: true }), 15)),
+    { hedgeDelayMs: 25 }
+  );
+  const elapsed1 = Date.now() - startedAt;
+  assert.equal(res1.winner, 'rest');
+  assert.deepEqual(res1.result, { src: 'rest', ok: true });
+  assert.equal(sdkResolved, false);
+  assert.ok(elapsed1 < 500, `Expected hedged REST win <500ms, got ${elapsed1}ms`);
+
+  // 2. Fast SDK (10ms) beats hedgeDelayMs (80ms) -> REST is never even started
+  let restCalled = false;
+  const res2 = await KirokuEngine.runHedgedCloudRead(
+    () => new Promise(resolve => setTimeout(() => resolve({ src: 'sdk', fast: true }), 10)),
+    () => { restCalled = true; return Promise.resolve({ src: 'rest' }); },
+    { hedgeDelayMs: 80 }
+  );
+  assert.equal(res2.winner, 'sdk');
+  assert.equal(restCalled, false);
+
+  // 3. hedgeDelayMs: 0 races immediately in parallel (cold empty load)
+  let restCalledImmediate = false;
+  const res3 = await KirokuEngine.runHedgedCloudRead(
+    () => new Promise(resolve => setTimeout(() => resolve({ src: 'sdk' }), 500)),
+    () => { restCalledImmediate = true; return new Promise(resolve => setTimeout(() => resolve({ src: 'rest' }), 10)); },
+    { hedgeDelayMs: 0 }
+  );
+  assert.equal(res3.winner, 'rest');
+  assert.equal(restCalledImmediate, true);
+
+  // 4. REST returns null (e.g. no token), falls through to SDK cleanly
+  const res4 = await KirokuEngine.runHedgedCloudRead(
+    () => new Promise(resolve => setTimeout(() => resolve({ src: 'sdk-fallback' }), 25)),
+    () => Promise.resolve(null),
+    { hedgeDelayMs: 0 }
+  );
+  assert.equal(res4.winner, 'sdk');
+  assert.deepEqual(res4.result, { src: 'sdk-fallback' });
+
+  // 5. Fatal quota/permission error propagates immediately without waiting for slow branch
+  await assert.rejects(
+    KirokuEngine.runHedgedCloudRead(
+      () => Promise.reject(Object.assign(new Error('Quota exceeded'), { code: 'resource-exhausted' })),
+      () => new Promise(resolve => setTimeout(() => resolve({ src: 'rest' }), 500)),
+      { hedgeDelayMs: 0 }
+    ),
+    (err: { code?: string }) => err && err.code === 'resource-exhausted'
+  );
+});
+
+test('runPrimaryFirstWaterfall with hedgeDelayMs launches backup when primary stalls, without firing backup when primary is fast', async () => {
+  // 1. Primary stalls 450ms, backup returns in 15ms, hedgeDelayMs = 30ms -> backup wins well under 200ms
+  const t0 = Date.now();
+  let backupStarted = false;
+  const resSlow = await KirokuEngine.runPrimaryFirstWaterfall(
+    [
+      {
+        name: 'AniList',
+        timeoutMs: 500,
+        run: () => new Promise(resolve => setTimeout(() => resolve([{ title: 'Slow A' }, { title: 'Slow B' }]), 450))
+      },
+      {
+        name: 'Shikimori',
+        timeoutMs: 500,
+        run: () => {
+          backupStarted = true;
+          return new Promise(resolve => setTimeout(() => resolve([{ title: 'Fast 1' }, { title: 'Fast 2' }]), 15));
+        }
+      }
+    ],
+    { minEnough: 2, hedgeDelayMs: 30 }
+  );
+  const dt = Date.now() - t0;
+  assert.equal(backupStarted, true);
+  assert.equal(resSlow.items.length, 2);
+  assert.equal(resSlow.items[0].title, 'Fast 1');
+  assert.ok(dt < 300, `Expected hedged catalog waterfall <300ms, got ${dt}ms`);
+
+  // 2. Fast primary (10ms) completes before hedgeDelayMs (90ms) -> backup is NOT called
+  let backupCalledOnFast = false;
+  const resFast = await KirokuEngine.runPrimaryFirstWaterfall(
+    [
+      {
+        name: 'AniList',
+        timeoutMs: 500,
+        run: () => new Promise(resolve => setTimeout(() => resolve([{ title: 'Fast A' }, { title: 'Fast B' }]), 10))
+      },
+      {
+        name: 'Shikimori',
+        timeoutMs: 500,
+        run: () => {
+          backupCalledOnFast = true;
+          return Promise.resolve([{ title: 'Backup' }]);
+        }
+      }
+    ],
+    { minEnough: 2, hedgeDelayMs: 90 }
+  );
+  assert.equal(backupCalledOnFast, false);
+  assert.equal(resFast.items[0].title, 'Fast A');
+  assert.equal(resFast.usedSources.length, 1);
+  assert.equal(resFast.usedSources[0], 'AniList');
+});
+
+test('getDataModalActionDialogConfig returns clear Russian explanations for every Data & Import action and adapts to local/cloud/empty state', () => {
+  const syncCloud = KirokuEngine.getDataModalActionDialogConfig('cloudSync', {
+    isLocal: false,
+    isOnline: true,
+    pendingCount: 3
+  });
+  assert.equal(syncCloud.canProceed, true);
+  assert.equal(syncCloud.okLabel, 'Сверить сейчас');
+  assert.match(syncCloud.title, /Сверить коллекцию с облаком/);
+  assert.match(syncCloud.message, /Скачает свежие изменения из облака/);
+  assert.match(syncCloud.message, /Отправит в облако/);
+  assert.match(syncCloud.message, /ждут отправки: 3/);
+
+  const syncLocal = KirokuEngine.getDataModalActionDialogConfig('cloudSync', { isLocal: true });
+  assert.equal(syncLocal.canProceed, false);
+  assert.equal(syncLocal.okLabel, 'Понятно');
+  assert.match(syncLocal.message, /локальный режим/i);
+
+  const exportFull = KirokuEngine.getDataModalActionDialogConfig('exportBackup', { itemCount: 512 });
+  assert.equal(exportFull.canProceed, true);
+  assert.match(exportFull.message, /512 тайтлов/);
+
+  const exportEmpty = KirokuEngine.getDataModalActionDialogConfig('exportBackup', { itemCount: 0 });
+  assert.equal(exportEmpty.canProceed, false);
+  assert.equal(exportEmpty.okLabel, 'Понятно');
+
+  for (const key of ['universalImport', 'restoreSafetyBackup', 'cleanupAndEnrich', 'cloudDiag']) {
+    const cfg = KirokuEngine.getDataModalActionDialogConfig(key, { itemCount: 42 });
+    assert.equal(cfg.canProceed, true, `Expected ${key} to allow proceeding`);
+    assert.ok(cfg.title.length > 5);
+    assert.ok(cfg.message.length > 40);
+    assert.ok(cfg.okLabel.length > 2);
+  }
+});
+
 
 

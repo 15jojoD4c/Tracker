@@ -8,6 +8,11 @@
 <meta name="theme-color" content="#0a0b12">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://graphql.anilist.co" crossorigin>
+<link rel="preconnect" href="https://shikimori.one" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kirokucho</title>
@@ -18,12 +23,12 @@
 <link rel="icon" href="./favicon.ico" sizes="any">
 <!-- ВАЖНО: при обновлении версии кэша (?v=...) синхронно меняй и const APP_VER внизу index.html -->
 <style>html,body{background:#0a0b12;color:#f1f3f9;margin:0}html[data-theme=white],html[data-theme=white] body{background:#f4f6fb;color:#14161f}body.auth-checking > *{display:none!important}</style>
-<link rel="preload" href="./kiroku_engine.js?v=20261222" as="script">
-<link rel="preload" href="./app_core.js?v=20261222" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261222" as="script">
-<link rel="preload" href="./app.js?v=20261222" as="script">
-<link rel="stylesheet" href="./style.css?v=20261222">
-<link rel="stylesheet" href="./mobile.css?v=20261222" media="(max-width: 768px)">
+<link rel="preload" href="./kiroku_engine.js?v=20261225" as="script">
+<link rel="preload" href="./app_core.js?v=20261225" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261225" as="script">
+<link rel="preload" href="./app.js?v=20261225" as="script">
+<link rel="stylesheet" href="./style.css?v=20261225">
+<link rel="stylesheet" href="./mobile.css?v=20261225" media="(max-width: 768px)">
 </head>
 <body class="auth-checking">
 
@@ -670,15 +675,16 @@
   </div>
 
   <div class="fs">Резервная копия и порядок в коллекции</div>
-  <button class="btn btn-s" onclick="exportData()" type="button" style="width:100%">⬇ Скачать бэкап (.json)</button>
+  <button class="btn btn-s" id="exportDataBtn" type="button" style="width:100%">⬇ Скачать бэкап (.json)</button>
   <button class="btn btn-s" id="restoreSafetyBackupBtn" type="button" style="width:100%">🛟 Восстановить из локального кэша / страховочной копии</button>
   <button class="btn btn-s" id="cleanupAndEnrichBtn" type="button" style="width:100%">🧹 Навести порядок (дубликаты и обложки)</button>
 
-  <div class="fs">Локальная копия и диагностика облака</div>
+  <div class="fs">Облако и диагностика</div>
   <div class="row2">
-    <button class="btn btn-s" id="manualCloudSyncBtn" type="button">↻ Синхронизировать с облаком</button>
+    <button class="btn btn-s" id="manualCloudSyncBtn" type="button">⇄ Сверить с облаком</button>
     <button class="btn btn-s" id="cloudDiagBtn" type="button">🩺 Проверка облака</button>
   </div>
+  <div id="cloudSyncStatusBox" class="data-sync-status" style="display:none" role="status" aria-live="polite"></div>
   <div id="cloudDiagResultBox" style="display:none;margin-top:8px;max-height:260px;overflow-y:auto;background:rgba(0,0,0,.3);border:1px solid var(--bd);border-radius:12px;padding:10px"></div>
 </div></div>
 
@@ -820,7 +826,7 @@ const importWithTimeout = (url, ms = 7000) => new Promise((resolve, reject) => {
 });
 
 // ВАЖНО: должна совпадать с параметром ?v=... в <head> выше
-const APP_VER = "20261222";
+const APP_VER = "20261225";
 const FIREBASE_SDK_URLS = [
   "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
   "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
@@ -1044,6 +1050,20 @@ const startFirebaseFallbackAutoRecovery = () => {
   if (navigator.onLine) scheduleFirebaseFallbackRecovery();
 };
 
+const loadScript = src => new Promise((resolve, reject) => {
+  const s = document.createElement("script");
+  s.src = src;
+  s.onload = resolve;
+  s.onerror = () => {
+    document.body.classList.remove("auth-checking");
+    reject(new Error("Не удалось загрузить " + src));
+  };
+  document.body.appendChild(s);
+});
+
+// Запускаем загрузку и парсинг kiroku_engine.js параллельно с Firebase SDK, чтобы сократить холодный старт
+const engineLoadPromise = loadScript("./kiroku_engine.js?v=" + APP_VER);
+
 try {
   const [fbApp, fbAuth, fbDb] = await Promise.all(
     FIREBASE_SDK_URLS.map(url => importWithTimeout(url, 7000))
@@ -1100,19 +1120,8 @@ try {
   });
 }
 
-const loadScript = src => new Promise((resolve, reject) => {
-  const s = document.createElement("script");
-  s.src = src;
-  s.onload = resolve;
-  s.onerror = () => {
-    document.body.classList.remove("auth-checking");
-    reject(new Error("Не удалось загрузить " + src));
-  };
-  document.body.appendChild(s);
-});
-
 try {
-  await loadScript("./kiroku_engine.js?v=" + APP_VER);
+  await engineLoadPromise;
   await loadScript("./app_core.js?v=" + APP_VER);
   await loadScript("./app_catalog.js?v=" + APP_VER);
   await loadScript("./app.js?v=" + APP_VER);

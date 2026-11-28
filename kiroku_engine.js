@@ -174,12 +174,14 @@
   }
 
   // Водопад «сначала главный источник; дополнительные только если данных не хватило»
+  // При передаче hedgeDelayMs > 0 запускает резервный 2-й источник параллельно, если 1-й не ответил за hedgeDelayMs
   async function runPrimaryFirstWaterfall(sources, opts = {}) {
     const {
       minEnough = 12,
       filterFn = null,
       dedupFn = null,
-      signal = null
+      signal = null,
+      hedgeDelayMs = 0
     } = opts;
 
     const list = (Array.isArray(sources) ? sources : []).filter(Boolean);
@@ -191,8 +193,98 @@
 
     let merged = [];
     const usedSources = [];
+    let startIndex = 0;
 
-    for (const src of list) {
+    if (hedgeDelayMs > 0 && list.length >= 2) {
+      if (signal && signal.aborted) {
+        return { items: merged, usedSources, aborted: true };
+      }
+      const runSafe = async src => {
+        try {
+          const raw = await raceWithTimeout(src.run(signal), src.timeoutMs || 3200, []);
+          return { name: src.name || 'source', items: applyFilter(Array.isArray(raw) ? raw : []) };
+        } catch (e) {
+          return { name: src.name || 'source', items: [] };
+        }
+      };
+
+      const pairResult = await new Promise(resolve => {
+        let settled = false;
+        let secondStarted = false;
+        let hedgeTimer = 0;
+        let p0Done = false;
+        let p1Done = false;
+        let r0 = null;
+        let r1 = null;
+
+        const finish = (parts, consumedCount) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(hedgeTimer);
+          resolve({ parts, consumedCount });
+        };
+
+        const checkBothDone = () => {
+          if (settled) return;
+          if (p0Done && (!secondStarted || p1Done)) {
+            const parts = [];
+            if (r0 && r0.items.length) parts.push(r0);
+            if (r1 && r1.items.length) parts.push(r1);
+            finish(parts, secondStarted ? 2 : 1);
+          }
+        };
+
+        const startSecond = () => {
+          if (settled || secondStarted) return;
+          if (signal && signal.aborted) {
+            finish([], 2);
+            return;
+          }
+          secondStarted = true;
+          clearTimeout(hedgeTimer);
+          runSafe(list[1]).then(res => {
+            r1 = res;
+            p1Done = true;
+            if (!settled && res.items.length >= minEnough) {
+              const parts = (r0 && r0.items.length) ? [r0, res] : [res];
+              finish(parts, 2);
+              return;
+            }
+            checkBothDone();
+          });
+        };
+
+        hedgeTimer = setTimeout(startSecond, hedgeDelayMs);
+        runSafe(list[0]).then(res => {
+          r0 = res;
+          p0Done = true;
+          if (!settled && res.items.length >= minEnough) {
+            finish([res], secondStarted ? 2 : 1);
+            return;
+          }
+          if (!secondStarted) {
+            startSecond();
+            return;
+          }
+          checkBothDone();
+        });
+      });
+
+      if (signal && signal.aborted) {
+        return { items: merged, usedSources, aborted: true };
+      }
+      for (const part of pairResult.parts) {
+        usedSources.push(part.name);
+        merged = merged.length ? applyDedup([merged, part.items]) : applyDedup([part.items]);
+      }
+      startIndex = pairResult.consumedCount;
+      if (merged.length >= minEnough) {
+        return { items: merged, usedSources, aborted: Boolean(signal && signal.aborted) };
+      }
+    }
+
+    for (let i = startIndex; i < list.length; i++) {
+      const src = list[i];
       if (signal && signal.aborted) {
         return { items: merged, usedSources, aborted: true };
       }
@@ -2896,6 +2988,500 @@
     };
   }
 
+  // Маршруты API TMDB: прямой домен + проверенные зеркала (работают в РФ без VPN и с CORS)
+  const TMDB_API_ROUTES = [
+    { id: 'direct', origin: 'https://api.themoviedb.org/3', kind: 'direct' },
+    { id: 'cub_red', origin: 'https://apitmdb.cub.red/3', kind: 'mirror' },
+    { id: 'cub_black', origin: 'https://apitmdb.cub.black/3', kind: 'mirror' },
+    { id: 'cub_notrip', origin: 'https://apitmdb.cubnotrip.top/3', kind: 'mirror' },
+    { id: 'tmdb_alt', origin: 'https://api.tmdb.org/3', kind: 'mirror' }
+  ];
+
+  // Проверенные зеркала постеров TMDB (обходят блокировку image.tmdb.org без VPN)
+  const TMDB_IMAGE_MIRROR_HOSTS = [
+    'imagetmdb.com',
+    'imagetmdb.cub.red',
+    'nl.imagetmdb.com',
+    'imagetmdb.cub.black',
+    'imagetmdb.cubnotrip.top'
+  ];
+
+  function extractTmdbApiRelativePath(targetUrl) {
+    const raw = String(targetUrl || '').trim();
+    if (!raw) return '';
+    if (raw.startsWith('/')) return raw;
+    const m = raw.match(/^https?:\/\/(?:api\.themoviedb\.org|api\.tmdb\.org|apitmdb\.[a-z0-9.-]+)\/3(\/[^\s]*)$/i);
+    return m ? m[1] : '';
+  }
+
+  function buildTmdbTransportCandidates(targetUrl, opts = {}) {
+    const relPath = extractTmdbApiRelativePath(targetUrl);
+    if (!relPath) {
+      const clean = String(targetUrl || '').trim();
+      return clean ? [{ id: 'direct', url: clean, kind: 'direct' }] : [];
+    }
+    const preferredId = String(opts.preferredId || '').trim();
+    const nowMs = Number.isFinite(Number(opts.nowMs)) ? Number(opts.nowMs) : Date.now();
+    const blocked = opts.blockedUntil || {};
+    const isBlocked = id => {
+      if (blocked instanceof Map) return (Number(blocked.get(id)) || 0) > nowMs;
+      if (blocked instanceof Set) return blocked.has(id);
+      return (Number(blocked[id]) || 0) > nowMs;
+    };
+
+    const all = TMDB_API_ROUTES.map(r => ({
+      id: r.id,
+      url: r.origin + relPath,
+      kind: r.kind
+    }));
+
+    const available = all.filter(c => !isBlocked(c.id));
+    const pool = available.length ? available : all;
+
+    if (preferredId) {
+      const prefIdx = pool.findIndex(c => c.id === preferredId);
+      if (prefIdx > 0) {
+        const [picked] = pool.splice(prefIdx, 1);
+        pool.unshift(picked);
+      }
+    }
+    return pool;
+  }
+
+  function validateTmdbApiPayload(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return { ok: false, isInvalidKey: false };
+    }
+    if (Number(data.status_code) === 7) {
+      return { ok: false, isInvalidKey: true };
+    }
+    if (data.success === false) {
+      return { ok: false, isInvalidKey: false };
+    }
+    const hasKnownShape = Array.isArray(data.results)
+      || typeof data.id === 'number'
+      || Array.isArray(data.parts)
+      || Array.isArray(data.cast)
+      || Array.isArray(data.crew)
+      || Array.isArray(data.movie_results)
+      || Array.isArray(data.tv_results)
+      || Array.isArray(data.genres);
+    return { ok: hasKnownShape, isInvalidKey: false };
+  }
+
+  function extractTmdbImagePath(rawUrl) {
+    const s = String(rawUrl || '').trim();
+    if (!s) return '';
+    const m = s.match(/^https?:\/\/(?:image\.tmdb\.org|(?:[a-z0-9-]+\.)?imagetmdb(?:\.[a-z0-9-]+)+)(\/t\/p\/[^\s]+)$/i);
+    return m ? m[1] : '';
+  }
+
+  function buildTmdbPosterMirrorUrls(rawUrl, preferredHost = '') {
+    const s = String(rawUrl || '').trim();
+    const imgPath = extractTmdbImagePath(s);
+    if (!imgPath) return [];
+    const canonical = 'https://image.tmdb.org' + imgPath;
+    const out = [];
+    const push = u => {
+      if (u && !out.includes(u)) out.push(u);
+    };
+    const pref = String(preferredHost || '').trim().toLowerCase();
+    if (pref && TMDB_IMAGE_MIRROR_HOSTS.includes(pref)) {
+      push(`https://${pref}${imgPath}`);
+    }
+    push('https://wsrv.nl/?url=' + encodeURIComponent(canonical));
+    for (const host of TMDB_IMAGE_MIRROR_HOSTS) {
+      push(`https://${host}${imgPath}`);
+    }
+    push('https://i0.wp.com/image.tmdb.org' + imgPath);
+    push(canonical);
+    return out;
+  }
+
+  const TVMAZE_GENRE_TO_RU = {
+    Action: 'Боевик',
+    Adventure: 'Приключения',
+    Anime: 'Мультфильм',
+    Comedy: 'Комедия',
+    Crime: 'Криминал',
+    Drama: 'Драма',
+    Espionage: 'Боевик',
+    Family: 'Семейный',
+    Fantasy: 'Фэнтези',
+    History: 'История',
+    Horror: 'Ужасы',
+    Legal: 'Драма',
+    Medical: 'Драма',
+    Music: 'Музыка',
+    Mystery: 'Детектив',
+    Romance: 'Мелодрама',
+    'Science-Fiction': 'Фантастика',
+    Supernatural: 'Фэнтези',
+    Thriller: 'Триллер',
+    War: 'Военный',
+    Western: 'Вестерн'
+  };
+
+  function stripSimpleHtml(html) {
+    return String(html || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function normalizeTvmazeShowsToCatalogItems(rawList, limit = 20) {
+    if (!Array.isArray(rawList)) return [];
+    const out = [];
+    const seen = new Set();
+    for (const entry of rawList) {
+      const sh = entry && entry.show ? entry.show : entry;
+      if (!sh || !sh.name) continue;
+      const key = String(sh.id || sh.name);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const poster = sh.image?.medium || sh.image?.original || '';
+      const posterHi = sh.image?.original || '';
+      const year = sh.premiered ? String(sh.premiered).slice(0, 4) : '';
+      const rating = sh.rating && typeof sh.rating.average === 'number' && sh.rating.average > 0
+        ? sh.rating.average.toFixed(1)
+        : '';
+      const tags = [...new Set((sh.genres || []).map(g => TVMAZE_GENRE_TO_RU[g] || '').filter(Boolean))];
+      out.push({
+        title: String(sh.name),
+        en: String(sh.name),
+        orig: String(sh.name),
+        alt: '',
+        isAdult: false,
+        poster,
+        posterFallbacks: [poster, posterHi].filter(Boolean),
+        banner: posterHi,
+        ongoing: sh.status === 'Running' || sh.status === 'In Development',
+        upcoming: sh.status === 'In Development' || sh.status === 'To Be Determined',
+        releaseStatus: sh.status || '',
+        year,
+        ext: rating,
+        tags,
+        imdbId: sh.externals?.imdb || '',
+        src: 'TVMaze',
+        url: sh.url || '',
+        desc: stripSimpleHtml(sh.summary || ''),
+        category: 'Сериал'
+      });
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
+  const ITUNES_GENRE_TO_RU = {
+    'Боевики и приключения': ['Боевик', 'Приключения'],
+    'Комедии': ['Комедия'],
+    'Драмы': ['Драма'],
+    'Триллеры': ['Триллер'],
+    'Ужасы': ['Ужасы'],
+    'Фантастика и фэнтези': ['Фантастика', 'Фэнтези'],
+    'Мелодрамы': ['Мелодрама'],
+    'Для всей семьи и детей': ['Семейный'],
+    'Мультфильмы': ['Мультфильм'],
+    'Документальные': ['Документальный'],
+    'Детективы': ['Детектив'],
+    'Криминал': ['Криминал']
+  };
+
+  function normalizeItunesRuMoviesToCatalogItems(rawFeed, filterOpts = {}) {
+    const entries = rawFeed && rawFeed.feed && Array.isArray(rawFeed.feed.entry)
+      ? rawFeed.feed.entry
+      : [];
+    const qLow = String(filterOpts.query || '').trim().toLowerCase();
+    const yrFrom = Number(filterOpts.yrFrom) || 0;
+    const yrTo = Number(filterOpts.yrTo) || 0;
+    const limit = Number(filterOpts.limit) || 20;
+    const out = [];
+    for (const e of entries) {
+      const title = String(e?.['im:name']?.label || '').trim();
+      if (!title) continue;
+      const summary = String(e?.summary?.label || '').trim();
+      const relRaw = String(e?.['im:releaseDate']?.label || '');
+      const year = relRaw ? relRaw.slice(0, 4) : '';
+      const yrNum = parseInt(year, 10) || 0;
+      if (yrFrom && yrNum && yrNum < yrFrom) continue;
+      if (yrTo && yrNum && yrNum > yrTo) continue;
+      if (qLow && !title.toLowerCase().includes(qLow) && !summary.toLowerCase().includes(qLow)) continue;
+      const imgs = Array.isArray(e?.['im:image']) ? e['im:image'] : [];
+      const rawImg = imgs.length ? String(imgs[imgs.length - 1]?.label || '') : '';
+      const hiImg = rawImg ? rawImg.replace(/\/\d+x\d+bb\.[a-z]+$/i, '/400x600bb.jpg') : '';
+      const rawGenre = String(e?.category?.attributes?.label || '').trim();
+      const mappedTags = ITUNES_GENRE_TO_RU[rawGenre] || (rawGenre ? [rawGenre] : []);
+      const linkObj = Array.isArray(e?.link) ? e.link.find(l => l?.attributes?.href) : e?.link;
+      const url = String(linkObj?.attributes?.href || '');
+      out.push({
+        title,
+        en: '',
+        orig: title,
+        alt: '',
+        isAdult: false,
+        poster: hiImg || rawImg,
+        posterFallbacks: [hiImg, rawImg].filter(Boolean),
+        banner: hiImg || rawImg,
+        ongoing: false,
+        upcoming: false,
+        releaseStatus: 'Released',
+        year,
+        ext: '',
+        tags: mappedTags,
+        src: 'iTunes',
+        url,
+        desc: summary,
+        category: 'Фильм'
+      });
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
+  function decodeFirestoreRestQueryResponse(rows) {
+    if (!Array.isArray(rows)) return [];
+    const docs = [];
+    for (const row of rows) {
+      const rawDoc = row && row.document;
+      if (!rawDoc || typeof rawDoc !== 'object' || !rawDoc.name) continue;
+      const parts = String(rawDoc.name).split('/');
+      const id = parts[parts.length - 1] || '';
+      if (!id) continue;
+      const decoded = decodeFirestoreRestDocument(rawDoc);
+      docs.push({
+        id,
+        exists: () => true,
+        data: () => decoded,
+        metadata: { fromCache: false }
+      });
+    }
+    return docs;
+  }
+
+  function buildSpeculativeColdStartDocIds(uid, maxSpeculativeChunks = 1) {
+    const cleanUid = String(uid || '').trim();
+    if (!cleanUid) return { profileDocId: '', chunkDocIds: [] };
+    const cnt = Math.max(0, Math.min(4, Number(maxSpeculativeChunks) || 0));
+    const chunkDocIds = [];
+    for (let i = 0; i < cnt; i++) {
+      chunkDocIds.push(`prof_col_${cleanUid}_${i}`);
+    }
+    return {
+      profileDocId: `prof_${cleanUid}`,
+      chunkDocIds
+    };
+  }
+
+  function isFatalCloudReadError(err) {
+    const code = String(err?.code || '').toLowerCase();
+    return code.includes('resource-exhausted') || code.includes('permission-denied');
+  }
+
+  // Быстрая гонка чтения Firestore SDK vs REST: не ждёт 20 секунд при подвисании WebChannel
+  function runHedgedCloudRead(sdkFn, restFn, opts = {}) {
+    const hedgeDelayMs = Math.max(0, Number(opts.hedgeDelayMs ?? 750));
+    const canRest = typeof restFn === 'function';
+    const isValidSnap = typeof opts.isValidResult === 'function'
+      ? opts.isValidResult
+      : (val => Boolean(val));
+
+    if (!canRest) {
+      return Promise.resolve().then(() => sdkFn()).then(result => ({ result, winner: 'sdk' }));
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let restStarted = false;
+      let hedgeTimer = 0;
+      let pending = 1;
+      let lastErr = null;
+
+      const finishOk = (result, winner) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(hedgeTimer);
+        resolve({ result, winner });
+      };
+
+      const finishErr = err => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(hedgeTimer);
+        reject(err || new Error('Firestore read failed'));
+      };
+
+      const onBranchFail = err => {
+        if (settled) return;
+        if (isFatalCloudReadError(err)) {
+          finishErr(err);
+          return;
+        }
+        if (err) lastErr = err;
+        pending--;
+        if (!restStarted) {
+          startRest();
+          return;
+        }
+        if (pending <= 0) {
+          finishErr(lastErr);
+        }
+      };
+
+      const startRest = () => {
+        if (settled || restStarted) return;
+        restStarted = true;
+        clearTimeout(hedgeTimer);
+        pending++;
+        Promise.resolve().then(() => restFn()).then(
+          val => {
+            if (isValidSnap(val)) {
+              finishOk(val, 'rest');
+            } else {
+              onBranchFail(null);
+            }
+          },
+          err => onBranchFail(err)
+        );
+      };
+
+      if (hedgeDelayMs === 0) {
+        startRest();
+      } else {
+        hedgeTimer = setTimeout(startRest, hedgeDelayMs);
+      }
+
+      Promise.resolve().then(() => sdkFn()).then(
+        val => {
+          if (isValidSnap(val)) {
+            finishOk(val, 'sdk');
+          } else {
+            onBranchFail(null);
+          }
+        },
+        err => onBranchFail(err)
+      );
+    });
+  }
+
+  function formatRussianTitleCount(n) {
+    const num = Math.max(0, Math.floor(Number(n) || 0));
+    const mod100 = num % 100;
+    const mod10 = num % 10;
+    if (mod100 >= 11 && mod100 <= 14) return `${num} тайтлов`;
+    if (mod10 === 1) return `${num} тайтл`;
+    if (mod10 >= 2 && mod10 <= 4) return `${num} тайтла`;
+    return `${num} тайтлов`;
+  }
+
+  function getDataModalActionDialogConfig(actionKey, ctx = {}) {
+    const itemCount = Math.max(0, Math.floor(Number(ctx.itemCount) || 0));
+    const pendingCount = Math.max(0, Math.floor(Number(ctx.pendingCount) || 0));
+    const isLocal = Boolean(ctx.isLocal);
+    const isOnline = ctx.isOnline !== false;
+
+    switch (actionKey) {
+      case 'universalImport':
+        return {
+          title: '📂 Загрузить файл в коллекцию',
+          message:
+            'Откроется выбор файла на твоём устройстве (Anixart, CSV/таблица, JSON, XML, Кинопоиск).\n\n' +
+            'Что делает эта кнопка: сначала откроется окно предпросмотра с проверкой повторов и выбором категорий. ' +
+            'Текущие записи сами по себе не удалятся — при загрузке полного бэкапа (.json) ты сам выберешь, добавить его к коллекции или заменить её.',
+          okLabel: 'Выбрать файл',
+          danger: false,
+          canProceed: true
+        };
+      case 'exportBackup':
+        return {
+          title: '⬇ Скачать резервную копию (.json)',
+          message: itemCount > 0
+            ? `На устройство сохранится файл .json со всей твоей текущей коллекцией (${formatRussianTitleCount(itemCount)}), подборками и настройками профиля.\n\n` +
+              'В самой коллекции и в облаке ничего не изменится — это просто резервная копия для страховки или переноса.'
+            : 'Твоя коллекция сейчас пуста — в файле пока нечего сохранять.',
+          okLabel: itemCount > 0 ? 'Скачать файл' : 'Понятно',
+          danger: false,
+          canProceed: itemCount > 0
+        };
+      case 'restoreSafetyBackup':
+        return {
+          title: '🛟 Восстановить из страховочной копии',
+          message:
+            'Загрузит автоматически сохранённую резервную копию из локальной памяти этого браузера в окно предпросмотра.\n\n' +
+            'Что делает эта кнопка: добавит только недостающие тайтлы, а все твои текущие записи останутся на месте.',
+          okLabel: 'Продолжить',
+          danger: false,
+          canProceed: true
+        };
+      case 'cleanupAndEnrich':
+        return {
+          title: '🧹 Навести порядок в коллекции',
+          message:
+            'Запустит проверку в два шага:\n' +
+            '1. Найдёт возможные дубликаты и покажет их на экране — без твоего подтверждения ничего не удалится.\n' +
+            '2. В фоне догрузит недостающие обложки, описания и связи с каталогом для записей, у которых их нет.',
+          okLabel: 'Продолжить',
+          danger: false,
+          canProceed: true
+        };
+      case 'cloudSync': {
+        if (isLocal) {
+          return {
+            title: '⇄ Сверка с облаком недоступна',
+            message:
+              'Сейчас включён локальный режим без аккаунта — коллекция хранится только в памяти этого браузера.\n\n' +
+              'Чтобы сохранять и сверять коллекцию между телефоном и компьютером, войди в аккаунт Google или по почте.',
+            okLabel: 'Понятно',
+            danger: false,
+            canProceed: false
+          };
+        }
+        const pendingNote = pendingCount > 0
+          ? ` (сейчас ждут отправки: ${pendingCount})`
+          : '';
+        const offlineNote = !isOnline
+          ? '\n\n⚠ Сейчас нет подключения к интернету — при запуске мы просто проверим сеть и сохраним локальные правки.'
+          : '';
+        return {
+          title: '⇄ Сверить коллекцию с облаком',
+          message:
+            'Выполнит безопасную двустороннюю сверку между этим устройством и облаком:\n' +
+            '1. Скачает свежие изменения из облака (например, добавленные на другом устройстве) и объединит с твоей коллекцией.\n' +
+            `2. Отправит в облако несохранённые правки с этого устройства${pendingNote}.\n\n` +
+            'Никакие тайтлы при этом не удалятся и не перезапишутся пустым списком.' +
+            offlineNote,
+          okLabel: 'Сверить сейчас',
+          danger: false,
+          canProceed: true
+        };
+      }
+      case 'cloudDiag':
+        return {
+          title: '🩺 Проверка подключения к облаку',
+          message:
+            'Проверит связь с базой данных Firebase:\n' +
+            '• чтение твоих документов из облака;\n' +
+            '• запись и мгновенное удаление одного временного тестового документа;\n' +
+            '• проверку доступа к профилю и самопроверку парсеров импорта.\n\n' +
+            'Твоя коллекция и настройки профиля при этом не изменятся.',
+          okLabel: 'Запустить проверку',
+          danger: false,
+          canProceed: true
+        };
+      default:
+        return {
+          title: 'Подтверждение действия',
+          message: 'Продолжить выполнение выбранного действия?',
+          okLabel: 'Продолжить',
+          danger: false,
+          canProceed: true
+        };
+    }
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -3007,7 +3593,20 @@
     computeInitialCloudNextDelayMs,
     resolveEmptyCollectionUiState,
     evaluateFirebaseRecoveryReload,
-    buildCloudDiagnosticsProfileProbe
+    buildCloudDiagnosticsProfileProbe,
+    TMDB_API_ROUTES,
+    TMDB_IMAGE_MIRROR_HOSTS,
+    extractTmdbApiRelativePath,
+    buildTmdbTransportCandidates,
+    validateTmdbApiPayload,
+    extractTmdbImagePath,
+    buildTmdbPosterMirrorUrls,
+    normalizeTvmazeShowsToCatalogItems,
+    normalizeItunesRuMoviesToCatalogItems,
+    decodeFirestoreRestQueryResponse,
+    buildSpeculativeColdStartDocIds,
+    runHedgedCloudRead,
+    getDataModalActionDialogConfig
   };
 
   if (typeof module !== 'undefined' && module.exports) {

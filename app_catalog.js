@@ -1206,46 +1206,166 @@ async function _anilistDirectOnly(search, type, o = {}, extSignal = null) {
 
 const getActiveTmdbKey = () => localStorage.getItem('tmdbKey') || DEFAULT_TMDB_KEY;
 
-// Запрос к TMDB с автоматическим обходом блокировки в РФ без VPN через прокси при недоступности api.themoviedb.org
-let _tmdbDirectBlocked = false;
-async function fetchTmdbJson(targetUrl, timeoutMs = 4200) {
-  const tryDirect = async () => {
-    const c = new AbortController();
-    const t = setTimeout(() => c.abort(), timeoutMs);
-    try {
-      const r = await fetch(targetUrl, { signal: c.signal });
-      if (r.status === 401) {
-        localStorage.removeItem('tmdbKey');
-        throw new Error('ключ TMDB не подошёл');
-      }
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return await r.json();
-    } finally {
-      clearTimeout(t);
-    }
-  };
-  const tryProxy = async () => {
-    const proxies = [
-      'https://api.allorigins.win/raw?url=' + encodeURIComponent(targetUrl),
-      'https://corsproxy.io/?' + encodeURIComponent(targetUrl),
-      'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(targetUrl)
-    ];
-    return await Promise.any(proxies.map(pu => ruJson(pu, 6500)));
-  };
-  if (!_tmdbDirectBlocked) {
-    try {
-      return await tryDirect();
-    } catch (e) {
-      if (/ключ/.test(e.message)) throw e;
-      _tmdbDirectBlocked = true;
-      return await tryProxy();
-    }
-  }
+// Запрос к TMDB с автоматическим обходом блокировки в РФ без VPN через проверенные зеркала (с быстрым hedge-переключением и запоминанием рабочего маршрута)
+const _tmdbRouteBlockedUntil = new Map();
+let _tmdbStickyRoute = (() => {
   try {
-    return await tryProxy();
+    return String(sessionStorage.getItem('kiroku_tmdb_route_v1') || '').trim();
   } catch (e) {
-    _tmdbDirectBlocked = false;
-    return await tryDirect();
+    return '';
+  }
+})();
+let _tmdbRouteConfirmed = Boolean(_tmdbStickyRoute);
+
+function _saveStickyTmdbRoute(routeId) {
+  if (!routeId) return;
+  _tmdbStickyRoute = routeId;
+  _tmdbRouteConfirmed = true;
+  _tmdbRouteBlockedUntil.delete(routeId);
+  try { sessionStorage.setItem('kiroku_tmdb_route_v1', routeId); } catch (e) {}
+}
+
+function _markTmdbRouteFailed(routeId) {
+  if (!routeId) return;
+  _tmdbRouteBlockedUntil.set(routeId, Date.now() + 2 * 60 * 1000);
+  if (_tmdbStickyRoute === routeId) {
+    _tmdbStickyRoute = '';
+    _tmdbRouteConfirmed = false;
+    try { sessionStorage.removeItem('kiroku_tmdb_route_v1'); } catch (e) {}
+  }
+}
+
+async function fetchTmdbJson(targetUrl, timeoutMs = 4500, _retriedDefaultKey = false) {
+  const candidates = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.buildTmdbTransportCandidates === 'function')
+    ? KirokuEngine.buildTmdbTransportCandidates(targetUrl, {
+        preferredId: _tmdbStickyRoute,
+        blockedUntil: _tmdbRouteBlockedUntil,
+        nowMs: Date.now()
+      })
+    : [
+        { id: 'direct', url: targetUrl, kind: 'direct' },
+        { id: 'cub_red', url: targetUrl.replace(/^https?:\/\/api\.themoviedb\.org\/3/i, 'https://apitmdb.cub.red/3'), kind: 'mirror' },
+        { id: 'cub_black', url: targetUrl.replace(/^https?:\/\/api\.themoviedb\.org\/3/i, 'https://apitmdb.cub.black/3'), kind: 'mirror' },
+        { id: 'cub_notrip', url: targetUrl.replace(/^https?:\/\/api\.themoviedb\.org\/3/i, 'https://apitmdb.cubnotrip.top/3'), kind: 'mirror' },
+        { id: 'tmdb_alt', url: targetUrl.replace(/^https?:\/\/api\.themoviedb\.org\/3/i, 'https://api.tmdb.org/3'), kind: 'mirror' }
+      ];
+
+  const validatePayload = data => (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.validateTmdbApiPayload === 'function')
+    ? KirokuEngine.validateTmdbApiPayload(data)
+    : { ok: Boolean(data && typeof data === 'object' && data.success !== false), isInvalidKey: Number(data?.status_code) === 7 };
+
+  const reqTimeout = Math.max(3000, Number(timeoutMs) || 4500);
+  const controllers = new Set();
+  const abortAllExcept = winnerCtrl => {
+    controllers.forEach(c => {
+      if (c !== winnerCtrl) {
+        try { c.abort(); } catch (e) {}
+      }
+    });
+    controllers.clear();
+  };
+
+  const tryCandidate = async cand => {
+    const ctrl = new AbortController();
+    controllers.add(ctrl);
+    const timer = setTimeout(() => ctrl.abort(), reqTimeout);
+    try {
+      const r = await fetch(cand.url, { signal: ctrl.signal });
+      let data = null;
+      try { data = await r.json(); } catch (parseErr) {}
+      const check = validatePayload(data);
+      if (r.status === 401 && check.isInvalidKey) {
+        const err = new Error('ключ TMDB не подошёл');
+        err.isInvalidTmdbKey = true;
+        throw err;
+      }
+      if (!r.ok || !check.ok) {
+        _markTmdbRouteFailed(cand.id);
+        throw new Error('HTTP ' + r.status);
+      }
+      _saveStickyTmdbRoute(cand.id);
+      abortAllExcept(ctrl);
+      return data;
+    } catch (e) {
+      if (!e?.isInvalidTmdbKey && e?.name !== 'AbortError') {
+        _markTmdbRouteFailed(cand.id);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+      controllers.delete(ctrl);
+    }
+  };
+
+  const primary = candidates[0];
+  const backups = candidates.slice(1);
+  if (!primary) throw new Error('TMDB URL missing');
+
+  let result;
+  try {
+    if (!backups.length) {
+      result = await tryCandidate(primary);
+    } else {
+      // На холодном старте (или когда прямой домен виснет из-за TSPU) запускаем зеркала через 400 мс или сразу при ошибке
+      const hedgeDelayMs = _tmdbRouteConfirmed ? 1800 : 400;
+      result = await new Promise((resolve, reject) => {
+        let settled = false;
+        let backupsStarted = false;
+        let pending = 1;
+        let lastErr = null;
+        let hedgeTimer = null;
+
+        const finishOk = val => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(hedgeTimer);
+          resolve(val);
+        };
+
+        const onOneFail = err => {
+          if (settled) return;
+          if (err?.isInvalidTmdbKey) {
+            settled = true;
+            clearTimeout(hedgeTimer);
+            abortAllExcept(null);
+            reject(err);
+            return;
+          }
+          lastErr = err;
+          pending--;
+          if (!backupsStarted) {
+            startBackups();
+            return;
+          }
+          if (pending <= 0) {
+            settled = true;
+            clearTimeout(hedgeTimer);
+            reject(lastErr || new Error('TMDB недоступен'));
+          }
+        };
+
+        const startBackups = () => {
+          if (settled || backupsStarted) return;
+          backupsStarted = true;
+          clearTimeout(hedgeTimer);
+          pending += backups.length;
+          backups.forEach(c => {
+            tryCandidate(c).then(finishOk, onOneFail);
+          });
+        };
+
+        hedgeTimer = setTimeout(startBackups, hedgeDelayMs);
+        tryCandidate(primary).then(finishOk, onOneFail);
+      });
+    }
+    return result;
+  } catch (e) {
+    if (e?.isInvalidTmdbKey && !_retriedDefaultKey && localStorage.getItem('tmdbKey')) {
+      localStorage.removeItem('tmdbKey');
+      const fallbackUrl = targetUrl.replace(/([?&]api_key=)[^&]*/i, '$1' + encodeURIComponent(DEFAULT_TMDB_KEY));
+      return await fetchTmdbJson(fallbackUrl, timeoutMs, true);
+    }
+    throw e;
   }
 }
 
@@ -2713,7 +2833,10 @@ function syncCatalogSourceCaption(itemsSample = []) {
   const isVideo = cg.g === 'Кино и сериалы' || cg.g === 'Фильм' || cg.g === 'Сериал';
   const modeLbl = $('cgMode')?.selectedOptions[0]?.textContent || 'Сейчас актуально';
   if (isVideo) {
-    srcCap.textContent = `🌐 TMDB (${cg.g}) · ${modeLbl}${cg.feedSeedPage > 1 ? ` · лента #${cg.feedSeedPage}` : ''}`;
+    const vidSrcSet = new Set();
+    (itemsSample || []).forEach(x => { if (x?.src) vidSrcSet.add(x.src); });
+    const vidSrcLabel = vidSrcSet.size ? [...vidSrcSet].join(' + ') : 'TMDB';
+    srcCap.textContent = `🌐 ${vidSrcLabel} (${cg.g}) · ${modeLbl}${cg.feedSeedPage > 1 ? ` · лента #${cg.feedSeedPage}` : ''}`;
     return;
   }
   const srcSet = new Set();
@@ -3038,6 +3161,51 @@ function verifyCatalogItemMatchesFilters(r) {
   return true;
 }
 
+// Аварийный резерв фильмов/сериалов (TVMaze + iTunes RU) на случай полной недоступности всех зеркал TMDB
+let _itunesRuMoviesCache = null;
+async function _fetchVideoEmergencyFallback(m, page, q, yrFrom, yrTo) {
+  try {
+    if (m === 'tv') {
+      if (q) {
+        if (page > 1) return [];
+        const raw = await ruJson('https://api.tvmaze.com/search/shows?q=' + encodeURIComponent(q), 5500);
+        return (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.normalizeTvmazeShowsToCatalogItems === 'function')
+          ? KirokuEngine.normalizeTvmazeShowsToCatalogItems(raw, 20)
+          : [];
+      }
+      const tvPage = Math.max(0, Math.floor((page - 1) / 5));
+      const sliceOffset = ((page - 1) % 5) * 20;
+      const raw = await ruJson(`https://api.tvmaze.com/shows?page=${tvPage}`, 5500);
+      const list = Array.isArray(raw) ? raw.slice(sliceOffset, sliceOffset + 20) : [];
+      return (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.normalizeTvmazeShowsToCatalogItems === 'function')
+        ? KirokuEngine.normalizeTvmazeShowsToCatalogItems(list, 20)
+        : [];
+    }
+    if (page > 2) return [];
+    if (!_itunesRuMoviesCache || (Date.now() - _itunesRuMoviesCache.t) > 6e5) {
+      const feed = await ruJson('https://itunes.apple.com/ru/rss/topmovies/limit=50/json', 5500);
+      _itunesRuMoviesCache = { t: Date.now(), feed };
+    }
+    const items = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.normalizeItunesRuMoviesToCatalogItems === 'function')
+      ? KirokuEngine.normalizeItunesRuMoviesToCatalogItems(_itunesRuMoviesCache.feed, { query: q, yrFrom, yrTo, limit: 50 })
+      : [];
+    const offset = (page - 1) * 20;
+    return items.slice(offset, offset + 20);
+  } catch (e) {
+    return [];
+  }
+}
+
+async function _tmdbOrVideoFallback(path, m, page, q, yrFrom, yrTo) {
+  try {
+    return await tmdb(null, path, m, page);
+  } catch (err) {
+    const fb = await _fetchVideoEmergencyFallback(m, page, q, yrFrom, yrTo);
+    if (fb.length) return fb;
+    throw err;
+  }
+}
+
 // Запрос фильмов/сериалов TMDB с маппингом жанров Movie <-> TV и поддержкой рейтинга/годов/онгоингов
 async function cgFetchSingleVideo(m, page, q, mode) {
   const { incVid, excVid } = getActiveCatalogTagLists();
@@ -3076,13 +3244,13 @@ async function cgFetchSingleVideo(m, page, q, mode) {
   if (q && !cg.ongOnly) {
     const incAdult = ($('cgAge')?.value || '') !== 'no';
     path = `/search/${m}?query=${encodeURIComponent(q)}&include_adult=${incAdult ? 'true' : 'false'}${(yrFrom && yrTo && yrFrom === yrTo) ? '&' + (mv ? 'year' : yk) + '=' + yrFrom : ''}`;
-    return tmdb(null, path, m, page);
+    return _tmdbOrVideoFallback(path, m, page, q, yrFrom, yrTo);
   }
   if ((mode === 'actual' || !mode) && !hasNarrowVideoFilters) {
-    return tmdb(null, `/trending/${m}/week`, m, page).catch(() => []);
+    return _tmdbOrVideoFallback(`/trending/${m}/week`, m, page, '', yrFrom, yrTo);
   }
   if (mode === 'trend' && !hasNarrowVideoFilters) {
-    return tmdb(null, `/trending/${m}/week`, m, page);
+    return _tmdbOrVideoFallback(`/trending/${m}/week`, m, page, '', yrFrom, yrTo);
   }
   if (hasNarrowVideoFilters || EX[mode] || mode === 'soon' || mode === 'trend' || mode === 'actual') {
     const baseDiscover = EX[mode]
@@ -3099,7 +3267,7 @@ async function cgFetchSingleVideo(m, page, q, mode) {
   } else {
     path = mode === 'top' ? `/${m}/top_rated` : mode === 'new' ? (mv ? '/movie/now_playing' : '/tv/on_the_air') : `/${m}/popular`;
   }
-  return tmdb(null, path, m, page);
+  return _tmdbOrVideoFallback(path, m, page, q, yrFrom, yrTo);
 }
 
 function getCatalogItemDedupKeys(r) {
@@ -3898,7 +4066,8 @@ async function cgFetch(page, per, q, mode, optsOverride = null, signal = null) {
       filterFn: optsOverride ? null : verifyCatalogItemMatchesFilters,
       dedupFn: interleaveAndDedupCatalogLists,
       signal,
-      timeoutMs: 3600
+      timeoutMs: 3600,
+      hedgeDelayMs: optsOverride?.primaryOnly ? 0 : 900
     });
     const wfItems = Array.isArray(wf?.items) ? wf.items : [];
     merged = cachedHits.length ? interleaveAndDedupCatalogLists([cachedHits, wfItems]) : wfItems;

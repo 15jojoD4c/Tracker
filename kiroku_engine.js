@@ -4151,6 +4151,204 @@
     };
   }
 
+  // --- A4: Понятная индикация состояния синхронизации и авто-восстановление после сбоя ---
+  const PENDING_AUTO_RETRY_DELAYS_MS = [5000, 15000, 30000, 60000];
+
+  function formatPendingQueueBreakdownRu(counts) {
+    const c = (counts && typeof counts === 'object') ? counts : {};
+    const parts = [];
+    const dirtyItems = Math.max(0, Number(c.dirtyItems) || 0);
+    const pendingDeletes = Math.max(0, Number(c.pendingDeletes) || 0);
+    const dirtyProf = Boolean(c.dirtyProf);
+    const dirtyChunks = Boolean(c.dirtyChunks);
+
+    if (dirtyItems > 0) parts.push(`тайтлов: ${dirtyItems}`);
+    if (pendingDeletes > 0) parts.push(`удалений: ${pendingDeletes}`);
+    if (dirtyProf) parts.push('настройки профиля');
+    if (!parts.length && dirtyChunks) parts.push('изменения коллекции');
+    return parts.join(', ');
+  }
+
+  function resolveSyncIndicatorState(opts) {
+    const {
+      isLocal = false,
+      isManualSyncActive = false,
+      isInitialLoading = false,
+      isOfflineFallback = false,
+      isOnline = true,
+      cloudAccessError = '',
+      isQuotaBlocked = false,
+      isSaving = false,
+      pendingTotal = 0,
+      pendingBreakdown = '',
+      syncBad = false,
+      lastSyncLabel = ''
+    } = opts || {};
+
+    const pTotal = Math.max(0, Number(pendingTotal) || 0);
+    const detailSuffix = pendingBreakdown ? ` (${pendingBreakdown})` : '';
+    const lastSyncSuffix = lastSyncLabel ? ` · Последняя сверка: ${lastSyncLabel}` : '';
+
+    if (isLocal) {
+      return {
+        cls: 'sync warn clickable',
+        icon: '💻',
+        label: 'Локально (только браузер)',
+        mobileBadgeCount: 0,
+        tooltip: 'Данные хранятся только в этом браузере. Нажми для подробностей',
+        action: 'show_banner'
+      };
+    }
+    if (isManualSyncActive) {
+      return {
+        cls: 'sync sav sync-spinning',
+        icon: '⟳',
+        label: 'Сверяем с облаком...',
+        mobileBadgeCount: 0,
+        tooltip: 'Идёт двусторонняя сверка с облаком',
+        action: 'noop'
+      };
+    }
+    if (isInitialLoading) {
+      return {
+        cls: 'sync sav sync-spinning',
+        icon: '⟳',
+        label: 'Загрузка из облака...',
+        mobileBadgeCount: 0,
+        tooltip: 'Идёт первичная загрузка коллекции из Firestore',
+        action: 'noop'
+      };
+    }
+    if (isOfflineFallback) {
+      return {
+        cls: 'sync err clickable' + (pTotal > 0 ? ' has-cnt' : ''),
+        icon: '⚠',
+        label: pTotal > 0 ? `Офлайн · в очереди ${pTotal}` : 'Офлайн (только локально)',
+        mobileBadgeCount: pTotal,
+        tooltip: pTotal > 0
+          ? `Firebase SDK недоступен. Не отправлено: ${pTotal}${detailSuffix}. Отправится автоматически при восстановлении связи`
+          : 'Firebase SDK недоступен, включено локальное сохранение',
+        action: 'show_banner'
+      };
+    }
+    if (!isOnline) {
+      return {
+        cls: 'sync err clickable' + (pTotal > 0 ? ' has-cnt' : ''),
+        icon: '📡',
+        label: pTotal > 0 ? `Нет сети · в очереди ${pTotal}` : 'Нет сети (локально)',
+        mobileBadgeCount: pTotal,
+        tooltip: pTotal > 0
+          ? `Нет подключения к интернету. В очереди: ${pTotal}${detailSuffix}. Отправится автоматически при появлении сети`
+          : 'Нет подключения к интернету. Изменения сохраняются в браузер',
+        action: 'show_banner'
+      };
+    }
+    if (cloudAccessError === 'resource-exhausted' || isQuotaBlocked) {
+      return {
+        cls: 'sync warn clickable' + (pTotal > 0 ? ' has-cnt' : ''),
+        icon: '⏳',
+        label: pTotal > 0 ? `Лимит · в очереди ${pTotal}` : 'Лимит Firebase (локально)',
+        mobileBadgeCount: pTotal,
+        tooltip: pTotal > 0
+          ? `Дневной лимит запросов Spark исчерпан. В очереди: ${pTotal}${detailSuffix}`
+          : 'Дневной лимит запросов Spark исчерпан. Изменения сохраняются локально',
+        action: 'show_banner'
+      };
+    }
+    if (isSaving) {
+      return {
+        cls: 'sync sav sync-spinning',
+        icon: '⟳',
+        label: 'Сохранение...',
+        mobileBadgeCount: 0,
+        tooltip: 'Идёт запись изменений в облако Firestore',
+        action: 'noop'
+      };
+    }
+    if (cloudAccessError === 'timeout' || cloudAccessError === 'unavailable') {
+      return {
+        cls: 'sync warn clickable' + (pTotal > 0 ? ' has-cnt' : ''),
+        icon: '↻',
+        label: pTotal > 0 ? `Отправить (${pTotal})` : 'Повторить синхронизацию',
+        mobileBadgeCount: pTotal,
+        tooltip: pTotal > 0
+          ? `Временный сбой связи с облаком. Не отправлено: ${pTotal}${detailSuffix}. Нажми, чтобы отправить сейчас (автоповтор активен)`
+          : 'Ответ Firestore задержался. Нажми, чтобы повторить синхронизацию',
+        action: 'force_sync'
+      };
+    }
+    if (cloudAccessError) {
+      return {
+        cls: 'sync err clickable' + (pTotal > 0 ? ' has-cnt' : ''),
+        icon: '⚠',
+        label: pTotal > 0 ? `Ошибка · в очереди ${pTotal}` : ('Облако: ' + cloudAccessError),
+        mobileBadgeCount: pTotal,
+        tooltip: `Проблема доступа к облаку (${cloudAccessError}). Нажми для повтора и подробностей`,
+        action: 'show_banner'
+      };
+    }
+    if (pTotal > 0) {
+      return {
+        cls: 'sync warn clickable has-cnt',
+        icon: '⏳',
+        label: `Отправить (${pTotal})`,
+        mobileBadgeCount: pTotal,
+        tooltip: `Не отправлено в облако: ${pTotal}${detailSuffix}. Нажми, чтобы отправить сейчас в 1 клик`,
+        action: 'flush_pending'
+      };
+    }
+    if (syncBad) {
+      return {
+        cls: 'sync err clickable',
+        icon: '↻',
+        label: 'Повторить сохранение',
+        mobileBadgeCount: 0,
+        tooltip: 'Последнее сохранение не подтверждено. Нажми, чтобы повторить синхронизацию',
+        action: 'force_sync'
+      };
+    }
+    return {
+      cls: 'sync clickable',
+      icon: '☁',
+      label: 'Синхронизировано',
+      mobileBadgeCount: 0,
+      tooltip: `Все изменения в облаке${lastSyncSuffix}. Нажми, чтобы сверить коллекцию с облаком`,
+      action: 'force_sync'
+    };
+  }
+
+  function computePendingAutoRetryPlan(opts) {
+    const {
+      isCloudUser = false,
+      isOnline = true,
+      isOfflineFallback = false,
+      isQuotaBlocked = false,
+      isInitialSyncPending = false,
+      hasPendingChanges = false,
+      hasTransientError = false,
+      attemptCount = 0,
+      delaysMs = PENDING_AUTO_RETRY_DELAYS_MS
+    } = opts || {};
+
+    if (!isCloudUser) return { shouldSchedule: false, delayMs: 0, nextAttempt: 0, reason: 'not_cloud_user' };
+    if (!isOnline || isOfflineFallback) return { shouldSchedule: false, delayMs: 0, nextAttempt: 0, reason: 'offline' };
+    if (isQuotaBlocked) return { shouldSchedule: false, delayMs: 0, nextAttempt: 0, reason: 'quota_blocked' };
+    if (isInitialSyncPending) return { shouldSchedule: false, delayMs: 0, nextAttempt: 0, reason: 'initial_sync_pending' };
+    if (!hasPendingChanges && !hasTransientError) return { shouldSchedule: false, delayMs: 0, nextAttempt: 0, reason: 'nothing_pending' };
+
+    const list = (Array.isArray(delaysMs) && delaysMs.length) ? delaysMs : PENDING_AUTO_RETRY_DELAYS_MS;
+    const idx = Math.max(0, Math.trunc(Number(attemptCount) || 0));
+    if (idx >= list.length) {
+      return { shouldSchedule: false, delayMs: 0, nextAttempt: idx, reason: 'max_attempts_reached' };
+    }
+    return {
+      shouldSchedule: true,
+      delayMs: Math.max(500, Number(list[idx]) || 5000),
+      nextAttempt: idx + 1,
+      reason: 'retry_scheduled'
+    };
+  }
+
   const api = {
     DEFAULT_CHUNK_MAX_BYTES,
     utf8ByteLength,
@@ -4294,7 +4492,11 @@
     orderCustomListsForDisplay,
     renameCustomListInOrder,
     mergeProfileDocsForSync,
-    sanitizeProfilePayloadForFirestoreLimit
+    sanitizeProfilePayloadForFirestoreLimit,
+    PENDING_AUTO_RETRY_DELAYS_MS,
+    formatPendingQueueBreakdownRu,
+    resolveSyncIndicatorState,
+    computePendingAutoRetryPlan
   };
 
   if (typeof module !== 'undefined' && module.exports) {

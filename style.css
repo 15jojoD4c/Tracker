@@ -1095,6 +1095,7 @@ html[data-theme=white] .cloud-empty-notice p{color:#475569}
 .cg-mob-filter-footer{display:none}
 .sync{display:inline-flex;align-items:center;gap:5px}
 .sync-ic{line-height:1;display:inline-flex;align-items:center}
+.sync-cnt{display:none;font-size:11px;font-weight:700;line-height:1}
 
 /* === Планшетная и мобильная адаптация (<= 768px) === */
 @media(max-width:768px){

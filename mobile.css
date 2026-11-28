@@ -108,6 +108,21 @@ header {
   flex-shrink: 0;
 }
 
+.sync.clickable.has-cnt {
+  width: auto !important;
+  min-width: 34px !important;
+  padding: 0 7px !important;
+  gap: 3px;
+}
+
+.sync.has-cnt .sync-cnt {
+  display: inline-flex !important;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 #openModalBtn {
   min-height: 30px !important;
   height: 30px !important;

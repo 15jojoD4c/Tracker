@@ -1316,11 +1316,67 @@ function setCloudSyncMeta(patch, forUid) {
   return next;
 }
 
+let _pendingAutoRetryTimer = 0;
+let _pendingAutoRetryCount = 0;
+let _pendingAutoRetryUid = '';
+
+function resetPendingQueueAutoRetry() {
+  clearTimeout(_pendingAutoRetryTimer);
+  _pendingAutoRetryTimer = 0;
+  _pendingAutoRetryCount = 0;
+  _pendingAutoRetryUid = '';
+}
+
+function schedulePendingQueueAutoRetry(forUid) {
+  const uid = forUid || (user && !user.isLocal ? user.uid : '');
+  if (!uid || !user || user.isLocal || user.uid !== uid) return;
+  if (_pendingAutoRetryTimer && _pendingAutoRetryUid === uid) return;
+
+  const pendingCounts = getUnsyncedPendingCounts();
+  const hasTransientError = Boolean(syncBad || cloudAccessError === 'timeout' || cloudAccessError === 'unavailable');
+  const plan = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.computePendingAutoRetryPlan === 'function')
+    ? KirokuEngine.computePendingAutoRetryPlan({
+        isCloudUser: Boolean(user && !user.isLocal),
+        isOnline: navigator.onLine,
+        isOfflineFallback: Boolean(window.__FIREBASE_OFFLINE_FALLBACK),
+        isQuotaBlocked: isCloudQuotaBlocked(),
+        isInitialSyncPending: needsInitialCloudSync(uid),
+        hasPendingChanges: pendingCounts.total > 0,
+        hasTransientError,
+        attemptCount: _pendingAutoRetryUid === uid ? _pendingAutoRetryCount : 0
+      })
+    : { shouldSchedule: false, delayMs: 0, nextAttempt: 0 };
+
+  if (!plan.shouldSchedule) return;
+  clearTimeout(_pendingAutoRetryTimer);
+  _pendingAutoRetryUid = uid;
+  _pendingAutoRetryCount = plan.nextAttempt;
+  const sessionToken = _cloudSessionToken;
+  _pendingAutoRetryTimer = setTimeout(async () => {
+    _pendingAutoRetryTimer = 0;
+    if (!user || user.isLocal || user.uid !== uid || sessionToken !== _cloudSessionToken) return;
+    if (!navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK || isCloudQuotaBlocked()) return;
+    const latestPending = getUnsyncedPendingCounts();
+    if (latestPending.total === 0 && !syncBad && cloudAccessError !== 'timeout' && cloudAccessError !== 'unavailable') {
+      resetPendingQueueAutoRetry();
+      return;
+    }
+    await reconcileAndFlushCloudOnResume(uid, sessionToken, 'online', 0);
+    const stillPending = getUnsyncedPendingCounts();
+    if (stillPending.total === 0 && !syncBad && !cloudAccessError) {
+      resetPendingQueueAutoRetry();
+    } else if (navigator.onLine && !isCloudQuotaBlocked() && !window.__FIREBASE_OFFLINE_FALLBACK) {
+      schedulePendingQueueAutoRetry(uid);
+    }
+  }, plan.delayMs);
+}
+
 function clearCloudErrorState(forUid) {
   cloudAccessError = '';
   syncBad = false;
   cloudQuotaBlockedUntil = 0;
   _quotaToastShown = false;
+  resetPendingQueueAutoRetry();
   try { localStorage.removeItem(getQuotaStorageKey(forUid)); } catch (e) {}
   setSync();
 }
@@ -1333,6 +1389,7 @@ function handleCloudError(err, silent = false) {
     cloudQuotaBlockedUntil = Date.now() + CLOUD_QUOTA_COOLDOWN_MS;
     try { localStorage.setItem(getQuotaStorageKey(), String(cloudQuotaBlockedUntil)); } catch (e) {}
     _cloudBannerDismissedKey = '';
+    resetPendingQueueAutoRetry();
     setSync();
     if (!silent && !_quotaToastShown) {
       _quotaToastShown = true;
@@ -1345,8 +1402,9 @@ function handleCloudError(err, silent = false) {
     cloudAccessError = 'timeout';
     syncBad = true;
     setSync();
+    schedulePendingQueueAutoRetry();
     if (!silent) {
-      toast('Сервер Firebase отвечает слишком долго. Изменения сохранены локально — можно повторить синхронизацию.', true);
+      toast('Сервер Firebase отвечает слишком долго. Изменения сохранены локально — повторим автоматически.', true);
     }
     return;
   }
@@ -1354,6 +1412,7 @@ function handleCloudError(err, silent = false) {
     cloudAccessError = 'unavailable';
     syncBad = true;
     setSync();
+    if (navigator.onLine) schedulePendingQueueAutoRetry();
     return;
   }
   cloudAccessError = err?.code || err?.message || 'error';
@@ -1394,6 +1453,26 @@ function getUnsyncedPendingCounts() {
   };
 }
 
+async function triggerOneClickPendingFlush() {
+  if (!user || user.isLocal) return false;
+  resetPendingQueueAutoRetry();
+  const needServerRecovery = !isInitialCloudSyncDone(user.uid)
+    || isInitialCloudSyncBlocked(user.uid)
+    || cloudAccessError === 'unavailable'
+    || cloudAccessError === 'timeout';
+  if (needServerRecovery && typeof window.forceCloudSyncNow === 'function') {
+    return window.forceCloudSyncNow(true);
+  }
+  if (typeof flushPendingCloudChanges === 'function') {
+    const ok = await flushPendingCloudChanges(true);
+    if (ok) return true;
+  }
+  if (typeof window.forceCloudSyncNow === 'function') {
+    return window.forceCloudSyncNow(true);
+  }
+  return false;
+}
+
 function renderCloudStatusBanner() {
   const box = $('cloudStatusBanner');
   if (!box) return;
@@ -1404,6 +1483,10 @@ function renderCloudStatusBanner() {
   }
 
   const pending = getUnsyncedPendingCounts();
+  const pendingBreakdown = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.formatPendingQueueBreakdownRu === 'function')
+    ? KirokuEngine.formatPendingQueueBreakdownRu(pending)
+    : '';
+  const pendingDetailTxt = pendingBreakdown ? ` (${pendingBreakdown})` : '';
   let mode = '';
   let title = '';
   let desc = '';
@@ -1441,7 +1524,7 @@ function renderCloudStatusBanner() {
       + (items.length
         ? ` Показана локальная копия (${items.length} тайтлов). Все новые изменения сохраняются в этом браузере.`
         : ' Твои облачные данные не удалены — они станут доступны после сброса квоты.');
-    if (pending.total > 0) desc += ` В очереди на отправку в облако: ${pending.total}.`;
+    if (pending.total > 0) desc += ` В очереди на отправку в облако: ${pending.total}${pendingDetailTxt}.`;
     showRetry = true;
     showDismiss = true;
   } else if (window.__FIREBASE_OFFLINE_FALLBACK || !navigator.onLine || cloudAccessError === 'unavailable') {
@@ -1449,8 +1532,8 @@ function renderCloudStatusBanner() {
     dismissKey = 'offline';
     title = '📡 Нет связи с сервером Firebase (офлайн-режим)';
     desc = 'Приложение работает с локальным кэшем браузера. Новые изменения записываются локально'
-      + (pending.total > 0 ? ` (ожидают синхронизации: ${pending.total})` : '')
-      + ' и будут отправлены в облако при восстановлении связи.';
+      + (pending.total > 0 ? ` (ожидают синхронизации: ${pending.total}${pendingDetailTxt})` : '')
+      + ' и будут отправлены в облако автоматически при восстановлении связи.';
     showRetry = true;
     showDismiss = items.length > 0;
   } else if (cloudAccessError === 'timeout') {
@@ -1458,22 +1541,23 @@ function renderCloudStatusBanner() {
     dismissKey = 'timeout';
     title = '⏱ Сервер Firebase отвечает слишком долго';
     desc = 'Запрос к облаку превысил время ожидания, но интернет активен. Локальные изменения сохранены в браузере'
-      + (pending.total > 0 ? ` (в очереди: ${pending.total})` : '')
-      + ' — нажми «Повторить» или продолжи работу: следующая успешная операция автоматически снимет предупреждение.';
+      + (pending.total > 0 ? ` (в очереди: ${pending.total}${pendingDetailTxt})` : '')
+      + ' — автоматический повтор уже запущен, либо нажми «Повторить» сейчас.';
     showRetry = true;
     showDismiss = true;
   } else if (cloudAccessError) {
     mode = 'is-error';
     dismissKey = 'err_' + cloudAccessError;
     title = `⚠ Облачная синхронизация ограничена (${cloudAccessError})`;
-    desc = 'Показана локальная копия коллекции из памяти браузера. Новые изменения сохраняются локально.';
+    desc = 'Показана локальная копия коллекции из памяти браузера. Новые изменения сохраняются локально'
+      + (pending.total > 0 ? ` (в очереди: ${pending.total}${pendingDetailTxt})` : '') + '.';
     showRetry = true;
     showDismiss = items.length > 0;
   } else if (pending.total > 0) {
     mode = 'is-pending';
     dismissKey = 'pending';
-    title = `⏳ Есть несинхронизированные локальные изменения (${pending.total})`;
-    desc = 'Эти правки были сохранены в браузере, пока облако было недоступно, и готовы к отправке в Firestore.';
+    title = `⏳ Не отправлено в облако: ${pending.total}${pendingDetailTxt}`;
+    desc = 'Локальные правки сохранены в браузере и готовы к отправке в Firestore в 1 клик.';
     showFlush = true;
     showDismiss = true;
   }
@@ -1494,28 +1578,16 @@ function renderCloudStatusBanner() {
   if (showFlush && typeof window.forceCloudSyncNow === 'function') {
     const bFlush = el('button', 'btn', '☁ Отправить сейчас');
     bFlush.type = 'button';
-    bFlush.onclick = async () => {
-      const needServerRecovery = !user || user.isLocal
-        || !isInitialCloudSyncDone(user.uid)
-        || isInitialCloudSyncBlocked(user.uid)
-        || cloudAccessError === 'unavailable'
-        || cloudAccessError === 'timeout';
-      if (needServerRecovery) {
-        await window.forceCloudSyncNow(true);
-        return;
-      }
-      if (typeof flushPendingCloudChanges === 'function') {
-        const ok = await flushPendingCloudChanges(true);
-        if (ok) return;
-      }
-      await window.forceCloudSyncNow(true);
-    };
+    bFlush.onclick = () => triggerOneClickPendingFlush();
     actions.append(bFlush);
   }
   if (showRetry && typeof window.forceCloudSyncNow === 'function') {
     const bRetry = el('button', 'btn', '↻ Повторить');
     bRetry.type = 'button';
-    bRetry.onclick = () => window.forceCloudSyncNow(true);
+    bRetry.onclick = () => {
+      resetPendingQueueAutoRetry();
+      window.forceCloudSyncNow(true);
+    };
     actions.append(bRetry);
   }
   if (showBackup && typeof window.exportData === 'function') {
@@ -1542,13 +1614,65 @@ const setSync = () => {
   const e = $('syncState');
   const pending = getUnsyncedPendingCounts();
   if (e) {
-    const renderSyncLabel = (cls, ic, txt, title) => {
-      e.className = cls;
-      e.title = title;
-      e.setAttribute('aria-label', txt);
-      e.replaceChildren(el('span', 'sync-ic', ic), el('span', 'sync-lbl', ' ' + txt));
-    };
-    e.onclick = () => {
+    const isAuthOrInitialLoading = Boolean(
+      user && !user.isLocal
+      && (isInitialCloudLoading || ((!_authStateResolved || _activatingCloudSessionUid === user.uid) && !window.__FIREBASE_OFFLINE_FALLBACK && navigator.onLine && !cloudAccessError && !isCloudQuotaBlocked() && !isInitialCloudSyncBlocked(user.uid)))
+    );
+    const pendingBreakdown = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.formatPendingQueueBreakdownRu === 'function')
+      ? KirokuEngine.formatPendingQueueBreakdownRu(pending)
+      : '';
+    const lastSyncTs = (user && !user.isLocal) ? getLastCloudSyncTimestamp(user.uid) : 0;
+    const lastSyncLabel = (lastSyncTs && typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.formatLastActivityTimestampRu === 'function')
+      ? KirokuEngine.formatLastActivityTimestampRu(lastSyncTs)
+      : '';
+
+    const uiState = (typeof KirokuEngine !== 'undefined' && typeof KirokuEngine.resolveSyncIndicatorState === 'function')
+      ? KirokuEngine.resolveSyncIndicatorState({
+          isLocal: Boolean(user && user.isLocal),
+          isManualSyncActive: Boolean(_manualCloudSyncActive),
+          isInitialLoading: isAuthOrInitialLoading,
+          isOfflineFallback: Boolean(window.__FIREBASE_OFFLINE_FALLBACK),
+          isOnline: Boolean(navigator.onLine),
+          cloudAccessError,
+          isQuotaBlocked: isCloudQuotaBlocked(),
+          isSaving: Boolean(pend),
+          pendingTotal: pending.total,
+          pendingBreakdown,
+          syncBad: Boolean(syncBad),
+          lastSyncLabel
+        })
+      : {
+          cls: pending.total > 0 ? 'sync warn clickable has-cnt' : 'sync clickable',
+          icon: pending.total > 0 ? '⏳' : '☁',
+          label: pending.total > 0 ? `Отправить (${pending.total})` : 'Синхронизировано',
+          mobileBadgeCount: pending.total,
+          tooltip: 'Нажми для синхронизации с облаком',
+          action: pending.total > 0 ? 'flush_pending' : 'force_sync'
+        };
+
+    e.className = uiState.cls;
+    e.title = uiState.tooltip;
+    e.dataset.syncAction = uiState.action;
+    e.setAttribute('role', 'button');
+    e.setAttribute('tabindex', '0');
+    e.setAttribute('aria-label', uiState.label);
+    const children = [el('span', 'sync-ic', uiState.icon), el('span', 'sync-lbl', ' ' + uiState.label)];
+    if (uiState.mobileBadgeCount > 0) {
+      children.push(el('span', 'sync-cnt', String(uiState.mobileBadgeCount > 99 ? '99+' : uiState.mobileBadgeCount)));
+    }
+    e.replaceChildren(...children);
+
+    const handleSyncClick = () => {
+      if (uiState.action === 'noop') return;
+      if (uiState.action === 'flush_pending') {
+        triggerOneClickPendingFlush();
+        return;
+      }
+      if (uiState.action === 'force_sync' && user && !user.isLocal && typeof window.forceCloudSyncNow === 'function') {
+        resetPendingQueueAutoRetry();
+        window.forceCloudSyncNow(true);
+        return;
+      }
       _cloudBannerDismissedKey = '';
       renderCloudStatusBanner();
       const banner = $('cloudStatusBanner');
@@ -1560,35 +1684,13 @@ const setSync = () => {
         toast('Локальный режим: данные хранятся только в этом браузере.');
       }
     };
-    const isAuthOrInitialLoading = Boolean(
-      user && !user.isLocal
-      && (isInitialCloudLoading || ((!_authStateResolved || _activatingCloudSessionUid === user.uid) && !window.__FIREBASE_OFFLINE_FALLBACK && navigator.onLine && !cloudAccessError && !isCloudQuotaBlocked() && !isInitialCloudSyncBlocked(user.uid)))
-    );
-    if (user && user.isLocal) {
-      renderSyncLabel('sync warn clickable', '💻', 'Локально (только браузер)', 'Данные хранятся только в этом браузере. Нажми для подробностей');
-    } else if (_manualCloudSyncActive) {
-      renderSyncLabel('sync sav sync-spinning', '⟳', 'Сверяем с облаком...', 'Идёт двусторонняя сверка с облаком');
-    } else if (isAuthOrInitialLoading) {
-      renderSyncLabel('sync sav sync-spinning', '⟳', 'Загрузка из облака...', 'Идёт первичная загрузка коллекции из Firestore');
-    } else if (window.__FIREBASE_OFFLINE_FALLBACK) {
-      renderSyncLabel('sync err clickable', '⚠', 'Офлайн (только локально)', 'Firebase SDK недоступен, включено локальное сохранение');
-    } else if (!navigator.onLine) {
-      renderSyncLabel('sync err clickable', '⚠', 'Нет сети (локально)', 'Нет подключения к интернету. Изменения сохраняются в браузер');
-    } else if (cloudAccessError === 'resource-exhausted' || isCloudQuotaBlocked()) {
-      renderSyncLabel('sync warn clickable', '⏳', 'Лимит Firebase (локально)', 'Дневной лимит запросов Spark исчерпан. Изменения сохраняются локально');
-    } else if (cloudAccessError === 'timeout') {
-      renderSyncLabel('sync warn clickable', '⏱', 'Таймаут облака', 'Ответ Firestore задержался. Нажми, чтобы повторить синхронизацию');
-    } else if (cloudAccessError) {
-      renderSyncLabel('sync err clickable', '⚠', 'Облако: ' + cloudAccessError, 'Проблема доступа к облаку. Нажми для деталей и повтора');
-    } else if (pend) {
-      renderSyncLabel('sync sav', '⏳', 'Сохранение...', 'Идёт запись в Firestore');
-    } else if (pending.total > 0) {
-      renderSyncLabel('sync warn clickable', '⏳', `В очереди: ${pending.total}`, 'Нажми, чтобы отправить локальные изменения в облако');
-    } else if (syncBad) {
-      renderSyncLabel('sync err clickable', '⚠', 'Ошибка сохранения', 'Нажми, чтобы повторить синхронизацию');
-    } else {
-      renderSyncLabel('sync clickable', '☁', 'Синхронизировано', 'Нажми, чтобы сверить коллекцию с облаком');
-    }
+    e.onclick = handleSyncClick;
+    e.onkeydown = ev => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        handleSyncClick();
+      }
+    };
   }
   renderCloudStatusBanner();
 };
@@ -1910,11 +2012,17 @@ const track = (p, timeoutMs = CLOUD_OP_TIMEOUT_MS) => {
 };
 let _lastHiddenAt = 0;
 let _resumeReconcileInFlight = false;
+let _resumeReconcileQueued = null;
 
 async function reconcileAndFlushCloudOnResume(effUid, sessionToken, reason, hiddenDurationMs = 0) {
-  if (_resumeReconcileInFlight) return;
   if (!user || user.isLocal || !effUid || !navigator.onLine || window.__FIREBASE_OFFLINE_FALLBACK || isCloudQuotaBlocked() || !auth.currentUser) return;
   if (sessionToken !== _cloudSessionToken || _activeCloudSessionUid !== effUid) return;
+
+  if (_resumeReconcileInFlight) {
+    // Не теряем событие online/visible, если оно пришло во время предыдущего прохода
+    _resumeReconcileQueued = { effUid, sessionToken, reason, hiddenDurationMs };
+    return;
+  }
 
   const pendingCounts = getUnsyncedPendingCounts();
   const hasPendingChanges = pendingCounts.total > 0;
@@ -1946,7 +2054,8 @@ async function reconcileAndFlushCloudOnResume(effUid, sessionToken, reason, hidd
     }
 
     if (plan.action === 'flush_only') {
-      await flushPendingCloudChanges(false);
+      const ok = await flushPendingCloudChanges(false);
+      if (!ok && navigator.onLine && !isCloudQuotaBlocked()) schedulePendingQueueAutoRetry(effUid);
       return;
     }
 
@@ -1978,10 +2087,21 @@ async function reconcileAndFlushCloudOnResume(effUid, sessionToken, reason, hidd
       // syncItemsFromCloud сам объединит удалённые правки с локальными dirty/pendingDeletes и отправит результат в облако!
       await syncItemsFromCloud(effUid, true);
     } else if (plan.action === 'reconcile_then_flush') {
-      await flushPendingCloudChanges(false);
+      const ok = await flushPendingCloudChanges(false);
+      if (!ok && navigator.onLine && !isCloudQuotaBlocked()) schedulePendingQueueAutoRetry(effUid);
+    } else if (plan.action === 'pull_if_remote_newer') {
+      recordLastCloudSyncTimestamp(effUid);
+      setSync();
     }
   } finally {
     _resumeReconcileInFlight = false;
+    const queued = _resumeReconcileQueued;
+    _resumeReconcileQueued = null;
+    if (queued && navigator.onLine && queued.sessionToken === _cloudSessionToken && _activeCloudSessionUid === queued.effUid) {
+      setTimeout(() => {
+        reconcileAndFlushCloudOnResume(queued.effUid, queued.sessionToken, queued.reason, queued.hiddenDurationMs);
+      }, 150);
+    }
   }
 }
 
@@ -2020,11 +2140,13 @@ function triggerInitialCloudSyncResume(reason, hiddenDurationMs = 0) {
 }
 
 addEventListener('online', () => {
+  resetPendingQueueAutoRetry();
   setSync();
   if (user && !user.isLocal && items.length === 0) render();
   triggerInitialCloudSyncResume('online', 0);
 });
 addEventListener('offline', () => {
+  resetPendingQueueAutoRetry();
   setSync();
   if (user && !user.isLocal && items.length === 0) render();
 });
@@ -2441,6 +2563,8 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
       try { localStorage.setItem('colChunksDirty_' + uid, '1'); } catch (e) {}
     } else {
       try { localStorage.removeItem('colChunksDirty_' + uid); } catch (e) {}
+      recordLastCloudSyncTimestamp(uid);
+      resetPendingQueueAutoRetry();
     }
     profSaveLocal(true);
     flushLocalItemsNow(items.length === 0 && explicitEmptyAllowed);
@@ -2462,6 +2586,7 @@ async function saveCollectionChunksToCloud(uid, listToPack, opts = {}) {
     }
     try { localStorage.setItem('colChunksDirty_' + uid, '1'); } catch (e) {}
     if (!opts.silent) handleCloudError(err, true);
+    else if (navigator.onLine && !isCloudQuotaBlocked()) schedulePendingQueueAutoRetry(uid);
     if (opts.throwOnError) throw err;
     return false;
   }
@@ -2648,10 +2773,16 @@ const profCloud = (onlyWatchingCheck = false) => {
       setSync();
       return Promise.resolve(true);
     }
+    if (typeof uiT !== 'undefined' && uiT) {
+      clearTimeout(uiT);
+      uiT = 0;
+    }
     _lastSavedProfJson = profFingerprint;
     return track(setDoc(doc(db, 'items', 'prof_' + uid), cleanProfPayload, { merge: true })).then(() => {
       try { localStorage.removeItem('profDirty_' + uid); } catch (e) {}
       profSaveLocal(true);
+      recordLastCloudSyncTimestamp(uid);
+      if (getUnsyncedPendingCounts().total === 0) resetPendingQueueAutoRetry();
       setSync();
       return true;
     }).catch(e => {
@@ -2911,6 +3042,11 @@ async function flushPendingCloudChanges(showToast = false) {
     dirtyProf = localStorage.getItem('profDirty_' + uid) === '1';
     dirtyChunks = localStorage.getItem('colChunksDirty_' + uid) === '1';
   } catch (e) {}
+  if (typeof hasPendingUiProfileSync === 'function' && hasPendingUiProfileSync()) {
+    dirtyProf = true;
+    clearTimeout(uiT);
+    uiT = 0;
+  }
   if (!pendingDeletes.length && !dirtyItems.length && !dirtyProf && !dirtyChunks) return true;
 
   try {
@@ -2924,6 +3060,8 @@ async function flushPendingCloudChanges(showToast = false) {
       });
       if (ok) {
         if (pendingDeletes.length) removePendingDeletes(pendingDeletes, uid);
+        recordLastCloudSyncTimestamp(uid);
+        resetPendingQueueAutoRetry();
         setSync();
         if (showToast) toast('Отложенные локальные изменения отправлены в облако ✓');
         return true;
@@ -2934,12 +3072,15 @@ async function flushPendingCloudChanges(showToast = false) {
         if (dirtyProf && items.length === 0) {
           _lastSavedProfJson = '';
           const profOk = await profCloud(false);
+          if (profOk) recordLastCloudSyncTimestamp(uid);
           setSync();
           if (profOk && !dirtyItems.length && !pendingDeletes.length) {
+            resetPendingQueueAutoRetry();
             if (showToast) toast('Профиль синхронизирован с облаком ✓');
             return true;
           }
         }
+        if (navigator.onLine && !isCloudQuotaBlocked()) schedulePendingQueueAutoRetry(uid);
         return false;
       }
     }
@@ -6498,6 +6639,7 @@ const uiSync = () => {
     uiT = 0;
     profCloud(false);
   }, 1500);
+  setSync();
 };
 
 function setTheme(t, quiet) {

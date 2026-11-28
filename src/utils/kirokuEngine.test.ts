@@ -3401,3 +3401,116 @@ test('A3: sanitizeProfilePayloadForFirestoreLimit strips oversized base64 cover 
   assert.equal(res2.payload.theme, 'neon');
   assert.ok(res2.byteLength < 900000);
 });
+
+test('A4: formatPendingQueueBreakdownRu formats mixed pending items, deletes, profile settings, and fallback chunks cleanly', () => {
+  assert.equal(
+    KirokuEngine.formatPendingQueueBreakdownRu({ dirtyItems: 2, pendingDeletes: 1, dirtyProf: true, dirtyChunks: true }),
+    'тайтлов: 2, удалений: 1, настройки профиля'
+  );
+  assert.equal(
+    KirokuEngine.formatPendingQueueBreakdownRu({ dirtyItems: 0, pendingDeletes: 0, dirtyProf: true, dirtyChunks: false }),
+    'настройки профиля'
+  );
+  assert.equal(
+    KirokuEngine.formatPendingQueueBreakdownRu({ dirtyItems: 0, pendingDeletes: 0, dirtyProf: false, dirtyChunks: true }),
+    'изменения коллекции'
+  );
+  assert.equal(
+    KirokuEngine.formatPendingQueueBreakdownRu({ dirtyItems: 0, pendingDeletes: 0, dirtyProf: false, dirtyChunks: false }),
+    ''
+  );
+});
+
+test('A4: resolveSyncIndicatorState provides clear 1-click flush, offline queue badge, transient retry, and synced last-sync tooltip', () => {
+  // 1) Online with unsynced pending edits -> 1-click flush_pending + mobile badge count
+  const pendingState = KirokuEngine.resolveSyncIndicatorState({
+    isOnline: true,
+    pendingTotal: 3,
+    pendingBreakdown: 'тайтлов: 2, настройки профиля'
+  });
+  assert.equal(pendingState.action, 'flush_pending');
+  assert.equal(pendingState.label, 'Отправить (3)');
+  assert.equal(pendingState.mobileBadgeCount, 3);
+  assert.ok(pendingState.cls.includes('has-cnt'));
+  assert.ok(pendingState.tooltip.includes('тайтлов: 2, настройки профиля'));
+
+  // 2) Offline with queued edits -> clear offline count + mobile badge + banner action
+  const offlinePending = KirokuEngine.resolveSyncIndicatorState({
+    isOnline: false,
+    pendingTotal: 2,
+    pendingBreakdown: 'тайтлов: 1, настройки профиля'
+  });
+  assert.equal(offlinePending.action, 'show_banner');
+  assert.equal(offlinePending.label, 'Нет сети · в очереди 2');
+  assert.equal(offlinePending.mobileBadgeCount, 2);
+  assert.ok(offlinePending.cls.includes('has-cnt'));
+
+  // 3) Transient timeout error while online -> 1-click force_sync + mobile badge
+  const timeoutState = KirokuEngine.resolveSyncIndicatorState({
+    isOnline: true,
+    cloudAccessError: 'timeout',
+    pendingTotal: 1,
+    pendingBreakdown: 'тайтлов: 1'
+  });
+  assert.equal(timeoutState.action, 'force_sync');
+  assert.equal(timeoutState.label, 'Отправить (1)');
+  assert.equal(timeoutState.mobileBadgeCount, 1);
+
+  // 4) Synced -> includes lastSyncLabel in tooltip and zero mobile badge
+  const synced = KirokuEngine.resolveSyncIndicatorState({
+    isOnline: true,
+    pendingTotal: 0,
+    lastSyncLabel: 'сегодня, 14:20'
+  });
+  assert.equal(synced.action, 'force_sync');
+  assert.equal(synced.label, 'Синхронизировано');
+  assert.equal(synced.mobileBadgeCount, 0);
+  assert.ok(synced.tooltip.includes('сегодня, 14:20'));
+});
+
+test('A4: computePendingAutoRetryPlan schedules bounded exponential retries only when online and recoverable', () => {
+  const r0 = KirokuEngine.computePendingAutoRetryPlan({
+    isCloudUser: true,
+    isOnline: true,
+    hasPendingChanges: true,
+    attemptCount: 0
+  });
+  assert.equal(r0.shouldSchedule, true);
+  assert.equal(r0.delayMs, 5000);
+  assert.equal(r0.nextAttempt, 1);
+
+  const r3 = KirokuEngine.computePendingAutoRetryPlan({
+    isCloudUser: true,
+    isOnline: true,
+    hasTransientError: true,
+    attemptCount: 3
+  });
+  assert.equal(r3.shouldSchedule, true);
+  assert.equal(r3.delayMs, 60000);
+  assert.equal(r3.nextAttempt, 4);
+
+  // Stops after max attempts (bounded)
+  const rMax = KirokuEngine.computePendingAutoRetryPlan({
+    isCloudUser: true,
+    isOnline: true,
+    hasPendingChanges: true,
+    attemptCount: 4
+  });
+  assert.equal(rMax.shouldSchedule, false);
+  assert.equal(rMax.reason, 'max_attempts_reached');
+
+  // Never schedules while offline or quota-blocked or when nothing is pending
+  assert.equal(
+    KirokuEngine.computePendingAutoRetryPlan({ isCloudUser: true, isOnline: false, hasPendingChanges: true, attemptCount: 0 }).shouldSchedule,
+    false
+  );
+  assert.equal(
+    KirokuEngine.computePendingAutoRetryPlan({ isCloudUser: true, isOnline: true, isQuotaBlocked: true, hasPendingChanges: true, attemptCount: 0 }).shouldSchedule,
+    false
+  );
+  assert.equal(
+    KirokuEngine.computePendingAutoRetryPlan({ isCloudUser: true, isOnline: true, hasPendingChanges: false, hasTransientError: false, attemptCount: 0 }).shouldSchedule,
+    false
+  );
+});
+

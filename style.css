@@ -269,7 +269,7 @@ body.selmode .card.sel .pc::after{content:"✓";position:absolute;left:8px;top:8
 .sk{aspect-ratio:2/3;border-radius:var(--rad);background:linear-gradient(90deg,#161920 25%,#1e222d 50%,#161920 75%);background-size:200% 100%;animation:shim 1.2s infinite}
 @keyframes shim{to{background-position:-200% 0}}
 .sec{margin:14px 0 8px;font-size:14px}
-.strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px}
+.strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;max-width:100%;min-width:0;-webkit-overflow-scrolling:touch}
 .mini{flex:none;width:96px;cursor:pointer}
 .mini img{width:96px;height:142px;object-fit:cover;border-radius:var(--rad-sm);display:block;background:#1c2029;border:1px solid var(--bd)}
 .mini span{display:block;font-size:11.5px;margin-top:4px;color:#d1d5db;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -462,13 +462,15 @@ html[data-theme=white] .tp-hero-art-bg::after{background:linear-gradient(90deg,#
 .cg-hero-tags{font-size:11px;color:#9ca3b5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* Статистика по типам и оценки в профиле */
-.anix-sec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:14px}
-.anix-sec-card{background:var(--card);border:1px solid var(--bd);border-radius:var(--rad);padding:12px 14px;min-width:0}
-.anix-type-stats{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;grid-column:1/-1}
-.anix-type-card{background:var(--card);border:1px solid var(--bd);border-radius:var(--rad);padding:11px 13px;cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:4px}
+.anix-sec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:12px;margin-bottom:14px;min-width:0;max-width:100%}
+.anix-sec-grid>*{min-width:0;max-width:100%}
+.anix-sec-card{background:var(--card);border:1px solid var(--bd);border-radius:var(--rad);padding:12px 14px;min-width:0;max-width:100%;overflow:hidden}
+.anix-type-stats{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;grid-column:1/-1;min-width:0;max-width:100%}
+.anix-type-card{background:var(--card);border:1px solid var(--bd);border-radius:var(--rad);padding:11px 13px;cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:4px;min-width:0;max-width:100%;overflow:hidden}
 .anix-type-card:hover{border-color:var(--ac)}
-.anix-type-card b{font-size:13.5px;display:flex;align-items:center;justify-content:space-between;gap:6px}
-.anix-type-card .meta{margin:0}
+.anix-type-card b{font-size:13.5px;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0;line-height:1.25}
+.anix-type-card .chip{flex-shrink:0}
+.anix-type-card .meta{margin:0;line-height:1.35;overflow-wrap:anywhere}
 
 body[data-pview="collection"] .hyb-profile-shell,body[data-pview="collection"] #profAnixartExtrasSec{display:none!important}
 body[data-pview="profile"] #myListsBlock,body[data-pview="profile"] .hyb-subtabs-bar,body[data-pview="profile"] #profColWrap,body[data-pview="profile"] #reviewItemsBox,body[data-pview="profile"] #catalogLinkProgressBar{display:none!important}
@@ -1111,7 +1113,7 @@ html[data-theme=white] .cloud-empty-notice p{color:#475569}
   .tp-hero-art-bg{width:100%;height:260px;top:-12px;right:0;opacity:.2}
   .cg-hero-card{flex:0 0 265px;min-height:142px;height:auto;grid-template-columns:86px 1fr;padding:9px;gap:10px}
   .cg-hero-poster{width:86px}
-  .anix-sec-grid{grid-template-columns:1fr!important}
+  .anix-sec-grid{grid-template-columns:minmax(0,1fr)!important}
   .anix-type-stats{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
   .progress-chart-box{grid-template-columns:1fr}
 }
@@ -1130,7 +1132,7 @@ html[data-theme=white] .cloud-empty-notice p{color:#475569}
   #cgCatDropdownBtn{width:100%;justify-content:space-between}
   .grid:not(.list){grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 10px}
   html[data-grid-size="md"] .grid:not(.list){grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 10px}
-  .hyb-main-body{grid-template-columns:1fr!important;gap:10px!important;padding:0 12px 14px!important}
+  .hyb-main-body{grid-template-columns:minmax(0,1fr)!important;gap:10px!important;padding:0 12px 14px!important}
   .av-wrap{width:76px!important;height:76px!important}
   .hyb-name-line b#profName{font-size:18px!important}
   .hyb-hero-time-num{font-size:21px!important}

@@ -1861,7 +1861,7 @@ html[data-theme="white"] .tp-desc-sec[data-collapsible="1"] .tp-desc-toggle-btn 
 }
 
 .hyb-main-body {
-  grid-template-columns: 1fr !important;
+  grid-template-columns: minmax(0, 1fr) !important;
   gap: 10px !important;
   padding: 0 12px 14px !important;
 }
@@ -1909,12 +1909,53 @@ html[data-theme="white"] .tp-desc-sec[data-collapsible="1"] .tp-desc-toggle-btn 
 }
 
 .anix-sec-grid {
-  grid-template-columns: 1fr !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.anix-sec-grid > * {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.anix-sec-card {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .anix-type-stats {
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   gap: 8px !important;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.anix-type-card {
+  min-width: 0;
+  max-width: 100%;
+  padding: 9px 10px !important;
+  overflow: hidden;
+}
+
+.anix-type-card b {
+  font-size: 12.5px !important;
+  align-items: flex-start;
+  gap: 5px;
+  line-height: 1.25;
+}
+
+.anix-type-card .chip {
+  flex-shrink: 0;
+}
+
+.anix-type-card .meta {
+  font-size: 11.5px !important;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .progress-chart-box {

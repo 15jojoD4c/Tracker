@@ -18,12 +18,12 @@
 <link rel="icon" href="./favicon.ico" sizes="any">
 <!-- ВАЖНО: при обновлении версии кэша (?v=...) синхронно меняй и const APP_VER внизу index.html -->
 <style>html,body{background:#0a0b12;color:#f1f3f9;margin:0}html[data-theme=white],html[data-theme=white] body{background:#f4f6fb;color:#14161f}body.auth-checking > *{display:none!important}</style>
-<link rel="preload" href="./kiroku_engine.js?v=20261221" as="script">
-<link rel="preload" href="./app_core.js?v=20261221" as="script">
-<link rel="preload" href="./app_catalog.js?v=20261221" as="script">
-<link rel="preload" href="./app.js?v=20261221" as="script">
-<link rel="stylesheet" href="./style.css?v=20261221">
-<link rel="stylesheet" href="./mobile.css?v=20261221" media="(max-width: 768px)">
+<link rel="preload" href="./kiroku_engine.js?v=20261222" as="script">
+<link rel="preload" href="./app_core.js?v=20261222" as="script">
+<link rel="preload" href="./app_catalog.js?v=20261222" as="script">
+<link rel="preload" href="./app.js?v=20261222" as="script">
+<link rel="stylesheet" href="./style.css?v=20261222">
+<link rel="stylesheet" href="./mobile.css?v=20261222" media="(max-width: 768px)">
 </head>
 <body class="auth-checking">
 
@@ -820,7 +820,7 @@ const importWithTimeout = (url, ms = 7000) => new Promise((resolve, reject) => {
 });
 
 // ВАЖНО: должна совпадать с параметром ?v=... в <head> выше
-const APP_VER = "20261221";
+const APP_VER = "20261222";
 const FIREBASE_SDK_URLS = [
   "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
   "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
